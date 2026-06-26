@@ -1,6 +1,8 @@
 // Bloom PWA push notifications for the internal team chat.
-// This file is injected by sw.js so index.html does not need another script tag.
 (function(){
+  if(window.__bloomPushClientLoaded) return;
+  window.__bloomPushClientLoaded = true;
+
   const C = window.CONFIG || {};
   const PUSH_URL = C.PUSH_WORKER_URL || C.WORKER_URL;
   const STORE = C.STORE || "bloom";
