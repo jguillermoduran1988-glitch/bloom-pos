@@ -1,4 +1,5 @@
-const CACHE="bloom-v24";
+const CACHE="bloom-v25";
+const PUSH_LATEST_URL="https://bloom-push.jguillermoduran1988.workers.dev/push/latest?store=bloom";
 const SHELL=["./index.html","./app.js","./config.js","./push-client.js","./manifest.json","./colombia.js","./logo-bloom.svg","./icon-192.png","./icon-512.png"];
 
 self.addEventListener("install",e=>{
@@ -24,18 +25,34 @@ self.addEventListener("fetch",e=>{
 });
 
 self.addEventListener("push",e=>{
-  let data={};
-  try{ data=e.data?e.data.json():{}; }catch(_){ data={body:e.data?.text()||"Nuevo mensaje"}; }
-  const title=data.title||"Bloom";
-  const options={
-    body:data.body||"Nuevo mensaje del equipo",
-    icon:"./icon-192.png",
-    badge:"./icon-192.png",
-    tag:data.tag||"bloom-team",
-    data:{url:data.url||"./index.html#equipo"},
-  };
-  e.waitUntil(self.registration.showNotification(title,options));
+  e.waitUntil((async()=>{
+    const data = await pushData(e);
+    const title=data.title||"Bloom";
+    const options={
+      body:data.body||"Nuevo mensaje en el chat del equipo",
+      icon:"./icon-192.png",
+      badge:"./icon-192.png",
+      tag:data.tag||"bloom-team",
+      data:{url:data.url||"./index.html#equipo"},
+    };
+    await self.registration.showNotification(title,options);
+  })());
 });
+
+async function pushData(e){
+  if(e.data){
+    try{ return e.data.json(); }
+    catch(_){ return { body:e.data.text()||"Nuevo mensaje en el chat del equipo" }; }
+  }
+  try{
+    const r=await fetch(PUSH_LATEST_URL,{cache:"no-store"});
+    if(r.ok){
+      const d=await r.json();
+      if(d && d.ok) return d;
+    }
+  }catch(_){ }
+  return { title:"Bloom", body:"Nuevo mensaje en el chat del equipo", url:"./index.html#equipo" };
+}
 
 self.addEventListener("notificationclick",e=>{
   e.notification.close();
