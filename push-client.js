@@ -7,7 +7,6 @@
   const PUSH_URL = C.PUSH_WORKER_URL || C.WORKER_URL;
   const STORE = C.STORE || "bloom";
   let enabling = false;
-  let enabledOnce = false;
 
   function b64ToUint8Array(value){
     const padding = "=".repeat((4 - value.length % 4) % 4);
@@ -56,7 +55,6 @@
         });
       }
       await saveSubscription(subscription);
-      enabledOnce = true;
       localStorage.setItem("bloom_push_author", authorName());
     }catch(e){
       console.warn("No se pudo activar push", e);
@@ -66,7 +64,7 @@
   }
 
   async function notifyTeamMessage(payload){
-    if(!PUSH_URL || !enabledOnce) return;
+    if(!PUSH_URL) return;
     try{
       await fetch(`${PUSH_URL}/push/team-message`,{
         method:"POST",
