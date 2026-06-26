@@ -20,3 +20,12 @@ window.CONFIG = {
 
   SUGGESTED_TAGS: ["VIP","talla S","talla M","talla L","Cartagena","mayorista","recompra","Instagram"],
 };
+
+(function loadBloomPushClient(){
+  if (window.__bloomPushClientLoading) return;
+  window.__bloomPushClientLoading = true;
+  const script = document.createElement("script");
+  script.src = "push-client.js?v=2";
+  script.defer = true;
+  document.head.appendChild(script);
+})();
