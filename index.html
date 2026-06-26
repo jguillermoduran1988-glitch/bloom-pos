@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#fdfbf7">
+<link rel="manifest" href="manifest.json">
+<title>Bloom · Chats</title>
+<style>
+  :root{
+    --bg:#fdfbf7; --surface:#fff; --surface-2:#f5efe3; --border:#ebe2d2;
+    --text:#2e2820; --text-dim:#9c9080; --accent:#c49a4b; --accent-soft:#f7efdd;
+    --accent-dark:#a07d32; --brand:#c49a4b; --in:#fff; --out:#f7efdd; --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden}
+  /* contenedor de pantallas */
+  .screen{display:none;height:calc(100dvh - 56px)}
+  .screen.active{display:grid}
+  #screen-chats{grid-template-columns:320px 1fr 280px}
+  /* barra de navegación inferior */
+  .navbar{position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100}
+  .navbar button{flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--text-dim);font-size:11px;cursor:pointer}
+  .navbar button.on{color:var(--accent)}
+  .navbar button .ic{font-size:20px}
+  /* Chat del equipo */
+  .team-wrap{display:flex;flex-direction:column;height:100%;max-width:760px;margin:0 auto;width:100%}
+  .team-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
+  .team-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .tm{max-width:78%;padding:9px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--border)}
+  .tm .who{font-size:11px;font-weight:700;color:var(--accent-dark);margin-bottom:2px}
+  .tm-del{cursor:pointer;opacity:.5;font-size:11px;margin-left:6px}
+  .tm-del:active{opacity:1}
+  .tm .bd{font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .tm .tm-time{font-size:10px;color:var(--text-dim);margin-top:3px;text-align:right}
+  .tm.mine{align-self:flex-end;background:var(--accent-soft);border-color:var(--accent-soft)}
+  .tm-sale{align-self:center;background:var(--accent);color:#fff;font-size:12px;padding:6px 12px;border-radius:12px;max-width:90%}
+  .team-input{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);align-items:center}
+  .team-plus{width:42px;height:42px;flex-shrink:0;border:none;background:var(--accent-soft);color:var(--accent-dark);border-radius:50%;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .team-send{width:42px;height:42px;flex-shrink:0;border:none;background:var(--accent);color:#fff;border-radius:50%;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .plus-menu{display:none;gap:8px;padding:10px 16px;flex-wrap:wrap}
+  .plus-menu.show{display:flex}
+  .plus-menu button{display:flex;flex-direction:column;align-items:center;gap:3px;border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:10px 16px;font-size:22px;cursor:pointer;min-width:74px}
+  .plus-menu button span{font-size:11px;color:var(--text-dim)}
+  .plus-menu button.rec{background:#c0392b;color:#fff}
+  .team-sales-strip{display:flex;gap:6px;overflow-x:auto;padding:8px 16px;border-top:1px solid var(--border)}
+  .team-sale-chip{flex-shrink:0;font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:14px;cursor:pointer;background:var(--bg);white-space:nowrap}
+  .team-sale-chip:active{background:var(--accent-soft)}
+  .team-input input{flex:1;border:1px solid var(--border);border-radius:22px;padding:10px 16px;font-size:14px;outline:none}
+  .team-input input:focus{border-color:var(--accent)}
+  .team-input button{width:44px;border:none;background:var(--accent);color:#fff;border-radius:50%;font-size:16px;cursor:pointer}
+  .emoji-picker{display:none;flex-wrap:wrap;gap:4px;padding:10px 16px;border-top:1px solid var(--border);max-height:160px;overflow-y:auto}
+  .emoji-picker.show{display:flex}
+  .emoji-picker span{font-size:22px;cursor:pointer;padding:3px;border-radius:6px}
+  .emoji-picker span:active{background:var(--accent-soft)}
+  .team-typing{font-size:11px;color:var(--accent-dark);font-style:italic;padding:0 16px 4px;height:16px}
+  .team-attach{width:40px!important;background:var(--accent-soft)!important;color:var(--accent-dark)!important;font-size:18px!important;flex-shrink:0}
+  .team-attach.rec{background:#c0392b!important;color:#fff!important;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .tm img.tm-photo{max-width:200px;border-radius:10px;display:block;margin-top:4px;cursor:pointer}
+  .tm audio{margin-top:4px;max-width:220px}
+  /* ---------- Sidebar ---------- */
+  .sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--surface)}
+  .side-head{padding:15px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .brand{font-weight:700;font-size:18px;color:var(--brand);letter-spacing:.3px}
+  .conn{font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#ccc}
+  .dot.on{background:#3cba6e}
+  /* pipeline selector */
+  .pipe-tabs{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--border)}
+  .pipe-tab{padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:12px;color:var(--text-dim);white-space:nowrap;cursor:pointer;flex-shrink:0}
+  .pipe-tab.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .pipe-tab.add{color:var(--accent);border-style:dashed}
+  .search{padding:10px 12px}
+  .search input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:9px 13px;color:var(--text);font-size:14px;outline:none}
+  .search input:focus{border-color:var(--accent)}
+  .chat-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border)}
+  .chat-item:active,.chat-item.sel{background:var(--surface-2)}
+  .av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--accent)}
+  .ci-body{flex:1;min-width:0}
+  .ci-top{display:flex;justify-content:space-between;align-items:baseline}
+  .ci-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ci-time{font-size:11px;color:var(--text-dim);flex-shrink:0;margin-left:6px}
+  .ci-prev{font-size:13px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .ci-meta{display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap}
+  .ref-badge{font-size:10px;padding:1px 7px;border-radius:20px;background:#efe7fb;color:#6b4ba8;display:flex;align-items:center;gap:3px}
+  .ref-badge.ad{background:#fde9e0;color:#b5572b}
+  .stage{font-size:10px;padding:1px 8px;border-radius:20px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+  .ci-unread{background:var(--accent);color:#fff;font-size:11px;font-weight:700;border-radius:20px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px}
+  /* ---------- Chat ---------- */
+  .chat{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+  .chat-head{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:11px;flex-shrink:0;background:var(--surface)}
+  .ch-back{display:none;font-size:24px;background:none;border:none;color:var(--text);cursor:pointer;line-height:1}
+  .ch-info{flex:1;min-width:0}
+  .ch-name{font-size:15px;font-weight:600}
+  .ch-sub{font-size:12px;color:var(--text-dim)}
+  .iconbtn{width:34px;height:34px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+  .iconbtn:active{background:var(--surface-2)}
+  .msgs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+  .msg{max-width:75%;padding:8px 12px;border-radius:var(--radius);font-size:14px;line-height:1.45;word-wrap:break-word;border:1px solid var(--border)}
+  .msg.in{background:var(--in);align-self:flex-start;border-bottom-left-radius:4px}
+  .msg.out{background:var(--out);align-self:flex-end;border-bottom-right-radius:4px;border-color:#e8d4a8}
+  .msg .t{font-size:10px;color:var(--text-dim);margin-top:3px;text-align:right}
+  .msg-ref{align-self:flex-start;max-width:78%;background:#f3eefc;border:1px solid #e2d5f5;border-radius:var(--radius);padding:8px;margin-bottom:2px}
+  .msg-ref img{width:100%;border-radius:8px;display:block;margin-bottom:6px;max-height:160px;object-fit:cover}
+  .msg-ref .tag{font-size:10px;color:#6b4ba8;font-weight:600;display:flex;align-items:center;gap:4px;margin-bottom:3px}
+  .msg-ref .h{font-size:13px;font-weight:600}
+  .daysep{align-self:center;font-size:11px;color:var(--text-dim);background:var(--surface-2);padding:3px 12px;border-radius:20px;margin:6px 0}
+  .msg-note{align-self:center;max-width:82%;background:#fff8e1;border:1px solid #f0e0a8;border-radius:10px;padding:8px 12px;font-size:13px;color:#7a6612;line-height:1.4;margin:3px 0}
+  .msg-note .lock{margin-right:3px}
+  .msg-note .t{font-size:10px;color:#a8964a;margin-top:3px;text-align:right}
+  .load-more{align-self:center;font-size:12px;color:var(--text-dim);background:var(--surface-2);padding:6px 14px;border-radius:20px;margin:4px 0;cursor:pointer}
+  .qr-bar{display:flex;gap:7px;padding:8px 12px;overflow-x:auto;border-top:1px solid var(--border);flex-shrink:0;background:var(--surface)}
+  .qr{background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:6px 13px;font-size:13px;color:var(--text);white-space:nowrap;cursor:pointer;flex-shrink:0}
+  .qr:active{background:var(--accent-soft);border-color:var(--accent)}
+  .qr b{color:var(--accent)}
+  .composer{display:flex;gap:9px;padding:10px 12px;border-top:1px solid var(--border);align-items:flex-end;flex-shrink:0;background:var(--surface)}
+  .composer textarea{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:10px 15px;color:var(--text);font-size:14px;resize:none;outline:none;max-height:100px;font-family:inherit;line-height:1.4}
+  .composer textarea:focus{border-color:var(--accent)}
+  .send{width:42px;height:42px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .send:active{transform:scale(.94)}
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:10px;text-align:center;padding:20px}
+  .empty svg{opacity:.25}
+  /* ---------- Right panel: cliente, etiquetas, embudo ---------- */
+  .panel{border-left:1px solid var(--border);background:var(--surface);overflow-y:auto;display:flex;flex-direction:column}
+  .panel.hidden{display:none}
+  .p-sec{padding:14px 15px;border-bottom:1px solid var(--border)}
+  .p-title{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+  .p-client{display:flex;align-items:center;gap:11px}
+  .p-cname{font-size:15px;font-weight:600}
+  .p-csub{font-size:12px;color:var(--text-dim)}
+  /* referral card en panel */
+  .ref-card{background:#f3eefc;border:1px solid #e2d5f5;border-radius:10px;padding:9px;margin-top:4px}
+  .ref-card img{width:100%;border-radius:7px;max-height:130px;object-fit:cover;display:block;margin-bottom:7px}
+  .ref-card .src{font-size:10px;color:#6b4ba8;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+  .ref-card .h{font-size:13px;font-weight:600;margin-top:2px}
+  .ref-card .b{font-size:12px;color:var(--text-dim);margin-top:3px}
+  .no-ref{font-size:12px;color:var(--text-dim);font-style:italic}
+  /* etiquetas */
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tag-chip{font-size:12px;padding:3px 10px;border-radius:20px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;gap:5px}
+  .tag-chip .x{cursor:pointer;opacity:.6;font-weight:700}
+  .tag-chip .x:active{opacity:1}
+  .tag-add{font-size:12px;padding:3px 10px;border-radius:20px;border:1px dashed var(--border);color:var(--text-dim);background:none;cursor:pointer}
+  .tag-input{width:100%;margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;display:none}
+  .tag-input.show{display:block}
+  .tag-sugg{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .tag-sugg span{font-size:11px;padding:2px 9px;border-radius:20px;background:var(--bg);border:1px solid var(--border);color:var(--text-dim);cursor:pointer}
+  /* embudo */
+  .stages-list{display:flex;flex-direction:column;gap:6px}
+  .st-row{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:9px;border:1px solid var(--border);cursor:pointer}
+  .st-row.on{border-color:var(--accent);background:var(--accent-soft)}
+  .st-dot{width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0}
+  .st-row.on .st-dot{background:var(--accent)}
+  .st-label{font-size:13px;flex:1;text-transform:capitalize}
+  .st-row.on .st-label{font-weight:600;color:var(--accent)}
+  .qa{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .qa button{padding:8px;border-radius:9px;border:1px solid var(--border);background:var(--bg);font-size:12px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:5px;justify-content:center}
+  .qa button:active{background:var(--surface-2)}
+  /* overlay productos + modal embudo */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+  .overlay.show{display:flex}
+  .overlay.center{align-items:center}
+  .modal{background:var(--surface);width:90%;max-width:380px;max-height:88vh;overflow-y:auto;border-radius:18px;padding:18px;animation:pop .2s ease}
+  .sheet{background:var(--surface);width:100%;max-width:680px;max-height:78dvh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;animation:up .25s ease}
+  @keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+  .sheet-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .sheet-head h3{font-size:16px}
+  .sizes{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}
+  .sz{padding:5px 13px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:13px;color:var(--text-dim);cursor:pointer;flex-shrink:0}
+  .sz.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .prod-grid{flex:1;overflow-y:auto;padding:8px 16px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}
+  .pc{border:1px solid var(--border);border-radius:11px;overflow:hidden;cursor:pointer;background:var(--bg)}
+  .pc.on{border-color:var(--accent);border-width:2px}
+  .pc-img{height:68px;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--surface-2);overflow:hidden}
+  .pc-img img{width:100%;height:100%;object-fit:cover}
+  .pc-b{padding:6px 8px}
+  .pc-n{font-size:11px;font-weight:600;line-height:1.25}
+  .pc-p{font-size:11px;color:var(--text-dim);margin-top:2px}
+  .pc-s{font-size:9px;margin-top:3px}
+  .ok{color:#3cba6e}.low{color:#d99000}
+  .sheet-foot{padding:12px 16px;border-top:1px solid var(--border)}
+  .btn-primary{width:100%;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:12px;font-size:14px;font-weight:700;cursor:pointer}
+  .btn-primary:disabled{background:var(--surface-2);color:var(--text-dim)}
+  .modal h3{font-size:16px;margin-bottom:14px}
+  .modal input{width:100%;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:14px;outline:none;margin-bottom:10px}
+  .modal .stage-edit{display:flex;gap:6px;margin-bottom:7px;align-items:center}
+  .modal .stage-edit input{margin:0}
+  .modal .stage-edit button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px}
+  .modal-actions{display:flex;gap:8px;margin-top:8px}
+  .modal-actions button{flex:1;padding:10px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border)}
+  .modal-actions .save{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .modal-actions .cancel{background:var(--bg);color:var(--text)}
+  @media(max-width:980px){ #screen-chats{grid-template-columns:300px 1fr} .panel{position:absolute;right:0;top:0;bottom:0;width:280px;z-index:30;box-shadow:-4px 0 20px rgba(0,0,0,.08)} .panel.hidden{display:none} }
+  @media(max-width:720px){
+    #screen-chats{grid-template-columns:1fr}
+    .chat,.panel{display:none}
+    body.chat-open .sidebar{display:none}
+    body.chat-open .chat{display:flex}
+    .ch-back{display:block}
+    .panel{width:100%}
+  }
+  /* ============ POS ============ */
+  .pos{display:grid;grid-template-columns:1fr 460px;width:100%;overflow:hidden}
+  .pos-catalog{padding:14px 16px;overflow-y:auto;border-right:1px solid var(--border)}
+  .pos-search{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;font-size:14px;outline:none;margin-bottom:12px}
+  .pos-search-row{display:flex;gap:8px;margin-bottom:12px}
+  .pos-search-row .pos-search{margin-bottom:0;flex:1}
+  .scan-btn{flex-shrink:0;width:44px;border:1px solid var(--border);background:var(--accent-soft);border-radius:var(--radius);font-size:20px;cursor:pointer;color:var(--accent-dark)}
+  .scan-btn:active{background:var(--accent);color:#fff}
+  #scannerView video{width:100%!important;border-radius:12px}
+  .pos-search:focus{border-color:var(--accent)}
+  .pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+  .pos-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;background:var(--surface);transition:transform .1s}
+  .pos-card:active{transform:scale(.97)}
+  .pos-card .img{aspect-ratio:9/16;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden}
+  .pos-card .img img{width:100%;height:100%;object-fit:cover}
+  .pos-card .b{padding:8px 9px}
+  .pos-card .n{font-size:12px;font-weight:600;line-height:1.3}
+  .pos-card .p{font-size:13px;color:var(--accent);font-weight:700;margin-top:3px}
+  .pos-card .s{font-size:10px;color:var(--text-dim);margin-top:2px}
+  /* carrito */
+  .cart{background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
+  .cart-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .cart-head h3{font-size:16px}
+  .cashier-btn{background:var(--accent-soft);border:1px solid var(--border);color:var(--accent-dark);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+  .cashier-btn.set{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .pin-input{width:100%;text-align:center;font-size:32px;letter-spacing:14px;padding:14px;border:2px solid var(--border);border-radius:12px;outline:none}
+  .pin-input:focus{border-color:var(--accent)}
+  .cust-results{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .cust-result{padding:9px 11px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:13px}
+  .cust-result:active{background:var(--accent-soft)}
+  .cust-result .r-nm{font-weight:600}
+  .cust-result .r-sub{color:var(--text-dim);font-size:12px}
+  .cart-type{display:flex;gap:6px;padding:10px 16px}
+  .cart-type button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-dim)}
+  .cart-type button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .cart-items{flex:1;overflow-y:auto;padding:8px 16px}
+  .cart-empty{text-align:center;color:var(--text-dim);font-size:13px;padding:30px 10px}
+  .ci{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .ci-img{width:40px;height:71px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--surface-2)}
+  .ci-emoji{display:flex;align-items:center;justify-content:center;font-size:22px}
+  .ci-note-btn{width:100%;margin-top:4px;border:1px dashed var(--border);border-radius:6px;padding:4px 8px;font-size:11px;outline:none;background:transparent;color:var(--text-dim);cursor:pointer;text-align:left}
+  .ci-note-btn:active{background:var(--accent-soft)}
+  .note-tabs{display:flex;border-bottom:1px solid var(--border)}
+  .note-tabs button{flex:1;padding:11px;border:none;background:none;font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
+  .note-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+  .pers-info{background:var(--accent-soft);border-radius:9px;padding:10px;font-size:13px;margin-bottom:12px}
+  .pers-note{font-size:11px;color:var(--text-dim);font-style:italic;margin-top:8px}
+  .pers-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
+  .pers-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .pers-card-row{font-size:13px;color:var(--text);margin-bottom:3px}
+  .pers-deliver{margin-top:9px;width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
+  .sale-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
+  .sale-card-main{display:flex;justify-content:space-between;align-items:flex-start}
+  .sale-menu-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim);padding:0 6px;line-height:1}
+  .sale-menu{display:none;flex-direction:column;gap:6px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px}
+  .sale-menu.show{display:flex}
+  .sale-menu button{text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;cursor:pointer}
+  .sale-menu button:active{background:var(--accent-soft)}
+  .ci-n{flex:1;min-width:0}
+  .ci-n .nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ci-n .vr{font-size:11px;color:var(--text-dim)}
+  .qty{display:flex;align-items:center;gap:8px}
+  .qty button{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:14px;cursor:pointer;color:var(--text)}
+  .qty span{font-size:13px;min-width:18px;text-align:center}
+  .ci-p{font-size:13px;font-weight:600;min-width:70px;text-align:right}
+  .ci-x{color:var(--text-dim);cursor:pointer;font-size:15px}
+  .cart-foot{border-top:1px solid var(--border);padding:14px 16px}
+  .cart-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:var(--text-dim)}
+  .cart-total{display:flex;justify-content:space-between;font-size:18px;font-weight:700;margin:8px 0 12px}
+  .field{margin-bottom:10px}
+  .field label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px}
+  .field select,.field input{width:100%;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:14px;outline:none;background:var(--bg);color:var(--text)}
+  .pay-grid{display:flex;flex-wrap:wrap;gap:6px}
+  .pay-opt{padding:7px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .pay-opt.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .pay-ic{width:18px;height:18px;object-fit:contain;border-radius:3px;vertical-align:middle}
+  /* pago mixto */
+  .pay-split{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+  .split-hint{font-size:12px;color:var(--text-dim);font-style:italic}
+  .split-row{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:7px 10px}
+  .split-ic{font-size:16px;display:flex;align-items:center}
+  .split-name{flex:1;font-size:13px;font-weight:500}
+  .split-amt{font-size:13px;color:var(--text-dim)}
+  .split-amt input{width:90px;border:1px solid var(--border);border-radius:7px;padding:5px 7px;font-size:13px;text-align:right;outline:none}
+  .split-amt input:focus{border-color:var(--accent)}
+  .split-ok{font-size:12px;color:#1d8a5e;font-weight:600;text-align:center;padding:4px}
+  .split-warn{font-size:12px;color:#c0392b;font-weight:600;text-align:center;padding:4px}
+  /* precio editable en carrito */
+  .ci-price-edit{display:flex;align-items:center;gap:2px;font-size:12px;color:var(--text-dim);margin-top:3px}
+  .ci-price-edit input{width:70px;border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-size:12px;outline:none;background:var(--surface)}
+  .ci-price-edit input:focus{border-color:var(--accent)}
+  /* avatares en config */
+  .cfg-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0}
+  .cfg-photo{cursor:pointer;font-size:15px;opacity:.7}
+  .cfg-photo:active{opacity:1}
+  /* ===== resumen carrito + botones ===== */
+  .sum-row{display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim);margin-bottom:5px}
+  .sum-disc{color:#1d8a5e;font-weight:600}
+  .cart-btn{width:100%;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--text);cursor:pointer;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+  .cart-btn:active{background:var(--surface-2)}
+  .cart-btn.done{border-color:var(--accent);background:var(--accent-soft)}
+  .cart-btn .chk{color:var(--accent);font-weight:700}
+  /* ===== modales ===== */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal-box{background:var(--surface);width:100%;max-width:560px;max-height:88vh;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;animation:pop .2s ease}
+  .modal-box.modal-sm{max-width:420px}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  @media(max-width:720px){
+    .modal-bg{align-items:flex-end;padding:0}
+    .modal-box{max-width:100%;border-radius:18px 18px 0 0;max-height:90vh;animation:slideUp .25s ease}
+  }
+  .modal-head{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  .modal-head h3{font-size:16px}
+  .modal-x{background:var(--bg);border:1px solid var(--border);border-radius:9px;width:32px;height:32px;font-size:15px;cursor:pointer;color:var(--text-dim)}
+  .modal-body{padding:16px 18px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1 1 auto;min-height:0}
+  .modal-foot{padding:13px 18px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0}
+  .modal-save{flex:1;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer}
+  .modal-cancel{flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:11px;padding:13px;font-size:14px;font-weight:600;cursor:pointer}
+  .modal-label{font-size:12px;color:var(--text-dim);display:block;margin-bottom:8px}
+  .emp-toggle{display:flex;align-items:center;gap:9px;background:var(--accent-soft);border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:14px;cursor:pointer;font-size:14px;font-weight:500}
+  .emp-toggle input{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+  .swap-btn{cursor:pointer;font-size:13px;opacity:.7;margin-left:4px}
+  .swap-btn:active{opacity:1}
+  .pay-total-info{font-size:14px;color:var(--text);background:var(--accent-soft);border-radius:10px;padding:10px 13px;margin-bottom:14px;text-align:center}
+  .pay-total-info b{color:var(--accent-dark)}
+  /* descuento */
+  .disc-type{display:flex;gap:8px}
+  .disc-type button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:13px;cursor:pointer}
+  .disc-type button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .disc-preview{margin-top:12px;font-size:14px;text-align:center;color:#1d8a5e;font-weight:600}
+  .pos-confirm{width:100%;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px}
+  .pos-confirm:disabled{background:var(--surface-2);color:var(--text-dim)}
+  /* formulario de cliente */
+  .cust-form{background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:11px;margin-bottom:12px}
+  .cust-form-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  /* ============ CONFIG ============ */
+  .config{width:100%;height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 20px 80px;max-width:760px;margin:0 auto}
+  .cfg-sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+  .cfg-sec h3{font-size:16px;margin-bottom:4px}
+  .cfg-sec .desc{font-size:13px;color:var(--text-dim);margin-bottom:14px}
+  .cfg-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:9px;margin-bottom:8px}
+  .cfg-row .ic{font-size:20px}
+  .cfg-row .nm{flex:1;font-size:14px;font-weight:500}
+  .cfg-row .del{color:var(--text-dim);cursor:pointer;font-size:16px}
+  .cfg-add{display:flex;gap:8px;margin-top:10px}
+  .cfg-add input{flex:1;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:14px;outline:none}
+  .cfg-add button{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer}
+  .report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .rep-card{background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:13px}
+  .rep-card .nm{font-size:13px;font-weight:600}
+  .rep-card .big{font-size:22px;font-weight:700;color:var(--accent);margin-top:4px}
+  .rep-card .sub{font-size:11px;color:var(--text-dim);margin-top:2px}
+  .rep-filter{display:flex;gap:6px;margin-bottom:14px}
+  .rep-filter button{padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-dim)}
+  .rep-filter button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+  .paystat-row{margin-bottom:11px}
+  .paystat-top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+  .paystat-bar{height:8px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+  .paystat-fill{height:100%;background:var(--accent);border-radius:5px}
+  /* Tabs móviles del POS (Productos / Carrito) */
+  .pos-tabs{display:none}
+  @media(max-width:720px){
+    .pos{grid-template-columns:1fr; position:relative}
+    .pos-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:20}
+    .pos-tabs button{flex:1;padding:13px;border:none;background:none;font-size:14px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
+    .pos-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+    /* Por defecto se ve el catálogo, se oculta el carrito */
+    .pos-catalog{display:block}
+    .pos-cart{display:none}
+    body.show-cart .pos-catalog{display:none}
+    body.show-cart .pos-cart{display:flex}
+    .cart-badge{background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:5px}
+  }
+</style>
+</head>
+<body>
+<!-- ============ PANTALLA: CHATS ============ -->
+<div class="screen active" id="screen-chats">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <div class="side-head">
+      <div class="brand"><img src="logo-bloom.svg" alt="Bloom" style="height:26px;display:block"></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')" style="font-size:17px">🛒</button>
+        <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')" style="font-size:15px">📊</button>
+        <button class="iconbtn" title="Configuración" onclick="switchScreen('config')" style="font-size:15px">⚙️</button>
+        <div class="conn"><span class="dot" id="connDot"></span><span id="connText">…</span></div>
+      </div>
+    </div>
+    <div class="pipe-tabs" id="pipeTabs"></div>
+    <div class="search"><input id="searchBox" placeholder="Buscar chat, número o etiqueta…" autocomplete="off"></div>
+    <div class="chat-list" id="chatList"></div>
+  </aside>
+
+  <!-- ===== CHAT ===== -->
+  <main class="chat" id="chatPane">
+    <div class="empty" id="emptyState">
+      <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      <div>Selecciona un chat para empezar</div>
+    </div>
+    <div class="chat-head" id="chatHead" style="display:none">
+      <button class="ch-back" onclick="closeChat()">‹</button>
+      <div class="av" id="headAv"></div>
+      <div class="ch-info"><div class="ch-name" id="headName"></div><div class="ch-sub" id="headSub"></div></div>
+      <button class="iconbtn" title="Nota interna" onclick="addNote()">🔒</button>
+      <button class="iconbtn" title="Ver ficha" onclick="togglePanel()">☰</button>
+    </div>
+    <div class="msgs" id="msgs" style="display:none"></div>
+    <div class="qr-bar" id="qrBar" style="display:none"></div>
+    <div class="composer" id="composer" style="display:none">
+      <textarea id="input" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
+      <button class="send" onclick="sendCurrent()">➤</button>
+    </div>
+  </main>
+
+  <!-- ===== PANEL DERECHO ===== -->
+  <aside class="panel hidden" id="panel">
+    <div class="p-sec">
+      <div class="p-client">
+        <div class="av" id="pAv"></div>
+        <div><div class="p-cname" id="pName"></div><div class="p-csub" id="pPhone"></div></div>
+      </div>
+    </div>
+    <div class="p-sec">
+      <div class="p-title">Vino de</div>
+      <div id="pReferral"></div>
+    </div>
+    <div class="p-sec">
+      <div class="p-title">Etiquetas</div>
+      <div class="tags" id="pTags"></div>
+      <input class="tag-input" id="tagInput" placeholder="Nueva etiqueta + Enter">
+      <div class="tag-sugg" id="tagSugg"></div>
+    </div>
+    <div class="p-sec">
+      <div class="p-title">Embudo: <span id="pPipeName" style="color:var(--accent)"></span></div>
+      <div class="stages-list" id="pStages"></div>
+    </div>
+    <div class="p-sec">
+      <div class="p-title">Acciones</div>
+      <div class="qa">
+        <button onclick="openPicker()">🛍 Productos</button>
+        <button onclick="movePipeline()">🔀 Mover embudo</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== PRODUCT PICKER ===== -->
+  <div class="overlay" id="overlay">
+    <div class="sheet">
+      <div class="sheet-head"><h3>Enviar productos</h3><button class="iconbtn" onclick="closePicker()">✕</button></div>
+      <div class="sizes" id="sizeRow"></div>
+      <div class="prod-grid" id="prodGrid"></div>
+      <div class="sheet-foot"><button class="btn-primary" id="sendProdBtn" disabled onclick="sendProducts()">Enviar 0 productos</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL EMBUDO ===== -->
+  <div class="overlay center" id="pipeModal">
+    <div class="modal">
+      <h3 id="pipeModalTitle">Nuevo embudo</h3>
+      <input id="pipeNameInput" placeholder="Nombre del embudo (ej: Mayoristas)">
+      <div class="p-title" style="margin:10px 0 8px">Etapas</div>
+      <div id="stageEditList"></div>
+      <button class="tag-add" style="margin-top:6px" onclick="addStageRow()">+ etapa</button>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closePipeModal()">Cancelar</button>
+        <button class="save" onclick="savePipeline()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div><!-- /screen-chats -->
+
+<!-- ============ PANTALLA: POS ============ -->
+<div class="screen" id="screen-pos">
+  <div class="pos">
+    <div class="pos-tabs">
+      <button id="tabProductos" class="on" onclick="posTab('productos')">🛍 Productos</button>
+      <button id="tabCarrito" onclick="posTab('carrito')">🛒 Carrito <span class="cart-badge" id="tabCartBadge">0</span></button>
+    </div>
+    <div class="pos-catalog">
+      <div class="pos-search-row">
+        <input class="pos-search" id="posSearch" placeholder="Buscar producto o escanear…" oninput="renderPosCatalog()">
+        <button class="scan-btn" onclick="openScanner()" title="Escanear código de barras / QR">📷</button>
+        <button class="scan-btn" onclick="openQuickProduct()" title="Crear producto rápido" style="font-size:22px">➕</button>
+      </div>
+      <div class="pos-grid" id="posGrid"></div>
+    </div>
+    <div class="cart pos-cart">
+      <div class="cart-head">
+        <h3>🛒 Venta</h3>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="cashier-btn" id="cashierBtn" onclick="openCashierPick()">👤 Cajero</button>
+          <span id="cartCount" style="font-size:13px;color:var(--text-dim)">0 items</span>
+        </div>
+      </div>
+      <div class="cart-type">
+        <button class="on" id="typeTienda" onclick="setSaleType('tienda')">🏪 Tienda</button>
+        <button id="typeDespacho" onclick="setSaleType('despacho')">📦 Envíos</button>
+      </div>
+      <div class="cart-items" id="cartItems"><div class="cart-empty">Toca productos para agregarlos</div></div>
+      <div class="cart-foot">
+        <!-- Resumen con descuento -->
+        <div class="sum-row"><span>Subtotal</span><span id="cartSubtotal">$0</span></div>
+        <div class="sum-row sum-disc" id="discRow" style="display:none"><span>Descuento <span id="discLabel"></span></span><span id="cartDiscount">-$0</span></div>
+        <div class="sum-row" id="ivaRow"><span>IVA incluido (19%)</span><span id="cartIva">$0</span></div>
+        <div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div>
+
+        <button class="cart-btn" onclick="openDiscountModal()">
+          <span id="discBtnLabel">🏷️ Agregar descuento</span>
+        </button>
+
+        <!-- Botones que abren los pop-ups -->
+        <button class="cart-btn" id="btnCustomer" onclick="openCustomerModal()">
+          <span id="custBtnLabel">📋 Datos del cliente *</span>
+        </button>
+
+        <div class="field" style="margin-top:8px">
+          <label>Vendedor</label>
+          <select id="sellerSelect"></select>
+        </div>
+
+        <button class="cart-btn" id="btnPayment" onclick="openPaymentModal()">
+          <span id="payBtnLabel">💳 Medios de pago *</span>
+        </button>
+
+        <button class="pos-confirm" id="confirmSale" disabled onclick="confirmSale()">Registrar venta</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: DATOS DEL CLIENTE ============ -->
+<div class="modal-bg" id="customerModal">
+  <div class="modal-box">
+    <div class="modal-head"><h3>📋 Datos del cliente</h3><button class="modal-x" onclick="closeCustomerModal()">✕</button></div>
+    <div class="modal-body">
+
+      <!-- Buscar cliente existente -->
+      <div class="field">
+        <label>Buscar cliente (cédula, nombre o celular)</label>
+        <div style="display:flex;gap:8px">
+          <input id="custSearch" placeholder="Escribe y toca buscar…" oninput="custSearchDebounced()">
+          <button class="scan-btn" onclick="doCustomerSearch()" title="Buscar" style="width:44px">🔍</button>
+        </div>
+        <div id="custSearchResults" class="cust-results"></div>
+      </div>
+
+      <!-- ===== DATOS DEL CLIENTE (siempre) ===== -->
+      <div id="personaFields">
+        <div class="field-row">
+          <div class="field"><label>Nombres * <span class="swap-btn" onclick="swapNameLastname()" title="Intercambiar nombres y apellidos">🔄</span></label><input id="custName" placeholder="Nombres"></div>
+          <div class="field"><label>Apellidos *</label><input id="custLastName" placeholder="Apellidos"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Cédula *</label><input id="custDoc" placeholder="Número" inputmode="numeric"></div>
+          <div class="field"><label>Celular *</label><input id="custPhone" placeholder="300..." inputmode="numeric" maxlength="10"></div>
+        </div>
+        <div class="field"><label>Correo *</label><input id="custEmail" placeholder="correo@ejemplo.com" inputmode="email"></div>
+        <div class="field"><label>Dirección (opcional)</label><input id="custAddress" placeholder="Calle 00 # 00-00"></div>
+      </div>
+
+      <!-- Departamento/Ciudad -->
+      <div class="field-row">
+        <div class="field">
+          <label>Departamento *</label>
+          <select id="custDepto" onchange="onDeptoChange()"><option value="">Selecciona…</option></select>
+        </div>
+        <div class="field">
+          <label>Ciudad / Municipio *</label>
+          <select id="custCity"><option value="">Selecciona…</option></select>
+        </div>
+      </div>
+
+      <!-- Toggle: facturación electrónica empresa (ADICIONAL) -->
+      <label class="emp-toggle">
+        <input type="checkbox" id="custEsEmpresa" onchange="onEmpresaToggle()">
+        <span>🏢 Facturación electrónica a empresa</span>
+      </label>
+
+      <!-- ===== DATOS DE FACTURACIÓN EMPRESA (adicional) ===== -->
+      <div id="empresaFields" style="display:none">
+        <div class="field"><label>Nombre de la empresa *</label><input id="empName" placeholder="Razón social"></div>
+        <div class="field-row">
+          <div class="field"><label>NIT *</label><input id="empNit" placeholder="NIT" inputmode="numeric"></div>
+          <div class="field"><label>Teléfono *</label><input id="empPhone" placeholder="300..." inputmode="numeric"></div>
+        </div>
+        <div class="field"><label>Correo *</label><input id="empEmail" placeholder="facturacion@empresa.com" inputmode="email"></div>
+        <div class="field"><label>Dirección *</label><input id="empAddress" placeholder="Dirección de la empresa"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="modal-save" onclick="saveCustomerModal()">Guardar datos</button></div>
+  </div>
+</div>
+
+<!-- ============ MODAL: MEDIOS DE PAGO ============ -->
+<div class="modal-bg" id="paymentModal">
+  <div class="modal-box">
+    <div class="modal-head"><h3>💳 Medios de pago</h3><button class="modal-x" onclick="closePaymentModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="pay-total-info">Total a pagar: <b id="payModalTotal">$0</b></div>
+      <label class="modal-label">Toca un medio para agregarlo (hasta 4):</label>
+      <div class="pay-grid" id="payGrid"></div>
+      <div class="pay-split" id="paySplit"></div>
+    </div>
+    <div class="modal-foot"><button class="modal-save" id="payModalSave" onclick="savePaymentModal()">Confirmar pago</button></div>
+  </div>
+</div>
+
+<!-- ============ MODAL: DESCUENTO ============ -->
+<div class="modal-bg" id="discountModal">
+  <div class="modal-box modal-sm">
+    <div class="modal-head"><h3>🏷️ Descuento</h3><button class="modal-x" onclick="closeDiscountModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="disc-type">
+        <button id="discTypePct" class="on" onclick="setDiscType('pct')">Porcentaje %</button>
+        <button id="discTypeVal" onclick="setDiscType('val')">Valor $</button>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label id="discInputLabel">Porcentaje de descuento</label>
+        <input id="discInput" inputmode="numeric" placeholder="0" oninput="previewDiscount()">
+      </div>
+      <div class="disc-preview" id="discPreview"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-cancel" onclick="clearDiscount()">Quitar</button>
+      <button class="modal-save" onclick="saveDiscount()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANTALLA: CONFIG ============ -->
+<div class="screen" id="screen-config" style="display:none">
+  <div class="config">
+    <div class="cfg-sec">
+      <h3>👥 Vendedores</h3>
+      <div class="desc">Agrega a tu equipo para saber cuánto vende cada uno.</div>
+      <div id="sellersList"></div>
+      <div class="cfg-add">
+        <input id="newSeller" placeholder="Nombre del vendedor">
+        <button onclick="addSeller()">Agregar</button>
+      </div>
+    </div>
+
+    <div class="cfg-sec">
+      <h3>🧑‍💼 Cajeros</h3>
+      <div class="desc">Quién maneja la caja. Pueden tener clave de 4 dígitos.</div>
+      <div id="cashiersList"></div>
+      <div class="cfg-add">
+        <input id="newCashier" placeholder="Nombre del cajero">
+        <button onclick="addCashier()">Agregar</button>
+      </div>
+    </div>
+
+    <div class="cfg-sec">
+      <h3>🧾 Recibo POS</h3>
+      <div class="desc">Configura el recibo que se imprime/comparte al vender.</div>
+      <label class="emp-toggle" style="margin-bottom:12px">
+        <input type="checkbox" id="setReceiptEnabled" onchange="saveSettings()">
+        <span>Activar recibo POS</span>
+      </label>
+      <div id="receiptFields">
+        <div class="field"><label>Nombre del negocio</label><input id="setRcBusiness" onchange="saveSettings()" placeholder="Bloom"></div>
+        <div class="field-row">
+          <div class="field"><label>NIT</label><input id="setRcNit" onchange="saveSettings()" placeholder="901813269-1"></div>
+          <div class="field"><label>Teléfono</label><input id="setRcPhone" onchange="saveSettings()" placeholder="300..."></div>
+        </div>
+        <div class="field"><label>Dirección</label><input id="setRcAddress" onchange="saveSettings()" placeholder="Dirección de la tienda"></div>
+        <div class="field"><label>Mensaje al pie</label><input id="setRcFooter" onchange="saveSettings()" placeholder="¡Gracias por tu compra!"></div>
+      </div>
+    </div>
+
+    <div class="cfg-sec">
+      <h3>🔗 Shopify</h3>
+      <div class="desc">Modo de creación de ventas en Shopify.</div>
+      <label class="emp-toggle">
+        <input type="checkbox" id="setShopifyDraft" onchange="saveSettings()">
+        <span>🧪 Crear ventas como BORRADOR (modo pruebas)</span>
+      </label>
+      <div class="desc" style="margin-top:8px;font-size:12px">Si está activo, las ventas se crean como borrador en Shopify (no afectan inventario ni finanzas). Desactívalo cuando quieras que las ventas se creen ya pagadas.</div>
+    </div>
+
+    <div class="cfg-sec">
+      <h3>💳 Métodos de pago</h3>
+      <div class="desc">Los que aparecen al registrar una venta en el POS.</div>
+      <div id="paymentsList"></div>
+      <div class="cfg-add">
+        <input id="newPayment" placeholder="Nuevo método (ej: Addi, Sistecrédito)">
+        <button onclick="addPayment()">Agregar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANTALLA: DATOS / ESTADÍSTICAS ============ -->
+<div class="screen" id="screen-datos" style="display:none">
+  <div class="config">
+    <div class="note-tabs" style="margin-bottom:16px">
+      <button id="datTab1" class="on" onclick="datosTab('tienda')">🏪 Datos tienda</button>
+      <button id="datTab2" onclick="datosTab('tabla')">📋 Tabla de ventas</button>
+      <button id="datTab4" onclick="datosTab('ventas')">🧾 Ventas</button>
+      <button id="datTab3" onclick="datosTab('pers')">✨ Personalización</button>
+    </div>
+
+    <!-- Pestaña: Datos tienda -->
+    <div id="datPaneTienda">
+      <div class="cfg-sec">
+        <h3>📊 Ventas por vendedor</h3>
+        <div class="desc">Cuánto ha vendido cada quien.</div>
+        <div class="rep-filter">
+          <button class="on" onclick="setReportRange('today',this)">Hoy</button>
+          <button onclick="setReportRange('week',this)">Semana</button>
+          <button onclick="setReportRange('month',this)">Mes</button>
+        </div>
+        <div class="report-grid" id="reportGrid"></div>
+      </div>
+      <div class="cfg-sec">
+        <h3>💰 Resumen de ventas</h3>
+        <div class="desc">Totales del periodo seleccionado arriba.</div>
+        <div class="stats-cards" id="statsCards"></div>
+      </div>
+      <div class="cfg-sec">
+        <h3>💳 Ventas por medio de pago</h3>
+        <div class="desc">Cómo te están pagando.</div>
+        <div id="payStats"></div>
+      </div>
+    </div>
+
+    <!-- Pestaña: Tabla de ventas (pendiente de definir contenido) -->
+    <div id="datPaneTabla" style="display:none">
+      <div class="cfg-sec">
+        <h3>📋 Tabla de ventas</h3>
+        <div class="desc">Próximamente. Dime qué columnas quieres aquí.</div>
+        <div id="ventasTable"></div>
+      </div>
+    </div>
+
+    <!-- Pestaña: Ventas (historial con 3 puntos) -->
+    <div id="datPaneVentas" style="display:none">
+      <div class="cfg-sec">
+        <h3>🧾 Historial de ventas</h3>
+        <div class="desc">Toca los 3 puntos de cada venta para facturar o imprimir etiqueta.</div>
+        <div id="salesHistory"></div>
+      </div>
+    </div>
+
+    <!-- Pestaña: Personalización -->
+    <div id="datPanePers" style="display:none">
+      <div class="cfg-sec">
+        <h3>✨ Pedidos personalizados</h3>
+        <div class="desc">Pendientes de entregar. Marca como entregado para quitarlos.</div>
+        <div id="persTable"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANTALLA: EQUIPO (chat interno) ============ -->
+<div class="screen" id="screen-equipo" style="display:none">
+  <div class="team-wrap">
+    <div class="team-head">
+      <div>
+        <h3 style="font-size:16px">👥 Chat del equipo</h3>
+        <div style="font-size:12px;color:var(--text-dim)" id="teamWho">Escribes como: —</div>
+      </div>
+      <button class="cashier-btn" onclick="pickTeamAuthor()">Cambiar</button>
+    </div>
+    <div class="team-msgs" id="teamMsgs"></div>
+    <div id="teamSalesStrip" class="team-sales-strip"></div>
+    <div class="team-typing" id="teamTyping"></div>
+    <div class="team-input">
+      <button class="team-plus" id="plusBtn" onclick="togglePlusMenu()">＋</button>
+      <input id="teamText" placeholder="Escribe un mensaje…" onkeydown="if(event.key==='Enter')sendTeamMsg()" oninput="onTeamTyping()">
+      <button class="team-send" onclick="sendTeamMsg()">➤</button>
+    </div>
+    <div id="plusMenu" class="plus-menu">
+      <button onclick="toggleEmojiPicker();closePlusMenu()">😀<span>Emojis</span></button>
+      <button onclick="attachTeamPhoto();closePlusMenu()">📷<span>Foto</span></button>
+      <button id="voiceBtn" onclick="toggleVoice()">🎤<span>Nota de voz</span></button>
+    </div>
+    <div id="emojiPicker" class="emoji-picker"></div>
+  </div>
+</div>
+
+<!-- ============ NAV INFERIOR ============ -->
+<nav class="navbar">
+  <button class="on" id="nav-chats" onclick="switchScreen('chats')"><span class="ic">💬</span>Chats</button>
+  <button id="nav-pos" onclick="switchScreen('pos')"><span class="ic">🛒</span>POS</button>
+  <button id="nav-equipo" onclick="switchScreen('equipo')"><span class="ic">👥</span>Equipo</button>
+  <button id="nav-datos" onclick="switchScreen('datos')"><span class="ic">📊</span>Datos</button>
+  <button id="nav-config" onclick="switchScreen('config')"><span class="ic">⚙️</span>Config</button>
+</nav>
+
+  <!-- ===== MODAL: OBSERVACIÓN / PERSONALIZACIÓN ===== -->
+  <div class="modal-bg" id="noteModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3 id="noteProductName">Producto</h3><button class="modal-x" onclick="closeNoteModal()">✕</button></div>
+      <div class="note-tabs">
+        <button id="noteTab1" class="on" onclick="noteTab('obs')">📝 Observación</button>
+        <button id="noteTab2" onclick="noteTab('pers')">✨ Personalización</button>
+      </div>
+      <div class="modal-body">
+        <!-- Pestaña Observación -->
+        <div id="notePaneObs">
+          <textarea id="noteText" placeholder="Ej: empaque para regalo, ajustar talla…" style="width:100%;min-height:100px;border:1px solid var(--border);border-radius:10px;padding:11px;font-size:14px;outline:none;font-family:inherit;resize:vertical"></textarea>
+        </div>
+        <!-- Pestaña Personalización -->
+        <div id="notePanePers" style="display:none">
+          <div class="pers-info" id="persAutoInfo"></div>
+          <div class="field"><label>Detalle de la personalización</label>
+            <textarea id="persNotes" placeholder="Ej: bordar nombre 'Sofía' en dorado, copa push-up…" style="width:100%;min-height:70px;border:1px solid var(--border);border-radius:10px;padding:10px;font-size:14px;outline:none;font-family:inherit;resize:vertical"></textarea>
+          </div>
+          <div class="field"><label>Fecha estimada de entrega *</label>
+            <input id="persDate" type="date">
+          </div>
+          <div class="pers-note">El cliente y celular se toman de los "Datos del cliente". El producto y precio, del carrito. Se guarda al registrar la venta.</div>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="modal-save" onclick="saveNote()">Guardar</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ELEGIR VARIANTE (color/talla) ===== -->
+  <div class="modal-bg" id="variantModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3 id="vpTitle">Producto</h3><button class="modal-x" onclick="closeVariantPicker()">✕</button></div>
+      <div class="modal-body">
+        <div class="field" id="vpColorWrap">
+          <label>Color</label>
+          <select id="vpColor" onchange="onVpColorChange()"></select>
+        </div>
+        <div class="field" id="vpTallaWrap">
+          <label>Talla</label>
+          <select id="vpTalla" onchange="updateVariantStock()"></select>
+        </div>
+        <div id="vpStock" style="font-size:13px;color:var(--text-dim);margin-top:4px"></div>
+      </div>
+      <div class="modal-foot"><button class="modal-save" onclick="confirmVariant()">Agregar al carrito</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ELEGIR / CAMBIAR CAJERO ===== -->
+  <div class="modal-bg" id="cashierModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3>👤 Cambiar cajero</h3><button class="modal-x" onclick="closeCashierPick()">✕</button></div>
+      <div class="modal-body">
+        <div class="desc" style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">Selecciona quién está en caja.</div>
+        <div id="cashierPickList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: CLAVE DEL CAJERO ===== -->
+  <div class="modal-bg" id="pinModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3>🔒 Clave del cajero</h3><button class="modal-x" onclick="closePin()">✕</button></div>
+      <div class="modal-body">
+        <div class="desc" id="pinMsg" style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">Ingresa la clave de 4 dígitos.</div>
+        <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••">
+        <div id="pinError" style="color:#c0392b;font-size:13px;margin-top:8px;display:none">Clave incorrecta</div>
+      </div>
+      <div class="modal-foot"><button class="modal-save" onclick="confirmPin()">Confirmar</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: PRODUCTO RÁPIDO ===== -->
+  <div class="modal-bg" id="quickProductModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3>➕ Producto rápido</h3><button class="modal-x" onclick="closeQuickProduct()">✕</button></div>
+      <div class="modal-body">
+        <div class="desc" style="margin-bottom:14px;font-size:13px;color:var(--text-dim)">Se agrega a la venta y se crea como producto nuevo en Shopify.</div>
+        <div class="field"><label>Nombre del producto *</label><input id="qpName" placeholder="Ej: Bikini edición especial"></div>
+        <div class="field-row">
+          <div class="field"><label>Color (opcional)</label><input id="qpColor" placeholder="Ej: Negro"></div>
+          <div class="field"><label>Talla (opcional)</label><input id="qpSize" placeholder="Ej: M"></div>
+        </div>
+        <div class="field"><label>Precio *</label><input id="qpPrice" placeholder="0" inputmode="numeric"></div>
+      </div>
+      <div class="modal-foot"><button class="modal-save" onclick="saveQuickProduct()" id="qpSaveBtn">Crear y agregar</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ESCÁNER CÓDIGO DE BARRAS / QR ===== -->
+  <div class="overlay center" id="scannerModal">
+    <div class="modal" style="max-width:420px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3>📷 Escanear producto</h3>
+        <button class="iconbtn" onclick="closeScanner()">✕</button>
+      </div>
+      <div id="scannerView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:240px"></div>
+      <div id="scannerMsg" style="font-size:13px;color:var(--text-dim);text-align:center;margin-top:10px">Apunta al código de barras o QR</div>
+    </div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="colombia.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

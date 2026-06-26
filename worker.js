@@ -1,0 +1,576 @@
+// ====================================================================
+//  Cloudflare Worker — Bloom WhatsApp
+//  Recibe mensajes, captura REFERRAL (historia/pauta) y envía respuestas.
+//  Variables de entorno necesarias:
+//    VERIFY_TOKEN, WA_TOKEN, WA_PHONE_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY
+// ====================================================================
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const cors = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    };
+    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
+
+    // -------- Verificación del webhook (Meta hace GET una vez) --------
+    if (request.method === "GET" && url.pathname === "/webhook") {
+      const mode = url.searchParams.get("hub.mode");
+      const token = url.searchParams.get("hub.verify_token");
+      const challenge = url.searchParams.get("hub.challenge");
+      if (mode === "subscribe" && token === env.VERIFY_TOKEN)
+        return new Response(challenge, { status: 200 });
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    // -------- Mensajes entrantes --------
+    if (request.method === "POST" && url.pathname === "/webhook") {
+      const body = await request.json();
+      try {
+        const value = body?.entry?.[0]?.changes?.[0]?.value;
+        const msg = value?.messages?.[0];
+        const contact = value?.contacts?.[0];
+        if (msg) await handleIncoming(env, msg, contact);
+      } catch (e) { console.error(e); }
+      return new Response("OK", { status: 200 });
+    }
+
+    // -------- Enviar mensaje desde el dashboard --------
+    if (request.method === "POST" && url.pathname === "/send") {
+      const { phone, message } = await request.json();
+      const r = await sendWhatsApp(env, phone, message);
+      return Response.json(r, { headers: cors });
+    }
+
+    // -------- Productos de Shopify (para el selector) --------
+    if (request.method === "GET" && url.pathname === "/products") {
+      const q = url.searchParams.get("q") || "";
+      const products = await fetchShopify(env, q);
+      return Response.json(products, { headers: cors });
+    }
+
+    // -------- POS: crear venta -> orden en Shopify --------
+    if (request.method === "POST" && url.pathname === "/order") {
+      const order = await request.json();
+      const result = await createShopifyOrder(env, order);
+      return Response.json(result, { headers: cors });
+    }
+
+    // -------- Buscar cliente en Shopify por teléfono --------
+    if (request.method === "GET" && url.pathname === "/customer") {
+      const phone = url.searchParams.get("phone") || "";
+      const c = await findCustomer(env, phone);
+      return Response.json(c, { headers: cors });
+    }
+
+    // -------- Crear producto rápido en Shopify --------
+    if (request.method === "POST" && url.pathname === "/create-product") {
+      const body = await request.json();
+      const result = await createQuickProduct(env, body);
+      return Response.json(result, { headers: cors });
+    }
+
+    // -------- Buscar cliente en la DIAN vía Alegra --------
+    if (request.method === "GET" && url.pathname === "/dian") {
+      const idType = url.searchParams.get("idType") || "CC";
+      const id = url.searchParams.get("id") || "";
+      const result = await searchDian(env, idType, id);
+      return Response.json(result, { headers: cors });
+    }
+
+    // -------- Crear factura en Alegra (borrador) --------
+    if (request.method === "POST" && url.pathname === "/alegra-invoice") {
+      const body = await request.json();
+      const result = await createAlegraInvoice(env, body);
+      return Response.json(result, { headers: cors });
+    }
+
+    return new Response("Not found", { status: 404 });
+  },
+};
+
+// ============ Crear factura en Alegra ============
+const ALEGRA_BASE = "https://api.alegra.com/api/v1";
+const ALEGRA_WAREHOUSE_ID = 2;       // bodega
+const ALEGRA_RESOLUTION_ID = 20;     // numeración de facturación
+const ALEGRA_TAX_ID = 1;             // IVA 19% (id estándar en Alegra Colombia)
+
+function alegraAuth(env) {
+  return "Basic " + btoa(`${env.ALEGRA_EMAIL}:${env.ALEGRA_KEY}`);
+}
+
+// Busca un producto en Alegra por referencia (código de barras)
+async function findAlegraItem(env, reference) {
+  if (!reference) return null;
+  const r = await fetch(`${ALEGRA_BASE}/items?reference=${encodeURIComponent(reference)}`, {
+    headers: { Authorization: alegraAuth(env), Accept: "application/json" },
+  });
+  if (!r.ok) return null;
+  const data = await r.json();
+  const arr = Array.isArray(data) ? data : (data.data || []);
+  const found = arr.find(it => String(it.reference) === String(reference));
+  return found || (arr.length ? arr[0] : null);
+}
+
+// Crea un producto en Alegra (bodega 2, IVA 19% incluido en precio)
+async function createAlegraItem(env, { name, price, reference }) {
+  const payload = {
+    name,
+    reference: reference || undefined,
+    price: [{ idPriceList: 1, price: Number(price) }],
+    tax: [{ id: ALEGRA_TAX_ID }],
+    inventory: {
+      unit: "unit",
+      availableQuantity: 0,
+      warehouses: [{ id: ALEGRA_WAREHOUSE_ID, initialQuantity: 0 }],
+    },
+    type: "product",
+  };
+  const r = await fetch(`${ALEGRA_BASE}/items`, {
+    method: "POST",
+    headers: { Authorization: alegraAuth(env), "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error("crear item: " + JSON.stringify(data));
+  return data;
+}
+
+async function createAlegraInvoice(env, sale) {
+  if (!env.ALEGRA_EMAIL || !env.ALEGRA_KEY)
+    return { ok: false, error: "Alegra no configurado" };
+  try {
+    // 1) Cliente: busca por documento, si no existe lo crea
+    const cust = sale.customer || {};
+    let clientId = await findOrCreateAlegraClient(env, cust);
+
+    // 2) Productos: por cada ítem, busca por referencia (código de barras) o lo crea
+    const items = [];
+    for (const it of (sale.items || [])) {
+      const ref = it.barcode || it.sku || null;
+      let alegraItem = await findAlegraItem(env, ref);
+      if (!alegraItem) {
+        // arma nombre: "Producto - Color, Talla"
+        const fullName = it.variant ? `${it.name} - ${it.variant}` : it.name;
+        alegraItem = await createAlegraItem(env, { name: fullName, price: it.price, reference: ref });
+      }
+      items.push({
+        id: alegraItem.id,
+        quantity: it.qty,
+        price: it.price,                 // precio con IVA incluido
+        tax: [{ id: ALEGRA_TAX_ID }],
+      });
+    }
+
+    // 3) Crea la factura en BORRADOR (status: draft)
+    const today = new Date().toISOString().slice(0, 10);
+    const invoicePayload = {
+      date: today,
+      dueDate: today,
+      client: clientId,
+      items,
+      warehouse: { id: ALEGRA_WAREHOUSE_ID },
+      numberTemplate: { id: ALEGRA_RESOLUTION_ID },
+      status: "draft",                   // BORRADOR mientras se hacen pruebas
+      stamp: { generateStamp: false },   // no envía a la DIAN en borrador
+      anotation: `Venta POS Bloom${sale.order_name ? " · " + sale.order_name : ""}`,
+    };
+    const r = await fetch(`${ALEGRA_BASE}/invoices`, {
+      method: "POST",
+      headers: { Authorization: alegraAuth(env), "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(invoicePayload),
+    });
+    const data = await r.json();
+    if (!r.ok) return { ok: false, error: JSON.stringify(data) };
+    return { ok: true, invoice_id: data.id, number: data.numberTemplate?.fullNumber || data.number || null };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+async function findOrCreateAlegraClient(env, cust) {
+  // busca por identificación
+  if (cust.doc) {
+    const r = await fetch(`${ALEGRA_BASE}/contacts?identification=${encodeURIComponent(cust.doc)}`, {
+      headers: { Authorization: alegraAuth(env), Accept: "application/json" },
+    });
+    if (r.ok) {
+      const data = await r.json();
+      const arr = Array.isArray(data) ? data : (data.data || []);
+      if (arr.length) return arr[0].id;
+    }
+  }
+  // crea el cliente
+  const payload = {
+    name: cust.full_name || cust.name || "Consumidor final",
+    identification: cust.doc || undefined,
+    email: cust.email || undefined,
+    phonePrimary: cust.phone || undefined,
+    address: cust.address ? { address: cust.address, city: cust.city || undefined } : undefined,
+    type: ["client"],
+  };
+  const r = await fetch(`${ALEGRA_BASE}/contacts`, {
+    method: "POST",
+    headers: { Authorization: alegraAuth(env), "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error("crear cliente: " + JSON.stringify(data));
+  return data.id;
+}
+
+// ============ Buscar contribuyente en la DIAN (Alegra) ============
+async function searchDian(env, idType, identification) {
+  if (!env.ALEGRA_EMAIL || !env.ALEGRA_KEY)
+    return { ok: false, error: "Alegra no configurado" };
+  try {
+    // Alegra usa autenticación básica: base64(email:api_key)
+    const auth = btoa(`${env.ALEGRA_EMAIL}:${env.ALEGRA_KEY}`);
+    const r = await fetch(
+      `https://api-contacts.alegra.com/api/search-by-id-number?idType=${encodeURIComponent(idType)}&identification=${encodeURIComponent(identification)}&version=colombia`,
+      { headers: { Authorization: `Basic ${auth}`, Accept: "application/json" } }
+    );
+    if (!r.ok) {
+      const txt = await r.text();
+      return { ok: false, error: `Alegra ${r.status}: ${txt}` };
+    }
+    const data = await r.json();
+    if (!data || !data.name) return { ok: false, notFound: true };
+
+    // Separa nombres y apellidos (Alegra devuelve "APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2")
+    const full = (data.name || "").trim();
+    const emails = (data.email || "").split(",").map(e => e.trim()).filter(Boolean);
+    return {
+      ok: true,
+      full_name: full,
+      email: emails[0] || "",
+      kind_of_person: data.kindOfPerson || "",   // PERSON_ENTITY | COMPANY...
+      regime: data.regime || "",
+      is_company: data.kindOfPerson === "COMPANY_ENTITY" || data.kindOfPerson === "LEGAL_ENTITY",
+    };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+// ============ Crear producto rápido en Shopify ============
+async function createQuickProduct(env, { name, price, color, size }) {
+  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN)
+    return { ok: false, error: "Shopify no configurado" };
+  try {
+    const variant = { price: String(price), inventory_management: "shopify", inventory_quantity: 99 };
+    const options = [];
+    if (color) { variant.option1 = color; options.push("Color"); }
+    if (size)  { variant[color ? "option2" : "option1"] = size; options.push("Talla"); }
+
+    const product = {
+      title: name,
+      status: "draft",        // oculto: no se publica en la tienda
+      published: false,
+      variants: [variant],
+      tags: "POS, producto-rapido",
+    };
+    if (options.length) product.options = options.map((n) => ({ name: n }));
+
+    const r = await fetch(
+      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/products.json`,
+      {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": env.SHOPIFY_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ product }),
+      }
+    );
+    const data = await r.json();
+    if (!r.ok) return { ok: false, error: JSON.stringify(data) };
+    const prod = data.product;
+    const v = prod.variants && prod.variants[0];
+    return { ok: true, product_id: prod.id, variant_id: v ? v.id : null };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+// ============ Crear orden en Shopify (Orders API) ============
+async function createShopifyOrder(env, o) {
+  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN)
+    return { ok: false, error: "Shopify no configurado" };
+
+  const line_items = o.items.map(it => {
+    const li = it.variant_id
+      ? { variant_id: it.variant_id, quantity: it.qty }
+      : { title: it.name, price: String(it.price), quantity: it.qty };
+    if (it.note) li.properties = [{ name: "Observación", value: it.note }];
+    return li;
+  });
+
+  const isTienda = o.sale_type === "tienda";
+  const cust = o.customer || {};
+  const detail = Array.isArray(o.payment_detail) ? o.payment_detail : [];
+
+  // Tags: POS, vendedor, cajero, y un tag por cada medio de pago
+  const tags = [
+    "POS",
+    `vendedor:${o.seller || "—"}`,
+    `cajero:${o.cashier || "—"}`,
+    o.sale_type === "despacho" ? "envio" : "tienda",
+    ...detail.map(d => `pago:${d.method}`),
+  ].filter(Boolean).join(", ");
+
+  // Nota con el detalle del pago mixto
+  const payNote = detail.length
+    ? detail.map(d => `${d.method}: $${Number(d.amount).toLocaleString("es-CO")}`).join(" + ")
+    : (o.payment || "");
+  const note =
+    `Venta POS · ${o.sale_type} · Vendedor: ${o.seller || "—"} · Cajero: ${o.cashier || "—"}` +
+    (payNote ? ` · Pago: ${payNote}` : "") +
+    (cust.doc ? ` · ${cust.doc_type || "CC"}: ${cust.doc}` : "") +
+    (o.billing ? ` · FACTURA EMPRESA: ${o.billing.razon_social} NIT ${o.billing.nit}` : "");
+
+  // Transacciones (gateway) — una por cada medio de pago
+  const transactions = detail.length
+    ? detail.map(d => ({ kind: "sale", status: "success", gateway: d.method, amount: String(d.amount) }))
+    : undefined;
+
+  const addr = cust.address ? {
+    first_name: cust.name || cust.full_name, last_name: cust.last_name || "",
+    address1: cust.address, city: cust.city || "", province: cust.depto || "",
+    country: "Colombia", phone: cust.phone || "",
+  } : null;
+
+  const order = {
+    line_items,
+    taxes_included: true,            // los precios YA incluyen IVA (Colombia)
+    currency: "COP",
+    tags,
+    note,
+    source_name: "Bloom POS",
+    ...(o.discount ? {
+      discount_codes: [{
+        code: o.discount.type === "pct" ? `DESC${o.discount.value}%` : "DESCUENTO",
+        amount: String(o.discount.amount),
+        type: o.discount.type === "pct" ? "percentage" : "fixed_amount",
+      }],
+    } : {}),
+    ...(cust.phone ? { phone: cust.phone } : {}),
+    ...(cust.full_name || cust.name ? {
+      customer: {
+        first_name: cust.name || cust.full_name,
+        last_name: cust.last_name || "",
+        ...(cust.email ? { email: cust.email } : {}),
+        ...(cust.phone ? { phone: cust.phone } : {}),
+      },
+    } : {}),
+    ...(addr ? { shipping_address: addr, billing_address: addr } : {}),
+  };
+
+  // ---- MODO BORRADOR (pruebas) vs PAGADA ----
+  if (o.draft) {
+    // Draft Order: no afecta inventario ni finanzas, ideal para pruebas
+    const r = await fetch(
+      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/draft_orders.json`,
+      {
+        method: "POST",
+        headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ draft_order: order }),
+      }
+    );
+    const data = await r.json();
+    if (!r.ok) return { ok: false, error: JSON.stringify(data?.errors || data) };
+    return { ok: true, draft: true, order_id: String(data.draft_order.id), order_name: data.draft_order.name };
+  }
+
+  // Orden real, pagada
+  order.financial_status = "paid";
+  order.fulfillment_status = isTienda ? "fulfilled" : null;
+  order.inventory_behaviour = "decrement_obeying_policy";
+  if (transactions) order.transactions = transactions;
+
+  const r = await fetch(
+    `https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders.json`,
+    {
+      method: "POST",
+      headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ order }),
+    }
+  );
+  const data = await r.json();
+  if (!r.ok) return { ok: false, error: JSON.stringify(data?.errors || data) };
+  return { ok: true, order_id: String(data.order.id), order_name: data.order.name };
+}
+
+// ============ Procesar entrante (clave: el REFERRAL) ============
+async function handleIncoming(env, msg, contact) {
+  const phone = msg.from;
+  const name = contact?.profile?.name || phone;
+  const text = msg.text?.body || msg.button?.text || "";
+  const waId = msg.id;
+
+  // ¿Viene de una historia o pauta? Meta lo manda en msg.referral
+  const ref = msg.referral;
+  const refData = ref ? {
+    ref_source_type: ref.source_type || null,       // 'ad' o 'post'
+    ref_headline:    ref.headline || null,
+    ref_body:        ref.body || null,
+    ref_media_url:   ref.image_url || ref.video_url || null,
+    ref_source_id:   ref.source_id || null,
+    ref_ctwa_clid:   ref.ctwa_clid || null,
+  } : {};
+
+  // Crear/actualizar contacto. Si trae referral, lo guarda (solo primera vez).
+  await upsertContact(env, phone, name, refData);
+
+  // Si trajo referral, lo dejamos también como un "mensaje" especial para verlo en el hilo
+  if (ref) {
+    await insertMessage(env, phone, {
+      direction: "in",
+      body: ref.headline || "Escribió desde un anuncio",
+      media_url: ref.image_url || ref.video_url || null,
+      msg_type: "referral",
+    });
+  }
+
+  // El mensaje de texto normal
+  await insertMessage(env, phone, {
+    direction: "in", body: text, wa_message_id: waId, msg_type: "text",
+  });
+}
+
+async function upsertContact(env, phone, name, refData) {
+  // Inserta si no existe; si trae referral lo incluye
+  const payload = { phone, name, store: "bloom", ...refData };
+  await fetch(`${env.SUPABASE_URL}/rest/v1/contacts`, {
+    method: "POST",
+    headers: sbHeaders(env, "resolution=ignore-duplicates"),
+    body: JSON.stringify(payload),
+  });
+  // Si ya existía pero ahora llegó con referral, lo actualiza (sin pisar con null)
+  if (refData.ref_source_type) {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/contacts?phone=eq.${phone}&ref_source_type=is.null`, {
+      method: "PATCH",
+      headers: sbHeaders(env, "return=minimal"),
+      body: JSON.stringify(refData),
+    });
+  }
+}
+
+async function insertMessage(env, phone, m) {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/messages`, {
+    method: "POST",
+    headers: sbHeaders(env, "return=minimal"),
+    body: JSON.stringify({ contact_phone: phone, store: "bloom", ...m }),
+  });
+}
+
+function sbHeaders(env, prefer) {
+  return {
+    apikey: env.SUPABASE_SERVICE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    "Content-Type": "application/json",
+    Prefer: prefer,
+  };
+}
+
+// ============ Enviar a WhatsApp ============
+async function sendWhatsApp(env, phone, message) {
+  const res = await fetch(
+    `https://graph.facebook.com/v19.0/${env.WA_PHONE_ID}/messages`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp", to: phone,
+        type: "text", text: { body: message },
+      }),
+    }
+  );
+  // Guarda el saliente en la base
+  await insertMessage(env, phone, { direction: "out", body: message, msg_type: "text" });
+  return res.json();
+}
+
+// ============ Shopify (productos para el selector) ============
+async function fetchShopify(env, query) {
+  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN) return [];
+
+  // Trae TODOS los productos paginando (Shopify entrega máx 250 por página)
+  let all = [];
+  let pageUrl = `https://${env.SHOPIFY_STORE}/admin/api/2024-10/products.json?limit=250&status=active`;
+  let guard = 0;
+  while (pageUrl && guard < 40) {   // tope de seguridad: 40 páginas = 10.000 productos
+    guard++;
+    const r = await fetch(pageUrl, { headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN } });
+    if (!r.ok) break;
+    const data = await r.json();
+    all = all.concat(data.products || []);
+    // El cursor de la siguiente página viene en el header Link
+    const link = r.headers.get("link") || r.headers.get("Link") || "";
+    const m = link.match(/<([^>]+)>;\s*rel="next"/);
+    pageUrl = m ? m[1] : null;
+  }
+
+  return all
+    .filter(p => !query || p.title.toLowerCase().includes(query.toLowerCase()))
+    .map(p => {
+      // Detecta qué opción es Color y cuál es Talla, por su NOMBRE (no por posición)
+      const opts = (p.options || []).map(o => ({ name: (o.name || "").toLowerCase(), position: o.position }));
+      const findOpt = (keywords) => {
+        const o = opts.find(op => keywords.some(k => op.name.includes(k)));
+        return o ? o.position : null;   // 1, 2 o 3
+      };
+      const colorPos = findOpt(["color"]);
+      const tallaPos = findOpt(["talla", "size", "tamaño", "tamano"]);
+
+      const getOpt = (v, pos) => pos === 1 ? v.option1 : pos === 2 ? v.option2 : pos === 3 ? v.option3 : null;
+
+      return {
+        id: p.id,
+        name: p.title,
+        price: Number(p.variants?.[0]?.price || 0),
+        image: p.image?.src || null,
+        option_names: { color: colorPos, talla: tallaPos },
+        variants: p.variants.map(v => ({
+          variant_id: v.id,
+          color: colorPos ? getOpt(v, colorPos) : null,
+          talla: tallaPos ? getOpt(v, tallaPos) : null,
+          // size genérico para compatibilidad (lo que se muestre principal)
+          size: getOpt(v, colorPos) || getOpt(v, tallaPos) || v.option1,
+          price: Number(v.price),
+          stock: v.inventory_quantity || 0,
+          taxable: v.taxable !== false,
+          barcode: v.barcode || null,
+          sku: v.sku || null,
+        })),
+        stock: p.variants.reduce((s, v) => s + (v.inventory_quantity || 0), 0),
+      };
+    });
+}
+
+// ============ Buscar cliente en Shopify por teléfono ============
+async function findCustomer(env, phone) {
+  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN || !phone) return { found: false };
+  // Normaliza: deja solo dígitos, quita el 57 de Colombia si viene
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("57") && digits.length > 10) digits = digits.slice(2);
+
+  const r = await fetch(
+    `https://${env.SHOPIFY_STORE}/admin/api/2024-01/customers/search.json?query=phone:${digits}`,
+    { headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN } }
+  );
+  if (!r.ok) return { found: false };
+  const d = await r.json();
+  const c = d.customers?.[0];
+  if (!c) return { found: false };
+  return {
+    found: true,
+    name: `${c.first_name || ""} ${c.last_name || ""}`.trim(),
+    orders_count: c.orders_count || 0,
+    total_spent: Number(c.total_spent || 0),
+    last_order: c.last_order_name || null,
+    tags: c.tags || "",
+  };
+}
