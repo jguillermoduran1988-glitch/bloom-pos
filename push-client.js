@@ -19,6 +19,15 @@
     return window.pos?.teamAuthor?.name || localStorage.getItem("bloom_push_author") || "Equipo Bloom";
   }
 
+  function deviceName(){
+    let id = localStorage.getItem("bloom_push_device_id");
+    if(!id){
+      id = Math.random().toString(36).slice(2,10);
+      localStorage.setItem("bloom_push_device_id", id);
+    }
+    return `${authorName()} · ${id}`;
+  }
+
   async function saveSubscription(subscription){
     if(!PUSH_URL) return;
     await fetch(`${PUSH_URL}/push/subscribe`,{
@@ -26,7 +35,7 @@
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         store:STORE,
-        author_name:authorName(),
+        author_name:deviceName(),
         subscription:subscription.toJSON(),
       }),
     });
