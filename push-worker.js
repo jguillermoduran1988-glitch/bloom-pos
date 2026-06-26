@@ -3,6 +3,7 @@
 //  Endpoints:
 //    POST /push/subscribe
 //    POST /push/team-message
+//    GET  /push/latest?store=bloom
 //  Secrets necesarios:
 //    SUPABASE_URL, SUPABASE_SERVICE_KEY, VAPID_PUBLIC_KEY,
 //    VAPID_PRIVATE_KEY, VAPID_SUBJECT
@@ -13,7 +14,7 @@ export default {
     const url = new URL(request.url);
     const cors = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
 
@@ -30,6 +31,12 @@ export default {
         const body = await request.json();
         const result = await notifyTeamMessage(env, body);
         return Response.json(result, { headers: cors });
+      }
+
+      if (request.method === "GET" && url.pathname === "/push/latest") {
+        const store = url.searchParams.get("store") || "bloom";
+        const result = await latestNotification(env, store);
+        return Response.json(result, { headers: { ...cors, "Cache-Control": "no-store" } });
       }
     } catch (e) {
       return Response.json({ ok: false, error: String(e?.message || e) }, { status: 500, headers: cors });
@@ -71,8 +78,9 @@ async function notifyTeamMessage(env, body) {
   const rows = await sbGet(env, `push_subscriptions?store=eq.${encodeURIComponent(store)}&active=eq.true&select=id,endpoint,p256dh,auth,author_name`);
   const targets = rows || [];
   const notification = buildNotification(body);
-  const results = await Promise.allSettled(targets.map(s => sendWebPush(env, s, notification)));
+  await saveLatestNotification(env, store, notification);
 
+  const results = await Promise.allSettled(targets.map(s => sendGenericPush(env, s)));
   let sent = 0;
   const failures = [];
   for (let i = 0; i < results.length; i++) {
@@ -82,7 +90,7 @@ async function notifyTeamMessage(env, body) {
     if (result.status === "rejected" || !result.value?.ok) failures.push({ status, error: String(result.reason || result.value?.text || result.value?.error || "unknown") });
     if (status === 404 || status === 410) await deactivateSubscription(env, targets[i].id);
   }
-  return { ok: true, sent, total: targets.length, failures };
+  return { ok: true, sent, total: targets.length, notification, failures };
 }
 
 function buildNotification(body) {
@@ -97,6 +105,7 @@ function buildNotification(body) {
     body: text.slice(0, 140),
     tag: "bloom-team",
     url: "./index.html#equipo",
+    at: new Date().toISOString(),
   };
 }
 
@@ -104,7 +113,24 @@ function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
-async function sendWebPush(env, sub, notification) {
+async function saveLatestNotification(env, store, notification) {
+  const payload = { store, payload: notification, updated_at: new Date().toISOString() };
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/push_latest?on_conflict=store`, {
+    method: "POST",
+    headers: sbHeaders(env, "resolution=merge-duplicates,return=minimal"),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`push_latest: ${await r.text()}`);
+}
+
+async function latestNotification(env, store) {
+  const rows = await sbGet(env, `push_latest?store=eq.${encodeURIComponent(store)}&select=payload,updated_at&limit=1`);
+  const row = rows?.[0];
+  if (!row?.payload) return { ok: false };
+  return { ok: true, ...row.payload, updated_at: row.updated_at };
+}
+
+async function sendGenericPush(env, sub) {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
     return { ok: false, status: 0, error: "faltan secretos VAPID" };
   }
@@ -113,31 +139,6 @@ async function sendWebPush(env, sub, notification) {
   const aud = `${endpoint.protocol}//${endpoint.host}`;
   const exp = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
   const jwt = await createVapidJwt(env, aud, exp);
-  const payload = JSON.stringify(notification);
-
-  const withPayload = await sendEncryptedPush(env, sub, jwt, payload);
-  if (withPayload.ok) return withPayload;
-
-  const generic = await sendGenericPush(env, sub, jwt);
-  return generic.ok ? { ...generic, fallback: true } : withPayload;
-}
-
-async function sendEncryptedPush(env, sub, jwt, payload) {
-  const body = await encryptPushPayload(payload, sub.p256dh, sub.auth);
-  const r = await fetch(sub.endpoint, {
-    method: "POST",
-    headers: {
-      TTL: "60",
-      "Content-Type": "application/octet-stream",
-      "Content-Encoding": "aes128gcm",
-      Authorization: `vapid t=${jwt}, k=${env.VAPID_PUBLIC_KEY}`,
-    },
-    body,
-  });
-  return { ok: r.ok, status: r.status, text: r.ok ? "" : await r.text().catch(() => "") };
-}
-
-async function sendGenericPush(env, sub, jwt) {
   const r = await fetch(sub.endpoint, {
     method: "POST",
     headers: {
@@ -174,48 +175,6 @@ function vapidPrivateJwk(publicKey, privateKey) {
     d: base64Url(b64UrlToBytes(privateKey)),
     ext: true,
   };
-}
-
-async function encryptPushPayload(payload, receiverPublicKey, receiverAuthSecret) {
-  const plain = enc(payload);
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const localKeys = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
-  const localPublicRaw = new Uint8Array(await crypto.subtle.exportKey("raw", localKeys.publicKey));
-  const receiverPublic = await crypto.subtle.importKey(
-    "raw",
-    b64UrlToBytes(receiverPublicKey),
-    { name: "ECDH", namedCurve: "P-256" },
-    false,
-    []
-  );
-  const sharedSecret = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: receiverPublic }, localKeys.privateKey, 256));
-  const authSecret = b64UrlToBytes(receiverAuthSecret);
-
-  const prk = await hkdfExtract(authSecret, sharedSecret);
-  const keyInfo = concat(enc("WebPush: info\0"), b64UrlToBytes(receiverPublicKey), localPublicRaw);
-  const ikm = await hkdfExpand(prk, keyInfo, 32);
-  const saltPrk = await hkdfExtract(salt, ikm);
-  const cek = await hkdfExpand(saltPrk, enc("Content-Encoding: aes128gcm\0"), 16);
-  const nonce = await hkdfExpand(saltPrk, enc("Content-Encoding: nonce\0"), 12);
-
-  const record = concat(plain, new Uint8Array([2]));
-  const cryptoKey = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
-  const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, tagLength: 128 }, cryptoKey, record));
-
-  const rs = 4096;
-  const header = concat(salt, uint32be(rs), new Uint8Array([localPublicRaw.length]), localPublicRaw);
-  return concat(header, encrypted);
-}
-
-async function hkdfExtract(salt, ikm) {
-  const key = await crypto.subtle.importKey("raw", salt, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return new Uint8Array(await crypto.subtle.sign("HMAC", key, ikm));
-}
-
-async function hkdfExpand(prk, info, len) {
-  const key = await crypto.subtle.importKey("raw", prk, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const out = new Uint8Array(await crypto.subtle.sign("HMAC", key, concat(info, new Uint8Array([1]))));
-  return out.slice(0, len);
 }
 
 async function sbGet(env, path) {
@@ -256,19 +215,4 @@ function b64UrlToBytes(value) {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
   const raw = atob(base64);
   return Uint8Array.from([...raw].map(ch => ch.charCodeAt(0)));
-}
-
-function uint32be(value) {
-  return new Uint8Array([(value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255]);
-}
-
-function concat(...arrays) {
-  const total = arrays.reduce((n, a) => n + a.length, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const arr of arrays) {
-    out.set(arr, offset);
-    offset += arr.length;
-  }
-  return out;
 }
