@@ -6,7 +6,7 @@ window.CONFIG = {
   SUPABASE_ANON: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvamVoc3prY3VnZ21qeGVmdm52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MTUzNTQsImV4cCI6MjA5Nzk5MTM1NH0.X8MtH94vQWWQue4Qcx-Bh_UswMPbQpasN429QYrDpZs",
   WORKER_URL:    "https://bloomchat.jguillermoduran1988.workers.dev",
   PUSH_WORKER_URL: "https://bloomchat.jguillermoduran1988.workers.dev",
-  VAPID_PUBLIC_KEY: "", // Pega aqui la clave publica VAPID para activar push en Android/iOS.
+  VAPID_PUBLIC_KEY: "BCJkeaADQxgsngaycI9qAR_JwWbyKcMC7J4Wx7K11Z87ySVB4X8pokIWhAeAq1YCSnInoAhGulIeViXAFTbxTNE", // Pega aqui la clave publica VAPID para activar push en Android/iOS.
   STORE:         "bloom",
 
   DEMO_PRODUCTS: [
