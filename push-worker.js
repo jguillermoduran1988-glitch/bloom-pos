@@ -165,7 +165,7 @@ async function encryptPushPayload(payload, receiverPublicKey, receiverAuthSecret
   const cek = await hkdfExpand(saltPrk, enc("Content-Encoding: aes128gcm\0"), 16);
   const nonce = await hkdfExpand(saltPrk, enc("Content-Encoding: nonce\0"), 12);
 
-  const record = concat(new Uint8Array([0, 0]), plain);
+  const record = concat(plain, new Uint8Array([2]));
   const cryptoKey = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
   const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, tagLength: 128 }, cryptoKey, record));
 
