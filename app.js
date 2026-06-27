@@ -1311,7 +1311,7 @@ function saveNote(){
 function setSaleType(t){
   pos.saleType=t;
   $("#typeTienda").classList.toggle("on",t==="tienda");
-  $("#typeDespacho").classList.toggle("on",t==="despacho");
+  $("#typeDespacho").classList.toggle("on",t==="envios");
 }
 // Cambia "Apellidos" según tipo de documento (NIT = empresa, no lleva apellido)
 function renderSellerSelect(){
