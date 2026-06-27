@@ -140,25 +140,102 @@ async function sendGenericPush(env, sub, notification) {
   const exp = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
   const jwt = await createVapidJwt(env, aud, exp);
 
-  // Codifica el payload como texto JSON para que el SW lo reciba en e.data
-  const payloadStr = notification ? JSON.stringify(notification) : null;
-  const bodyBytes = payloadStr ? new TextEncoder().encode(payloadStr) : null;
-
   const headers = {
-    TTL: "60",
+    TTL: "86400",
     Authorization: `vapid t=${jwt}, k=${env.VAPID_PUBLIC_KEY}`,
+    Urgency: "normal",
   };
-  if(bodyBytes){
-    headers["Content-Type"] = "application/json";
-    headers["Content-Length"] = String(bodyBytes.length);
+
+  let body = null;
+  // Encripta el payload si tenemos las claves del suscriptor
+  if (notification && sub.p256dh && sub.auth) {
+    try {
+      const encrypted = await encryptWebPush(sub.p256dh, sub.auth, JSON.stringify(notification));
+      headers["Content-Type"] = "application/octet-stream";
+      headers["Content-Encoding"] = "aes128gcm";
+      headers["Content-Length"] = String(encrypted.byteLength);
+      body = encrypted;
+    } catch(e) {
+      // Si falla encriptación, envía sin payload (notificación genérica)
+      console.error("Encrypt error:", e);
+    }
   }
 
-  const r = await fetch(sub.endpoint, {
-    method: "POST",
-    headers,
-    body: bodyBytes || null,
-  });
+  const r = await fetch(sub.endpoint, { method: "POST", headers, body });
   return { ok: r.ok, status: r.status, text: r.ok ? "" : await r.text().catch(() => "") };
+}
+
+// ---- Web Push Encryption (RFC 8291 / aes128gcm) ----
+async function encryptWebPush(p256dhB64, authB64, plaintext) {
+  const enc = new TextEncoder();
+
+  // Decodifica claves del suscriptor
+  const receiverPublic = b64UrlToBytes(p256dhB64);
+  const authSecret = b64UrlToBytes(authB64);
+
+  // Genera par de claves ECDH efímeras
+  const senderKeys = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]);
+
+  // Exporta clave pública del sender
+  const senderPublicRaw = await crypto.subtle.exportKey("raw", senderKeys.publicKey);
+  const senderPublic = new Uint8Array(senderPublicRaw);
+
+  // Importa clave pública del receptor
+  const receiverKey = await crypto.subtle.importKey("raw", receiverPublic, { name: "ECDH", namedCurve: "P-256" }, false, []);
+
+  // Deriva shared secret via ECDH
+  const sharedBits = await crypto.subtle.deriveBits({ name: "ECDH", public: receiverKey }, senderKeys.privateKey, 256);
+  const sharedSecret = new Uint8Array(sharedBits);
+
+  // Salt aleatorio (16 bytes)
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+
+  // PRK via HKDF step 1 (auth)
+  const prkAuthInfo = enc.encode("WebPush: info\0");
+  const prkInput = concat(prkAuthInfo, receiverPublic, senderPublic);
+  const prk = await hkdf(authSecret, sharedSecret, prkInput, 32);
+
+  // CEK y nonce via HKDF step 2 (salt)
+  const cekInfo = enc.encode("Content-Encoding: aes128gcm\0");
+  const nonceInfo = enc.encode("Content-Encoding: nonce\0");
+  const cek = await hkdf(salt, prk, cekInfo, 16);
+  const nonce = await hkdf(salt, prk, nonceInfo, 12);
+
+  // Importa CEK
+  const cekKey = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
+
+  // Padding: agrega byte 0x02 al final del plaintext (record delimiter)
+  const ptBytes = enc.encode(plaintext);
+  const padded = concat(ptBytes, new Uint8Array([2]));
+
+  // Encripta
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, cekKey, padded);
+
+  // Cabecera aes128gcm: salt(16) + rs(4) + keylen(1) + senderPublic(65)
+  const rs = 4096;
+  const header = new Uint8Array(16 + 4 + 1 + senderPublic.length);
+  header.set(salt, 0);
+  new DataView(header.buffer).setUint32(16, rs, false);
+  header[20] = senderPublic.length;
+  header.set(senderPublic, 21);
+
+  return concat(header, new Uint8Array(ciphertext));
+}
+
+async function hkdf(salt, ikm, info, length) {
+  const saltKey = await crypto.subtle.importKey("raw", salt, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const prk = new Uint8Array(await crypto.subtle.sign("HMAC", saltKey, ikm));
+  const prkKey = await crypto.subtle.importKey("raw", prk, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const t = new Uint8Array(await crypto.subtle.sign("HMAC", prkKey, concat(info, new Uint8Array([1]))));
+  return t.slice(0, length);
+}
+
+function concat(...arrays) {
+  const total = arrays.reduce((s, a) => s + a.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) { out.set(new Uint8Array(a instanceof ArrayBuffer ? a : a.buffer, a.byteOffset, a.byteLength), offset); offset += a.byteLength; }
+  return out;
 }
 
 async function createVapidJwt(env, aud, exp) {
