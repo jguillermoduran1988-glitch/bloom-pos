@@ -6,6 +6,15 @@
 <meta name="theme-color" content="#fdfbf7">
 <link rel="manifest" href="manifest.json">
 <title>Bloom · Chats</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+<style>
+  .material-symbols-outlined{
+    font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;
+    font-size:22px;line-height:1;letter-spacing:normal;text-transform:none;
+    display:inline-block;white-space:nowrap;direction:ltr;vertical-align:middle;
+    font-variation-settings:'FILL' 0,'wght' 200,'GRAD' 0,'opsz' 24;
+  }
+</style>
 <style>
   :root{
     --bg:#fdfbf7; --surface:#fff; --surface-2:#f5efe3; --border:#ebe2d2;
@@ -24,7 +33,7 @@
   .navbar{position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100}
   .navbar button{flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--text-dim);font-size:11px;cursor:pointer}
   .navbar button.on{color:var(--accent)}
-  .navbar button .ic{font-size:20px}
+  .navbar button .ic{font-size:22px;font-variation-settings:'FILL' 0,'wght' 200,'GRAD' 0,'opsz' 24}
   /* Chat del equipo */
   .team-wrap{display:flex;flex-direction:column;height:100%;max-width:760px;margin:0 auto;width:100%}
   .team-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
@@ -248,14 +257,18 @@
   .ci-note-btn{width:100%;margin-top:4px;border:1px dashed var(--border);border-radius:6px;padding:4px 8px;font-size:11px;outline:none;background:transparent;color:var(--text-dim);cursor:pointer;text-align:left}
   .ci-note-btn:active{background:var(--accent-soft)}
   .note-tabs{display:flex;border-bottom:1px solid var(--border)}
-  .note-tabs button{flex:1;padding:11px;border:none;background:none;font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
+  .note-tabs button{flex:1;padding:11px;border:none;background:none;font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;justify-content:center;gap:5px}
+  .note-tabs button .material-symbols-outlined{font-size:19px}
   .note-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
   .pers-info{background:var(--accent-soft);border-radius:9px;padding:10px;font-size:13px;margin-bottom:12px}
   .pers-note{font-size:11px;color:var(--text-dim);font-style:italic;margin-top:8px}
   .pers-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
   .pers-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .pers-card-row{font-size:13px;color:var(--text);margin-bottom:3px}
-  .pers-deliver{margin-top:9px;width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
+  .pers-deliver{margin-top:0;flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
+  .pers-detail-edit{width:100%;min-height:70px;border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;font-family:inherit;resize:vertical;outline:none}
+  .pers-detail-edit:focus{border-color:var(--accent)}
+  .pers-save-note{flex:1;background:var(--accent-soft);color:var(--accent-dark);border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
   .sale-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
   .sale-card-main{display:flex;justify-content:space-between;align-items:flex-start}
   .sale-menu-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim);padding:0 6px;line-height:1}
@@ -371,6 +384,18 @@
   .paystat-top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
   .paystat-bar{height:8px;background:var(--surface-2);border-radius:5px;overflow:hidden}
   .paystat-fill{height:100%;background:var(--accent);border-radius:5px}
+  /* Tabs datos: colapsar en mobile */
+  .dat-tabs-extra{display:contents}
+  .dat-more-btn{display:none;padding:8px 6px;border:none;background:none;cursor:pointer;color:var(--text-dim);align-items:center;justify-content:center;border-bottom:2px solid transparent}
+  .dat-more-btn .material-symbols-outlined{font-size:20px}
+  .dat-more-btn.on{color:var(--accent)}
+  @media(max-width:720px){
+    .dat-tabs-extra{display:none}
+    .dat-tabs-extra.show{display:contents}
+    .dat-more-btn{display:flex}
+    .dat-tab-lbl{display:none}
+    #datTabs button{padding:11px 8px}
+  }
   /* Tabs móviles del POS (Productos / Carrito) */
   .pos-tabs{display:none}
   @media(max-width:720px){
@@ -395,9 +420,9 @@
     <div class="side-head">
       <div class="brand"><img src="logo-bloom.svg" alt="Bloom" style="height:26px;display:block"></div>
       <div style="display:flex;align-items:center;gap:8px">
-        <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')" style="font-size:17px">🛒</button>
-        <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')" style="font-size:15px">📊</button>
-        <button class="iconbtn" title="Configuración" onclick="switchScreen('config')" style="font-size:15px">⚙️</button>
+        <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')"><span class="material-symbols-outlined" style="font-size:18px">point_of_sale</span></button>
+        <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')"><span class="material-symbols-outlined" style="font-size:18px">analytics</span></button>
+        <button class="iconbtn" title="Configuración" onclick="switchScreen('config')"><span class="material-symbols-outlined" style="font-size:18px">settings</span></button>
         <div class="conn"><span class="dot" id="connDot"></span><span id="connText">…</span></div>
       </div>
     </div>
@@ -416,8 +441,8 @@
       <button class="ch-back" onclick="closeChat()">‹</button>
       <div class="av" id="headAv"></div>
       <div class="ch-info"><div class="ch-name" id="headName"></div><div class="ch-sub" id="headSub"></div></div>
-      <button class="iconbtn" title="Nota interna" onclick="addNote()">🔒</button>
-      <button class="iconbtn" title="Ver ficha" onclick="togglePanel()">☰</button>
+      <button class="iconbtn" title="Nota interna" onclick="addNote()"><span class="material-symbols-outlined" style="font-size:17px">lock</span></button>
+      <button class="iconbtn" title="Ver ficha" onclick="togglePanel()"><span class="material-symbols-outlined" style="font-size:17px">menu_open</span></button>
     </div>
     <div class="msgs" id="msgs" style="display:none"></div>
     <div class="qr-bar" id="qrBar" style="display:none"></div>
@@ -452,8 +477,8 @@
     <div class="p-sec">
       <div class="p-title">Acciones</div>
       <div class="qa">
-        <button onclick="openPicker()">🛍 Productos</button>
-        <button onclick="movePipeline()">🔀 Mover embudo</button>
+        <button onclick="openPicker()"><span class="material-symbols-outlined" style="font-size:16px">shopping_bag</span> Productos</button>
+        <button onclick="movePipeline()"><span class="material-symbols-outlined" style="font-size:16px">swap_horiz</span> Mover embudo</button>
       </div>
     </div>
   </aside>
@@ -488,8 +513,8 @@
 <div class="screen" id="screen-pos">
   <div class="pos">
     <div class="pos-tabs">
-      <button id="tabProductos" class="on" onclick="posTab('productos')">🛍 Productos</button>
-      <button id="tabCarrito" onclick="posTab('carrito')">🛒 Carrito <span class="cart-badge" id="tabCartBadge">0</span></button>
+      <button id="tabProductos" class="on" onclick="posTab('productos')"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">inventory_2</span> Productos</button>
+      <button id="tabCarrito" onclick="posTab('carrito')"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">shopping_cart</span> Carrito <span class="cart-badge" id="tabCartBadge">0</span></button>
     </div>
     <div class="pos-catalog">
       <div class="pos-search-row">
@@ -508,8 +533,8 @@
         </div>
       </div>
       <div class="cart-type">
-        <button class="on" id="typeTienda" onclick="setSaleType('tienda')">🏪 Tienda</button>
-        <button id="typeDespacho" onclick="setSaleType('envios')">📦 Envíos</button>
+        <button class="on" id="typeTienda" onclick="setSaleType('tienda')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">storefront</span> Tienda</button>
+        <button id="typeDespacho" onclick="setSaleType('envios')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">package_2</span> Envíos</button>
       </div>
       <div class="cart-items" id="cartItems"><div class="cart-empty">Toca productos para agregarlos</div></div>
       <div class="cart-foot">
@@ -717,12 +742,15 @@
 <!-- ============ PANTALLA: DATOS / ESTADÍSTICAS ============ -->
 <div class="screen" id="screen-datos" style="display:none">
   <div class="config">
-    <div class="note-tabs" style="margin-bottom:16px">
-      <button id="datTab1" class="on" onclick="datosTab('tienda')">🏪 Datos tienda</button>
-      <button id="datTab2" onclick="datosTab('tabla')">📋 Tabla de ventas</button>
-      <button id="datTab4" onclick="datosTab('ventas')">🧾 Ventas</button>
-      <button id="datTab5" onclick="datosTab('clientes')">👥 Clientes</button>
-      <button id="datTab3" onclick="datosTab('pers')">✨ Personalización</button>
+    <div class="note-tabs" style="margin-bottom:16px" id="datTabs">
+      <button id="datTab1" class="on" onclick="datosTab('tienda')"><span class="material-symbols-outlined">storefront</span> <span class="dat-tab-lbl">Tienda</span></button>
+      <button id="datTab4" onclick="datosTab('ventas')"><span class="material-symbols-outlined">receipt_long</span> <span class="dat-tab-lbl">Ventas</span></button>
+      <button id="datTab5" onclick="datosTab('clientes')"><span class="material-symbols-outlined">groups</span> <span class="dat-tab-lbl">Clientes</span></button>
+      <div class="dat-tabs-extra" id="datTabsExtra">
+        <button id="datTab2" onclick="datosTab('tabla')"><span class="material-symbols-outlined">table_chart</span> <span class="dat-tab-lbl">Tabla</span></button>
+        <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">auto_awesome</span> <span class="dat-tab-lbl">Pers.</span></button>
+      </div>
+      <button class="dat-more-btn" id="datMoreBtn" onclick="toggleDatMore()" title="Más opciones"><span class="material-symbols-outlined">more_horiz</span></button>
     </div>
 
     <!-- Pestaña: Datos tienda -->
@@ -836,11 +864,11 @@
 
 <!-- ============ NAV INFERIOR ============ -->
 <nav class="navbar">
-  <button class="on" id="nav-chats" onclick="switchScreen('chats')"><span class="ic">💬</span>Chats</button>
-  <button id="nav-pos" onclick="switchScreen('pos')"><span class="ic">🛒</span>POS</button>
-  <button id="nav-equipo" onclick="switchScreen('equipo')"><span class="ic">👥</span>Equipo</button>
-  <button id="nav-datos" onclick="switchScreen('datos')"><span class="ic">📊</span>Datos</button>
-  <button id="nav-config" onclick="switchScreen('config')"><span class="ic">⚙️</span>Config</button>
+  <button class="on" id="nav-chats" onclick="switchScreen('chats')"><span class="ic material-symbols-outlined">chat_bubble</span>Chats</button>
+  <button id="nav-pos" onclick="switchScreen('pos')"><span class="ic material-symbols-outlined">point_of_sale</span>POS</button>
+  <button id="nav-equipo" onclick="switchScreen('equipo')"><span class="ic material-symbols-outlined">group</span>Equipo</button>
+  <button id="nav-datos" onclick="switchScreen('datos')"><span class="ic material-symbols-outlined">analytics</span>Datos</button>
+  <button id="nav-config" onclick="switchScreen('config')"><span class="ic material-symbols-outlined">settings</span>Config</button>
 </nav>
 
   <!-- ===== MODAL: OBSERVACIÓN / PERSONALIZACIÓN ===== -->

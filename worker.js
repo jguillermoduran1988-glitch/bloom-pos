@@ -122,12 +122,14 @@ async function findAlegraItem(env, reference) {
   return found || (arr.length ? arr[0] : null);
 }
 
-// Crea un producto en Alegra (bodega 2, IVA 19% incluido en precio)
+// Crea un producto en Alegra (bodega 2, con IVA 19%)
 async function createAlegraItem(env, { name, price, reference }) {
+  // El precio de Bloom incluye IVA; Alegra guarda el precio base SIN IVA
+  const priceWithoutTax = Math.round((Number(price) / 1.19) * 100) / 100;
   const payload = {
     name,
     reference: reference || undefined,
-    price: [{ idPriceList: 1, price: Number(price) }],
+    price: [{ idPriceList: 1, price: priceWithoutTax }],
     tax: [{ id: ALEGRA_TAX_ID }],
     inventory: {
       unit: "unit",
@@ -164,10 +166,13 @@ async function createAlegraInvoice(env, sale) {
         const fullName = it.variant ? `${it.name} - ${it.variant}` : it.name;
         alegraItem = await createAlegraItem(env, { name: fullName, price: it.price, reference: ref });
       }
+      // Alegra espera el precio SIN IVA (luego le suma el impuesto).
+      // Los precios de Bloom YA incluyen IVA 19%, así que lo quitamos: precio / 1.19
+      const priceWithoutTax = Math.round((it.price / 1.19) * 100) / 100;
       items.push({
         id: alegraItem.id,
         quantity: it.qty,
-        price: it.price,                 // precio con IVA incluido
+        price: priceWithoutTax,          // precio SIN IVA (Alegra le suma el 19%)
         tax: [{ id: ALEGRA_TAX_ID }],
       });
     }
@@ -177,14 +182,12 @@ async function createAlegraInvoice(env, sale) {
     const invoicePayload = {
       date: today,
       dueDate: today,
-      client: clientId,
+      client: { id: clientId },           // Alegra espera objeto {id}
       items,
       warehouse: { id: ALEGRA_WAREHOUSE_ID },
-      numberTemplate: { id: ALEGRA_RESOLUTION_ID },
-      status: "draft",                   // BORRADOR mientras se hacen pruebas
-      stamp: { generateStamp: false },   // no envía a la DIAN en borrador
-      paymentForm: "CASH",               // contado
-      paymentMethod: "TRANSFER",         // transferencia (forma de pago)
+      ...(ALEGRA_RESOLUTION_ID ? { numberTemplate: { id: ALEGRA_RESOLUTION_ID } } : {}),
+      paymentMethod: "transfer",           // medio de pago: transferencia
+      status: "draft",                     // borrador explícito
       anotation: `Venta POS Bloom${sale.order_name ? " · " + sale.order_name : ""}`,
     };
     const r = await fetch(`${ALEGRA_BASE}/invoices`, {
@@ -209,17 +212,35 @@ async function findOrCreateAlegraClient(env, cust) {
     if (r.ok) {
       const data = await r.json();
       const arr = Array.isArray(data) ? data : (data.data || []);
+      // coincidencia exacta de identificación
+      const exact = arr.find(c => String(c.identification) === String(cust.doc));
+      if (exact) return exact.id;
       if (arr.length) return arr[0].id;
     }
   }
-  // crea el cliente
+  // crea el cliente (estructura Colombia)
+  const esEmpresa = cust.is_company || false;
   const payload = {
     name: cust.full_name || cust.name || "Consumidor final",
     identification: cust.doc || undefined,
     email: cust.email || undefined,
     phonePrimary: cust.phone || undefined,
-    address: cust.address ? { address: cust.address, city: cust.city || undefined } : undefined,
-    type: ["client"],
+    mobile: cust.phone || undefined,
+    address: cust.address ? {
+      address: cust.address,
+      city: cust.city || undefined,
+      department: cust.depto || undefined,
+      country: "COL",
+    } : undefined,
+    type: "client",
+    // Datos fiscales Colombia
+    identificationObject: cust.doc ? {
+      type: esEmpresa ? "NIT" : "CC",
+      number: cust.doc,
+    } : undefined,
+    kindOfPerson: esEmpresa ? "LEGAL_ENTITY" : "PERSON_ENTITY",
+    regime: "SIMPLIFIED_REGIME",
+    ignoreRepeated: true,   // no falla si ya existe
   };
   const r = await fetch(`${ALEGRA_BASE}/contacts`, {
     method: "POST",

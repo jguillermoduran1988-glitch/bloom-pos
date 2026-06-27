@@ -1571,6 +1571,12 @@ async function saveSettings(){
 async function initDatos(){
   loadReport("today");
 }
+function toggleDatMore(){
+  const x=document.getElementById("datTabsExtra");
+  const btn=document.getElementById("datMoreBtn");
+  if(x) x.classList.toggle("show");
+  if(btn) btn.classList.toggle("on");
+}
 function datosTab(which){
   ["tienda","tabla","ventas","clientes","pers"].forEach(t=>{
     const p=$("#datPane"+t.charAt(0).toUpperCase()+t.slice(1));
@@ -1865,10 +1871,39 @@ async function loadCustomOrders(){
       </div>
       <div class="pers-card-row">👤 ${esc(o.customer_name||"—")} · 📱 ${esc(o.customer_phone||"—")}</div>
       <div class="pers-card-row">📅 Entrega: <b>${o.delivery_date||"—"}</b> · 💵 ${money(o.price)}</div>
-      ${o.notes?`<div class="pers-card-row">📝 ${esc(o.notes)}</div>`:""}
-      <button class="pers-deliver" onclick="markDelivered('${o.id}')">✓ Marcar entregado</button>`;
+      <div style="margin:8px 0 4px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:var(--text-dim)">Detalle personalización:</span>
+        <button class="tag-add" style="font-size:12px" onclick="togglePersEdit('${o.id}')">✏️ Editar</button>
+      </div>
+      <div id="persNoteText-${o.id}" style="font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px;min-height:36px;white-space:pre-wrap;word-break:break-word">${esc(o.notes||"Sin detalle")}</div>
+      <div id="persNoteEdit-${o.id}" style="display:none">
+        <textarea id="persNote-${o.id}" class="pers-detail-edit" style="margin-top:6px">${esc(o.notes||"")}</textarea>
+        <button class="pers-save-note" style="margin-top:6px;width:100%" onclick="savePersNote('${o.id}')">💾 Guardar detalle</button>
+      </div>
+      <div style="margin-top:8px">
+        <button class="pers-deliver" style="width:100%" onclick="markDelivered('${o.id}')">✓ Entregado</button>
+      </div>`;
     box.appendChild(card);
   }
+}
+function togglePersEdit(id){
+  const editDiv=document.getElementById("persNoteEdit-"+id);
+  const textDiv=document.getElementById("persNoteText-"+id);
+  if(!editDiv||!textDiv) return;
+  const isOpen=editDiv.style.display!=="none";
+  editDiv.style.display=isOpen?"none":"block";
+  textDiv.style.display=isOpen?"block":"none";
+  if(!isOpen) document.getElementById("persNote-"+id)?.focus();
+}
+async function savePersNote(id){
+  const ta=document.getElementById("persNote-"+id);
+  if(!ta) return;
+  const txt=ta.value;
+  await sbPatch(`custom_orders?id=eq.${id}`,{notes:txt});
+  const textDiv=document.getElementById("persNoteText-"+id);
+  if(textDiv){ textDiv.textContent=txt||"Sin detalle"; textDiv.style.display="block"; }
+  const editDiv=document.getElementById("persNoteEdit-"+id);
+  if(editDiv) editDiv.style.display="none";
 }
 async function markDelivered(id){
   if(!confirm("¿Marcar como entregado? Se quitará de la lista.")) return;
