@@ -312,6 +312,13 @@ async function createShopifyOrder(env, o) {
   const cust = o.customer || {};
   const detail = Array.isArray(o.payment_detail) ? o.payment_detail : [];
 
+  // Busca o crea el cliente en Shopify y obtiene su ID (para vincularlo a la orden)
+  let shopifyCustomerId = null;
+  if (cust.full_name || cust.name || cust.email) {
+    try { shopifyCustomerId = await findOrCreateShopifyCustomer(env, cust); }
+    catch (e) { /* si falla, sigue sin vincular */ }
+  }
+
   // Tags: POS, vendedor, cajero, y un tag por cada medio de pago
   const tags = [
     "POS",
@@ -361,25 +368,16 @@ async function createShopifyOrder(env, o) {
       }],
     } : {}),
     ...(cust.phone ? { phone: cust.phone } : {}),
-    ...(cust.full_name || cust.name ? {
+    ...(shopifyCustomerId ? {
+      customer: { id: shopifyCustomerId },
+    } : (cust.full_name || cust.name ? {
       customer: {
         first_name: cust.name || cust.full_name,
         last_name: cust.last_name || "",
         ...(cust.email ? { email: cust.email } : {}),
         ...(cust.phone ? { phone: cust.phone } : {}),
-        // Cédula/NIT en company para que aparezca en el perfil del cliente
-        ...(docForCompany ? {
-          default_address: {
-            company: docForCompany,
-            address1: cust.address || "",
-            city: cust.city || "",
-            province: cust.depto || "",
-            country: "Colombia",
-            phone: cust.phone || "",
-          }
-        } : {}),
       },
-    } : {}),
+    } : {})),
     ...(addr ? { shipping_address: addr, billing_address: addr } : {}),
   };
 
@@ -566,6 +564,57 @@ async function fetchShopify(env, query) {
 }
 
 // ============ Buscar cliente en Shopify por teléfono ============
+// Busca cliente en Shopify por email (o teléfono), si no existe lo crea. Devuelve su ID.
+async function findOrCreateShopifyCustomer(env, cust) {
+  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN) return null;
+  const headers = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
+
+  // 1) Busca por email primero (lo más confiable)
+  let found = null;
+  if (cust.email) {
+    const r = await fetch(
+      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=email:${encodeURIComponent(cust.email)}`,
+      { headers }
+    );
+    if (r.ok) { const d = await r.json(); found = d.customers?.[0] || null; }
+  }
+  // 2) Si no, busca por teléfono
+  if (!found && cust.phone) {
+    let digits = cust.phone.replace(/\D/g, "");
+    if (digits.startsWith("57") && digits.length > 10) digits = digits.slice(2);
+    const r = await fetch(
+      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=phone:${digits}`,
+      { headers }
+    );
+    if (r.ok) { const d = await r.json(); found = d.customers?.[0] || null; }
+  }
+  if (found) return found.id;
+
+  // 3) No existe: créalo
+  const docCompany = cust.is_company ? `NIT ${cust.doc}` : (cust.doc ? `${cust.doc_type || "CC"} ${cust.doc}` : "");
+  const newCustomer = {
+    first_name: cust.name || cust.full_name || "Cliente",
+    last_name: cust.last_name || "",
+    ...(cust.email ? { email: cust.email } : {}),
+    ...(cust.phone ? { phone: "+57" + cust.phone.replace(/\D/g, "").slice(-10) } : {}),
+    tags: "POS Bloom",
+    ...(cust.address ? {
+      addresses: [{
+        address1: cust.address, city: cust.city || "", province: cust.depto || "",
+        country: "Colombia", phone: cust.phone || "", company: docCompany || undefined,
+        first_name: cust.name || cust.full_name, last_name: cust.last_name || "",
+      }]
+    } : {}),
+  };
+  const cr = await fetch(
+    `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers.json`,
+    { method: "POST", headers, body: JSON.stringify({ customer: newCustomer }) }
+  );
+  if (!cr.ok) return null;
+  const cd = await cr.json();
+  return cd.customer?.id || null;
+}
+
 async function findCustomer(env, phone) {
   if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN || !phone) return { found: false };
   // Normaliza: deja solo dígitos, quita el 57 de Colombia si viene
