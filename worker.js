@@ -122,12 +122,14 @@ async function findAlegraItem(env, reference) {
   return found || (arr.length ? arr[0] : null);
 }
 
-// Crea un producto en Alegra (bodega 2, IVA 19% incluido en precio)
+// Crea un producto en Alegra (bodega 2, con IVA 19%)
 async function createAlegraItem(env, { name, price, reference }) {
+  // El precio de Bloom incluye IVA; Alegra guarda el precio base SIN IVA
+  const priceWithoutTax = Math.round((Number(price) / 1.19) * 100) / 100;
   const payload = {
     name,
     reference: reference || undefined,
-    price: [{ idPriceList: 1, price: Number(price) }],
+    price: [{ idPriceList: 1, price: priceWithoutTax }],
     tax: [{ id: ALEGRA_TAX_ID }],
     inventory: {
       unit: "unit",
@@ -164,16 +166,21 @@ async function createAlegraInvoice(env, sale) {
         const fullName = it.variant ? `${it.name} - ${it.variant}` : it.name;
         alegraItem = await createAlegraItem(env, { name: fullName, price: it.price, reference: ref });
       }
+      // Alegra espera el precio SIN IVA (luego le suma el impuesto).
+      // Los precios de Bloom YA incluyen IVA 19%, así que lo quitamos: precio / 1.19
+      const priceWithoutTax = Math.round((it.price / 1.19) * 100) / 100;
       items.push({
         id: alegraItem.id,
         quantity: it.qty,
-        price: it.price,                 // precio con IVA incluido
+        price: priceWithoutTax,          // precio SIN IVA (Alegra le suma el 19%)
         tax: [{ id: ALEGRA_TAX_ID }],
       });
     }
 
     // 3) Crea la factura en BORRADOR (status: draft)
     const today = new Date().toISOString().slice(0, 10);
+    // Según la doc de Alegra: si NO se envía status NI payments, la factura
+    // queda en "draft" (borrador). El paymentMethod va dentro de payments.
     const invoicePayload = {
       date: today,
       dueDate: today,
@@ -181,10 +188,7 @@ async function createAlegraInvoice(env, sale) {
       items,
       warehouse: { id: ALEGRA_WAREHOUSE_ID },
       numberTemplate: { id: ALEGRA_RESOLUTION_ID },
-      status: "draft",                   // BORRADOR mientras se hacen pruebas
-      stamp: { generateStamp: false },   // no envía a la DIAN en borrador
-      paymentForm: "CASH",               // contado
-      paymentMethod: "TRANSFER",         // transferencia (forma de pago)
+      status: "draft",                   // borrador explícito
       anotation: `Venta POS Bloom${sale.order_name ? " · " + sale.order_name : ""}`,
     };
     const r = await fetch(`${ALEGRA_BASE}/invoices`, {
