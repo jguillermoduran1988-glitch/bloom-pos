@@ -205,8 +205,8 @@
     .panel{width:100%}
   }
   /* ============ POS ============ */
-  .pos{display:grid;grid-template-columns:1fr 460px;width:100%;overflow:hidden}
-  .pos-catalog{padding:14px 16px;overflow-y:auto;border-right:1px solid var(--border)}
+  .pos{display:grid;grid-template-columns:1fr 460px;width:100%;height:100%;overflow:hidden}
+  .pos-catalog{padding:14px 16px;overflow-y:auto;border-right:1px solid var(--border);min-height:0}
   .pos-search{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;font-size:14px;outline:none;margin-bottom:12px}
   .pos-search-row{display:flex;gap:8px;margin-bottom:12px}
   .pos-search-row .pos-search{margin-bottom:0;flex:1}
@@ -224,7 +224,7 @@
   .pos-card .p{font-size:13px;color:var(--accent);font-weight:700;margin-top:3px}
   .pos-card .s{font-size:10px;color:var(--text-dim);margin-top:2px}
   /* carrito */
-  .cart{background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
+  .cart{background:var(--surface);display:flex;flex-direction:column;overflow:hidden;height:100%;min-height:0}
   .cart-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
   .cart-head h3{font-size:16px}
   .cashier-btn{background:var(--accent-soft);border:1px solid var(--border);color:var(--accent-dark);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
@@ -239,7 +239,7 @@
   .cart-type{display:flex;gap:6px;padding:10px 16px}
   .cart-type button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-dim)}
   .cart-type button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
-  .cart-items{flex:1;overflow-y:auto;padding:8px 16px}
+  .cart-items{flex:1;overflow-y:auto;padding:8px 16px;min-height:0}
   .cart-empty{text-align:center;color:var(--text-dim);font-size:13px;padding:30px 10px}
   .ci{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
   .ci-img{width:40px;height:71px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--surface-2)}
