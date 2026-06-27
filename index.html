@@ -17,8 +17,8 @@
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden}
   /* contenedor de pantallas */
-  .screen{display:none;height:calc(100dvh - 56px)}
-  .screen.active{display:grid}
+  .screen{display:none;height:calc(100dvh - 56px);min-height:0}
+  .screen.active{display:grid;grid-template-rows:100%}
   #screen-chats{grid-template-columns:320px 1fr 280px}
   /* barra de navegación inferior */
   .navbar{position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100}
