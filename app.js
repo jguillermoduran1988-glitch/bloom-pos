@@ -1423,7 +1423,7 @@ async function confirmSale(){
     const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(order)});
     shopify=await r.json();
   }catch(e){console.error(e);}
-  await sbPost("sales",{
+  const saleResp = await sbPost("sales",{
     shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null,
     seller_id:seller?.id||null, seller_name:seller?.name||"—",
     customer_phone:customer.phone||null, customer_name:customer.full_name||null,
@@ -1439,6 +1439,11 @@ async function confirmSale(){
     items:order.items, subtotal:sub, total:total,
     status:"completada", store:C.STORE,
   });
+  if(!saleResp.ok){
+    const errTxt = await saleResp.text().catch(()=> "");
+    console.error("Error guardando venta:", saleResp.status, errTxt);
+    alert("⚠️ La venta se creó en Shopify pero NO se guardó en el sistema.\n\nError: "+errTxt.slice(0,200)+"\n\nAvísale a soporte.");
+  }
   // Guarda los pedidos personalizados (ítems con fecha de entrega)
   try{
     for(const it of pos.cart){
@@ -1564,7 +1569,7 @@ function datosTab(which){
     if(p) p.style.display = which===t?"block":"none";
   });
   const tabMap={tienda:"datTab1",tabla:"datTab2",ventas:"datTab4",clientes:"datTab5",pers:"datTab3"};
-  Object.entries(tabMap).forEach(([t,id])=>{ const b=$($("#"+id)); if(b) b.classList.toggle("on",which===t); });
+  Object.entries(tabMap).forEach(([t,id])=>{ const b=document.getElementById(id); if(b) b.classList.toggle("on",which===t); });
   if(which==="pers") loadCustomOrders();
   if(which==="ventas") loadSalesHistory();
   if(which==="clientes") initClientesTab();
