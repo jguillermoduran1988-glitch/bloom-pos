@@ -317,7 +317,7 @@ async function createShopifyOrder(env, o) {
     "POS",
     `vendedor:${o.seller || "—"}`,
     `cajero:${o.cashier || "—"}`,
-    o.sale_type === "despacho" ? "envio" : "tienda",
+    (o.sale_type === "envios" || o.sale_type === "envíos" || o.sale_type === "despacho") ? "envio" : "tienda",
     ...detail.map(d => `pago:${d.method}`),
   ].filter(Boolean).join(", ");
 
@@ -336,10 +336,14 @@ async function createShopifyOrder(env, o) {
     ? detail.map(d => ({ kind: "sale", status: "success", gateway: d.method, amount: String(d.amount) }))
     : undefined;
 
+  // Cédula/NIT va en el campo "company" (convención Colombia para DIAN)
+  const docForCompany = o.billing ? `NIT ${o.billing.nit}` : (cust.doc ? `${cust.doc_type || "CC"} ${cust.doc}` : "");
+
   const addr = cust.address ? {
     first_name: cust.name || cust.full_name, last_name: cust.last_name || "",
     address1: cust.address, city: cust.city || "", province: cust.depto || "",
     country: "Colombia", phone: cust.phone || "",
+    company: docForCompany || undefined,
   } : null;
 
   const order = {
@@ -363,6 +367,17 @@ async function createShopifyOrder(env, o) {
         last_name: cust.last_name || "",
         ...(cust.email ? { email: cust.email } : {}),
         ...(cust.phone ? { phone: cust.phone } : {}),
+        // Cédula/NIT en company para que aparezca en el perfil del cliente
+        ...(docForCompany ? {
+          default_address: {
+            company: docForCompany,
+            address1: cust.address || "",
+            city: cust.city || "",
+            province: cust.depto || "",
+            country: "Colombia",
+            phone: cust.phone || "",
+          }
+        } : {}),
       },
     } : {}),
     ...(addr ? { shipping_address: addr, billing_address: addr } : {}),
