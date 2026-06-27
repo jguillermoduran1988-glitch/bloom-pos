@@ -1865,19 +1865,10 @@ async function loadCustomOrders(){
       </div>
       <div class="pers-card-row">👤 ${esc(o.customer_name||"—")} · 📱 ${esc(o.customer_phone||"—")}</div>
       <div class="pers-card-row">📅 Entrega: <b>${o.delivery_date||"—"}</b> · 💵 ${money(o.price)}</div>
-      <div style="margin:8px 0 4px;font-size:12px;color:var(--text-dim)">Detalle de la personalización:</div>
-      <textarea id="persNote-${o.id}" class="pers-detail-edit">${esc(o.notes||"")}</textarea>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="pers-save-note" onclick="savePersNote('${o.id}')">💾 Guardar detalle</button>
-        <button class="pers-deliver" onclick="markDelivered('${o.id}')">✓ Entregado</button>
-      </div>`;
+      ${o.notes?`<div class="pers-card-row">📝 ${esc(o.notes)}</div>`:""}
+      <button class="pers-deliver" onclick="markDelivered('${o.id}')">✓ Marcar entregado</button>`;
     box.appendChild(card);
   }
-}
-async function savePersNote(id){
-  const txt=$("#persNote-"+id).value;
-  await sbPatch(`custom_orders?id=eq.${id}`,{notes:txt});
-  alert("Detalle guardado ✓");
 }
 async function markDelivered(id){
   if(!confirm("¿Marcar como entregado? Se quitará de la lista.")) return;
