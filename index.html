@@ -6,6 +6,11 @@
 <meta name="theme-color" content="#fdfbf7">
 <link rel="manifest" href="manifest.json">
 <title>Bloom · Chats</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+<style>
+  .material-symbols-outlined{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;font-size:22px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;direction:ltr;vertical-align:middle}
+</style>
 <style>
   :root{
     --bg:#fdfbf7; --surface:#fff; --surface-2:#f5efe3; --border:#ebe2d2;
@@ -248,14 +253,18 @@
   .ci-note-btn{width:100%;margin-top:4px;border:1px dashed var(--border);border-radius:6px;padding:4px 8px;font-size:11px;outline:none;background:transparent;color:var(--text-dim);cursor:pointer;text-align:left}
   .ci-note-btn:active{background:var(--accent-soft)}
   .note-tabs{display:flex;border-bottom:1px solid var(--border)}
-  .note-tabs button{flex:1;padding:11px;border:none;background:none;font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
+  .note-tabs button{flex:1;padding:11px;border:none;background:none;font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;justify-content:center;gap:5px}
+  .note-tabs button .material-symbols-outlined{font-size:19px}
   .note-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
   .pers-info{background:var(--accent-soft);border-radius:9px;padding:10px;font-size:13px;margin-bottom:12px}
   .pers-note{font-size:11px;color:var(--text-dim);font-style:italic;margin-top:8px}
   .pers-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
   .pers-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .pers-card-row{font-size:13px;color:var(--text);margin-bottom:3px}
-  .pers-deliver{margin-top:9px;width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
+  .pers-deliver{margin-top:0;flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
+  .pers-detail-edit{width:100%;min-height:70px;border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;font-family:inherit;resize:vertical;outline:none}
+  .pers-detail-edit:focus{border-color:var(--accent)}
+  .pers-save-note{flex:1;background:var(--accent-soft);color:var(--accent-dark);border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
   .sale-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
   .sale-card-main{display:flex;justify-content:space-between;align-items:flex-start}
   .sale-menu-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim);padding:0 6px;line-height:1}
@@ -718,11 +727,11 @@
 <div class="screen" id="screen-datos" style="display:none">
   <div class="config">
     <div class="note-tabs" style="margin-bottom:16px">
-      <button id="datTab1" class="on" onclick="datosTab('tienda')">🏪 Datos tienda</button>
-      <button id="datTab2" onclick="datosTab('tabla')">📋 Tabla de ventas</button>
-      <button id="datTab4" onclick="datosTab('ventas')">🧾 Ventas</button>
-      <button id="datTab5" onclick="datosTab('clientes')">👥 Clientes</button>
-      <button id="datTab3" onclick="datosTab('pers')">✨ Personalización</button>
+      <button id="datTab1" class="on" onclick="datosTab('tienda')"><span class="material-symbols-outlined">storefront</span> Datos tienda</button>
+      <button id="datTab2" onclick="datosTab('tabla')"><span class="material-symbols-outlined">table_chart</span> Tabla de ventas</button>
+      <button id="datTab4" onclick="datosTab('ventas')"><span class="material-symbols-outlined">receipt_long</span> Ventas</button>
+      <button id="datTab5" onclick="datosTab('clientes')"><span class="material-symbols-outlined">groups</span> Clientes</button>
+      <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">auto_awesome</span> Personalización</button>
     </div>
 
     <!-- Pestaña: Datos tienda -->
