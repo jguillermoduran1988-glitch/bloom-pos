@@ -895,6 +895,19 @@ function fillCustomerFromBase(c){
 // Muestra/oculta campos de empresa
 function onEmpresaToggle(){
   $("#empresaFields").style.display = $("#custEsEmpresa").checked ? "block" : "none";
+  if($("#custEsEmpresa").checked) initEmpresaDeptos();
+}
+function initEmpresaDeptos(){
+  const sel=$("#empDepto"); if(!sel||sel.options.length>1) return;
+  const deptos=Object.keys(window.COLOMBIA||{}).sort();
+  deptos.forEach(d=>{ const o=document.createElement("option"); o.value=d; o.textContent=d; sel.appendChild(o); });
+}
+function onEmpDeptoChange(){
+  const d=$("#empDepto").value;
+  const sel=$("#empCity"); sel.innerHTML='<option value="">Selecciona…</option>';
+  if(d && window.COLOMBIA&&window.COLOMBIA[d]){
+    (window.COLOMBIA[d]||[]).sort().forEach(c=>{ const o=document.createElement("option"); o.value=c; o.textContent=c; sel.appendChild(o); });
+  }
 }
 
 function emailValido(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
@@ -958,13 +971,18 @@ function saveCustomerModal(){
     const ephone=$("#empPhone").value.trim();
     const eemail=$("#empEmail").value.trim();
     const eaddress=$("#empAddress").value.trim();
+    const edepto=$("#empDepto").value.trim();
+    const ecity=$("#empCity").value.trim();
     if(!emp){ alert("Falta el nombre de la empresa"); return; }
     if(!nit){ alert("Falta el NIT"); return; }
     if(!ephone){ alert("Falta el teléfono de la empresa"); return; }
     if(!eemail || !emailValido(eemail)){ alert("Correo de facturación inválido"); return; }
     if(!eaddress){ alert("Falta la dirección de la empresa"); return; }
+    if(!edepto){ alert("Selecciona el departamento de la empresa"); return; }
+    if(!ecity){ alert("Selecciona la ciudad de la empresa"); return; }
     pos.billing={
-      es_empresa:true, razon_social:emp, nit, phone:ephone, email:eemail, address:eaddress, depto, city,
+      es_empresa:true, razon_social:emp, nit, phone:ephone, email:eemail,
+      address:eaddress, depto:edepto, city:ecity,
     };
   }else{
     pos.billing=null;
@@ -1553,51 +1571,111 @@ function datosTab(which){
 }
 
 // ---- Pestaña Clientes ----
+// ---- Pestaña Clientes ----
 async function initClientesTab(){
   const box=$("#clientResults"); if(!box) return;
-  box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Contando clientes…</div>';
-  // Busca sin filtrar por store por si se importaron con store diferente
-  const rows=await sbGet(`customers?select=id&limit=1`);
-  const hayClientes = rows && rows.length>0;
-  if(!hayClientes){
-    box.innerHTML=`<div style="color:var(--text-dim);font-size:13px">No hay clientes importados aún.</div>`;
+  box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Cargando últimos clientes…</div>';
+  // Muestra los 20 más recientes al abrir
+  const rows=await sbGet(`customers?order=created_at.desc&limit=20`);
+  if(!rows||!rows.length){
+    box.innerHTML='<div style="color:var(--text-dim);font-size:13px">No hay clientes importados aún.</div>';
     return;
   }
-  box.innerHTML='<div style="color:var(--text-dim);font-size:13px">✓ Base cargada. Escribe nombre, email o celular para buscar (mínimo 3 letras).</div>';
+  renderClientList(rows, "Últimos 20 clientes · Escribe para buscar");
 }
+
+function renderClientList(rows, title){
+  const box=$("#clientResults"); if(!box) return;
+  box.innerHTML=`<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${title} (${rows.length})</div>`
+    + rows.map(c=>`
+    <div class="client-card" style="cursor:pointer" onclick="openClientEdit('${c.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div><b>${esc(c.full_name||"—")}</b></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${c.doc?`<span style="font-size:11px;color:var(--accent-dark)">CC ${esc(c.doc)}</span>`:""}
+          <span style="font-size:18px;color:var(--accent-dark)">›</span>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:2px">
+        ${c.email?`📧 ${esc(c.email)}`:""}${c.phone?` · 📱 ${esc(c.phone)}`:""}
+      </div>
+      ${(c.city||c.depto)?`<div style="font-size:11px;color:var(--text-dim)">📍 ${esc(c.city||"")}${c.depto?", "+esc(c.depto):""}</div>`:""}
+    </div>`).join("");
+}
+
 let _clientTimer=null;
 function searchClients(){
   clearTimeout(_clientTimer);
   _clientTimer=setTimeout(async()=>{
     const q=($("#clientSearch").value||"").trim();
+    if(q.length<3){ initClientesTab(); return; }
     const box=$("#clientResults"); if(!box) return;
-    if(q.length<3){
-      box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Escribe al menos 3 letras.</div>';
-      return;
-    }
     box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Buscando…</div>';
     const enc=encodeURIComponent(`%${q}%`);
-    // Busca en toda la tabla sin filtrar por store
-    const rows=await sbGet(`customers?or=(full_name.ilike.${enc},email.ilike.${enc},phone.ilike.${enc})&limit=20&order=full_name.asc`);
+    const rows=await sbGet(`customers?or=(full_name.ilike.${enc},email.ilike.${enc},phone.ilike.${enc})&limit=30&order=full_name.asc`);
     if(!rows||!rows.length){
-      box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Sin resultados para "'+esc(q)+'".</div>';
+      $("#clientResults").innerHTML='<div style="font-size:13px;color:var(--text-dim)">Sin resultados para "'+esc(q)+'".</div>';
       return;
     }
-    box.innerHTML=rows.map(c=>`
-      <div class="client-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div><b>${esc(c.full_name||"—")}</b></div>
-          ${c.doc?`<div style="font-size:11px;color:var(--accent-dark)">CC ${esc(c.doc)}</div>`:""}
-        </div>
-        <div style="font-size:12px;color:var(--text-dim);margin-top:2px">
-          ${c.email?`📧 ${esc(c.email)}`:""}${c.phone?` · 📱 ${esc(c.phone)}`:""}
-        </div>
-        ${(c.city||c.depto)?`<div style="font-size:11px;color:var(--text-dim)">\uD83D\uDCCD ${esc(c.city||"")}${c.depto?", "+esc(c.depto):""}</div>`:""}
-      </div>`).join("");
+    renderClientList(rows, `Resultados para "${q}"`);
   }, 350);
 }
+
+// ---- Editar cliente + historial ----
+let _editClientData=null;
+async function openClientEdit(id){
+  const rows=await sbGet(`customers?id=eq.${id}`);
+  const c=rows&&rows[0]; if(!c) return;
+  _editClientData=c;
+  $("#editClientId").value=c.id;
+  $("#editClientName").value=c.full_name||"";
+  $("#editClientDoc").value=c.doc||"";
+  $("#editClientEmail").value=c.email||"";
+  $("#editClientPhone").value=c.phone||"";
+  $("#editClientCity").value=c.city||"";
+  $("#editClientDepto").value=c.depto||"";
+  // Carga historial de compras por email
+  const histBox=$("#clientHistory");
+  histBox.innerHTML="Cargando historial…";
+  if(c.email){
+    const ventas=await sbGet(`sales?customer_email=eq.${encodeURIComponent(c.email)}&order=created_at.desc&limit=10&select=total,created_at,sale_type,items`);
+    if(ventas&&ventas.length){
+      const totalGastado=ventas.reduce((s,v)=>s+Number(v.total||0),0);
+      histBox.innerHTML=`<div style="font-weight:600;margin-bottom:6px">Total compras: ${ventas.length} · ${money(totalGastado)}</div>`
+        +ventas.map(v=>{
+          const f=new Date(v.created_at).toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit"});
+          const prods=(v.items||[]).map(i=>i.name).slice(0,2).join(", ");
+          return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+            <span style="color:var(--text-dim)">${f}</span> · <b>${money(v.total)}</b>
+            ${prods?`<div style="color:var(--text-dim)">${esc(prods)}${(v.items||[]).length>2?` +${(v.items||[]).length-2} más`:""}</div>`:""}
+          </div>`;
+        }).join("");
+    }else{
+      histBox.innerHTML='<div style="color:var(--text-dim)">Sin compras registradas en el sistema.</div>';
+    }
+  }else{
+    histBox.innerHTML='<div style="color:var(--text-dim)">Sin email — no se puede cruzar historial.</div>';
+  }
+  $("#clientEditModal").classList.add("show");
+}
+function closeClientEdit(){ $("#clientEditModal").classList.remove("show"); _editClientData=null; }
+async function saveClientEdit(){
+  const id=$("#editClientId").value; if(!id) return;
+  const data={
+    full_name:($("#editClientName").value||"").trim().toUpperCase()||null,
+    doc:($("#editClientDoc").value||"").trim()||null,
+    email:($("#editClientEmail").value||"").trim().toLowerCase()||null,
+    phone:($("#editClientPhone").value||"").trim()||null,
+    city:($("#editClientCity").value||"").trim().toUpperCase()||null,
+    depto:($("#editClientDepto").value||"").trim().toUpperCase()||null,
+  };
+  await sbPatch(`customers?id=eq.${id}`, data);
+  closeClientEdit();
+  searchClients(); // refresca lista
+}
+
 function importClientesFromXlsx(){
-  alert("Para importar los 5.146 clientes, usa el script de importación masiva. Dame la señal y lo corro desde aquí (carga los clientes directamente a Supabase desde el Excel).");
+  alert("La importación masiva se hace con el script Python desde tu PC. Ya están cargados los 5.146 clientes de Shopify.");
 }
 async function loadSalesHistory(){
   const box=$("#salesHistory"); if(!box) return;
@@ -1635,14 +1713,30 @@ async function invoiceAlegra(saleId){
   if(!confirm("¿Crear factura en Alegra (borrador) para esta venta?")) return;
   const sale=(await sbGet(`sales?id=eq.${saleId}`))?.[0];
   if(!sale){ alert("No se encontró la venta"); return; }
-  const payload={
-    order_name: sale.shopify_order_name||null,
-    customer:{
-      full_name: sale.customer_name, doc: sale.customer_doc, email: sale.customer_email,
-      phone: sale.customer_phone, address: sale.customer_address, city: sale.customer_city,
-    },
-    items: sale.items||[],
+  // Si hay facturación empresa, usa esos datos; si no, usa datos del cliente
+  const billing = sale.billing_detail;
+  const customer = billing?.es_empresa ? {
+    full_name: billing.razon_social,
+    doc: billing.nit,
+    doc_type: "NIT",
+    email: billing.email,
+    phone: billing.phone,
+    address: billing.address,
+    city: billing.city,
+    depto: billing.depto,
+    is_company: true,
+  } : {
+    full_name: sale.customer_name,
+    doc: sale.customer_doc,
+    doc_type: "CC",
+    email: sale.customer_email,
+    phone: sale.customer_phone,
+    address: sale.customer_address,
+    city: sale.customer_city,
+    depto: sale.customer_depto,
+    is_company: false,
   };
+  const payload={ order_name: sale.shopify_order_name||null, customer, items: sale.items||[] };
   const btn=event?.target; if(btn){ btn.textContent="⏳ Creando..."; btn.disabled=true; }
   try{
     const r=await fetch(`${C.WORKER_URL}/alegra-invoice`,{
