@@ -1755,7 +1755,7 @@ async function invoiceAlegra(saleId){
     depto: sale.customer_depto,
     is_company: false,
   };
-  const payload={ order_name: sale.shopify_order_name||null, customer, items: sale.items||[] };
+  const payload={ order_name: sale.shopify_order_name||null, customer, items: sale.items||[], total: sale.total||0 };
   const btn=event?.target; if(btn){ btn.textContent="⏳ Creando..."; btn.disabled=true; }
   try{
     const r=await fetch(`${C.WORKER_URL}/alegra-invoice`,{

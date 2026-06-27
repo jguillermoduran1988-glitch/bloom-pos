@@ -157,23 +157,29 @@ async function createAlegraInvoice(env, sale) {
     let clientId = await findOrCreateAlegraClient(env, cust);
 
     // 2) Productos: por cada ítem, busca por referencia (código de barras) o lo crea
+    const saleItems = sale.items || [];
+    const saleTotal = sale.total || 0;
+    // Total de catálogo (precios originales × cantidades)
+    const catalogTotal = saleItems.reduce((s, it) => s + (it.price || 0) * (it.qty || 1), 0);
+    // Ratio para escalar precios al total real de la venta (incluye descuentos)
+    const priceRatio = catalogTotal > 0 && saleTotal > 0 ? saleTotal / catalogTotal : 1;
+
     const items = [];
-    for (const it of (sale.items || [])) {
+    for (const it of saleItems) {
       const ref = it.barcode || it.sku || null;
       let alegraItem = await findAlegraItem(env, ref);
       if (!alegraItem) {
-        // arma nombre: "Producto - Color, Talla"
         const fullName = it.variant ? `${it.name} - ${it.variant}` : it.name;
         alegraItem = await createAlegraItem(env, { name: fullName, price: it.price, reference: ref });
       }
-      // Alegra espera el precio SIN IVA (luego le suma el impuesto).
-      // Los precios de Bloom YA incluyen IVA 19%, así que lo quitamos: precio / 1.19
-      const priceWithoutTax = Math.round((it.price / 1.19) * 100) / 100;
+      // Usa el precio real de venta (escalado al total).
+      // No forzamos IVA: Alegra aplica el impuesto configurado en el ítem.
+      // Ropa de baño en Colombia es excluida de IVA por la DIAN → Alegra aplica 0%.
+      const finalPrice = Math.round(it.price * priceRatio * 100) / 100;
       items.push({
         id: alegraItem.id,
-        quantity: it.qty,
-        price: priceWithoutTax,          // precio SIN IVA (Alegra le suma el 19%)
-        tax: [{ id: ALEGRA_TAX_ID }],
+        quantity: it.qty || 1,
+        price: finalPrice,
       });
     }
 
