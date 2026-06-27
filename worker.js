@@ -186,7 +186,7 @@ async function createAlegraInvoice(env, sale) {
       items,
       warehouse: { id: ALEGRA_WAREHOUSE_ID },
       ...(ALEGRA_RESOLUTION_ID ? { numberTemplate: { id: ALEGRA_RESOLUTION_ID } } : {}),
-      paymentMethod: "transfer",           // medio de pago: transferencia
+      paymentForm: "CASH",                 // forma de pago DIAN: contado
       status: "draft",                     // borrador explícito
       anotation: `Venta POS Bloom${sale.order_name ? " · " + sale.order_name : ""}`,
     };
