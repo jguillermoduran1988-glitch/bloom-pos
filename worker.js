@@ -80,14 +80,13 @@ export default {
       return Response.json(result, { headers: cors });
     }
 
-    // -------- DEBUG temporal: ver source_name de últimos pedidos Shopify --------
-    if (request.method === "GET" && url.pathname === "/debug-sources") {
-      const r = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders.json?limit=20&status=any`, {
-        headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN },
-      });
-      const data = await r.json();
-      const sources = (data.orders || []).map(o => ({ id: o.order_number, name: o.name, source_name: o.source_name, channel: o.source_identifier }));
-      return Response.json(sources, { headers: cors });
+    // -------- Webhook Shopify: importar pedidos Online Store al POS --------
+    if (request.method === "POST" && url.pathname === "/shopify-webhook") {
+      const order = await request.json();
+      // Solo Online Store (web); ignorar BR Sales (6133741) y Bloom POS
+      if (order.source_name !== "web") return new Response("skip", { status: 200, headers: cors });
+      const result = await importShopifyOnlineOrder(env, order);
+      return Response.json(result, { headers: cors });
     }
 
     // -------- Buscar cliente en la DIAN vía Alegra --------
@@ -744,4 +743,66 @@ async function findCustomer(env, phone) {
     last_order: c.last_order_name || null,
     tags: c.tags || "",
   };
+}
+
+// ============ Importar pedido Online Store de Shopify al POS ============
+async function importShopifyOnlineOrder(env, order) {
+  // Evitar duplicados
+  const check = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/sales?shopify_order_id=eq.${order.id}&select=id&limit=1`,
+    { headers: sbHeaders(env) }
+  );
+  if (check.ok) {
+    const rows = await check.json();
+    if (rows.length > 0) return { ok: true, skipped: true, reason: "duplicate" };
+  }
+
+  const ship = order.shipping_address || order.billing_address || {};
+  const items = (order.line_items || []).map(li => ({
+    name: li.title,
+    variant: li.variant_title || null,
+    price: Number(li.price),
+    qty: li.quantity,
+    sku: li.sku || null,
+    barcode: li.sku || null,
+    variant_id: li.variant_id,
+    note: "",
+  }));
+
+  const total    = Number(order.total_price);
+  const subtotal = Number(order.subtotal_price);
+  const discount = Number(order.total_discounts) || 0;
+
+  const payload = {
+    shopify_order_id:   order.id,
+    shopify_order_name: order.name,
+    customer_name:      ship.name  || order.email || "Cliente Online",
+    customer_email:     order.email || null,
+    customer_phone:     ship.phone || order.phone || null,
+    customer_address:   ship.address1 || null,
+    customer_city:      ship.city || null,
+    customer_depto:     ship.province || null,
+    customer_doc:       null,
+    items,
+    subtotal,
+    total,
+    discount_amount:    discount,
+    discount_type:      discount > 0 ? "fixed" : null,
+    discount_value:     discount,
+    sale_type:          "envios",
+    payment_method:     order.payment_gateway || "online",
+    payment_detail:     [{ method: order.payment_gateway || "online", amount: total }],
+    seller_name:        "Shopify Online",
+    status:             "completada",
+    store:              "bloom",
+  };
+
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/sales`, {
+    method: "POST",
+    headers: sbHeaders(env, "return=representation"),
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) return { ok: false, error: await r.text() };
+  const saved = await r.json();
+  return { ok: true, sale_id: saved?.[0]?.id };
 }
