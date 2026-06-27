@@ -360,13 +360,6 @@ async function createShopifyOrder(env, o) {
     tags,
     note,
     source_name: "Bloom POS",
-    ...(o.discount ? {
-      discount_codes: [{
-        code: o.discount.type === "pct" ? `DESC${o.discount.value}%` : "DESCUENTO",
-        amount: String(o.discount.amount),
-        type: o.discount.type === "pct" ? "percentage" : "fixed_amount",
-      }],
-    } : {}),
     ...(cust.phone ? { phone: cust.phone } : {}),
     ...(shopifyCustomerId ? {
       customer: { id: shopifyCustomerId },
@@ -383,7 +376,15 @@ async function createShopifyOrder(env, o) {
 
   // ---- MODO BORRADOR (pruebas) vs PAGADA ----
   if (o.draft) {
-    // Draft Order: no afecta inventario ni finanzas, ideal para pruebas
+    // Draft Order usa applied_discount (no discount_codes)
+    if (o.discount) {
+      order.applied_discount = {
+        title: o.discount.type === "pct" ? `Descuento ${o.discount.value}%` : "Descuento",
+        value_type: o.discount.type === "pct" ? "percentage" : "fixed_amount",
+        value: String(o.discount.type === "pct" ? o.discount.value : o.discount.amount),
+        amount: String(o.discount.amount),
+      };
+    }
     const r = await fetch(
       `https://${env.SHOPIFY_STORE}/admin/api/2024-10/draft_orders.json`,
       {
@@ -401,6 +402,14 @@ async function createShopifyOrder(env, o) {
   order.financial_status = "paid";
   order.fulfillment_status = isTienda ? "fulfilled" : null;
   order.inventory_behaviour = "decrement_obeying_policy";
+  // Descuento en orden real: usa discount_codes
+  if (o.discount) {
+    order.discount_codes = [{
+      code: o.discount.type === "pct" ? `DESC${o.discount.value}` : "DESCUENTO",
+      amount: String(o.discount.amount),
+      type: o.discount.type === "pct" ? "percentage" : "fixed_amount",
+    }];
+  }
   if (transactions) order.transactions = transactions;
 
   const r = await fetch(
@@ -597,21 +606,47 @@ async function findOrCreateShopifyCustomer(env, cust) {
       found = (d.customers || []).find(c => (c.phone || "").replace(/\D/g, "").slice(-10) === last10) || null;
     }
   }
-  if (found) return found.id;
+  if (found) {
+    // Si el cliente existe pero está incompleto, lo completa
+    const needsUpdate = (!found.first_name && (cust.name || cust.full_name)) ||
+                        (!found.email && cust.email) || (!found.phone && cust.phone);
+    if (needsUpdate) {
+      const upd = {
+        id: found.id,
+        ...((!found.first_name && (cust.name || cust.full_name)) ? { first_name: cust.name || cust.full_name, last_name: cust.last_name || "" } : {}),
+        ...((!found.email && cust.email) ? { email: cust.email } : {}),
+      };
+      await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/${found.id}.json`, {
+        method: "PUT", headers, body: JSON.stringify({ customer: upd })
+      }).catch(() => {});
+    }
+    return found.id;
+  }
 
   // 3) No existe: créalo
   const docCompany = cust.is_company ? `NIT ${cust.doc}` : (cust.doc ? `${cust.doc_type || "CC"} ${cust.doc}` : "");
+  // Separa nombre y apellido si solo viene full_name
+  let firstName = cust.name || "";
+  let lastName = cust.last_name || "";
+  if (!firstName && cust.full_name) {
+    const parts = cust.full_name.trim().split(/\s+/);
+    firstName = parts[0] || "Cliente";
+    lastName = parts.slice(1).join(" ") || "";
+  }
+  if (!firstName) firstName = "Cliente";
+
   const newCustomer = {
-    first_name: cust.name || cust.full_name || "Cliente",
-    last_name: cust.last_name || "",
+    first_name: firstName,
+    last_name: lastName,
     ...(cust.email ? { email: cust.email } : {}),
     ...(cust.phone ? { phone: "+57" + cust.phone.replace(/\D/g, "").slice(-10) } : {}),
     tags: "POS Bloom",
     ...(cust.address ? {
       addresses: [{
         address1: cust.address, city: cust.city || "", province: cust.depto || "",
-        country: "Colombia", phone: cust.phone || "", company: docCompany || undefined,
-        first_name: cust.name || cust.full_name, last_name: cust.last_name || "",
+        country: "Colombia", phone: cust.phone ? ("+57" + cust.phone.replace(/\D/g, "").slice(-10)) : "",
+        company: docCompany || undefined,
+        first_name: firstName, last_name: lastName,
       }]
     } : {}),
   };
