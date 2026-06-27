@@ -58,6 +58,14 @@ export default {
       return Response.json(result, { headers: cors });
     }
 
+    // Debug: prueba qué datos de cliente llegan y crea el cliente
+    if (request.method === "POST" && url.pathname === "/debug-customer") {
+      const body = await request.json();
+      const cust = body.customer || body;
+      const id = await findOrCreateShopifyCustomer(env, cust);
+      return Response.json({ received: cust, customer_id: id }, { headers: cors });
+    }
+
     // -------- Buscar cliente en Shopify por teléfono --------
     if (request.method === "GET" && url.pathname === "/customer") {
       const phone = url.searchParams.get("phone") || "";
@@ -627,15 +635,15 @@ async function findOrCreateShopifyCustomer(env, cust) {
     }
   }
   if (found) {
-    // Si el cliente existe pero está incompleto, lo completa
-    const needsUpdate = (!found.first_name && (cust.name || cust.full_name)) ||
-                        (!found.email && cust.email) || (!found.phone && cust.phone);
+    // Siempre asegura que tenga email y teléfono (completa lo que falte)
+    const upd = { id: found.id };
+    let needsUpdate = false;
+    if (!found.email && cust.email) { upd.email = cust.email; needsUpdate = true; }
+    if (!found.phone && cust.phone) { upd.phone = "+57" + cust.phone.replace(/\D/g, "").slice(-10); needsUpdate = true; }
+    if (!found.first_name && (cust.name || cust.full_name)) {
+      upd.first_name = cust.name || cust.full_name; upd.last_name = cust.last_name || ""; needsUpdate = true;
+    }
     if (needsUpdate) {
-      const upd = {
-        id: found.id,
-        ...((!found.first_name && (cust.name || cust.full_name)) ? { first_name: cust.name || cust.full_name, last_name: cust.last_name || "" } : {}),
-        ...((!found.email && cust.email) ? { email: cust.email } : {}),
-      };
       await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/${found.id}.json`, {
         method: "PUT", headers, body: JSON.stringify({ customer: upd })
       }).catch(() => {});
