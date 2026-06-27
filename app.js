@@ -1541,19 +1541,49 @@ async function initDatos(){
   loadReport("today");
 }
 function datosTab(which){
-  $("#datPaneTienda").style.display = which==="tienda"?"block":"none";
-  $("#datPaneTabla").style.display = which==="tabla"?"block":"none";
-  $("#datPaneVentas").style.display = which==="ventas"?"block":"none";
-  $("#datPanePers").style.display = which==="pers"?"block":"none";
-  $("#datTab1").classList.toggle("on", which==="tienda");
-  $("#datTab2").classList.toggle("on", which==="tabla");
-  $("#datTab4").classList.toggle("on", which==="ventas");
-  $("#datTab3").classList.toggle("on", which==="pers");
+  ["tienda","tabla","ventas","clientes","pers"].forEach(t=>{
+    const p=$("#datPane"+t.charAt(0).toUpperCase()+t.slice(1));
+    if(p) p.style.display = which===t?"block":"none";
+  });
+  const tabMap={tienda:"datTab1",tabla:"datTab2",ventas:"datTab4",clientes:"datTab5",pers:"datTab3"};
+  Object.entries(tabMap).forEach(([t,id])=>{ const b=$($("#"+id)); if(b) b.classList.toggle("on",which===t); });
   if(which==="pers") loadCustomOrders();
   if(which==="ventas") loadSalesHistory();
+  if(which==="clientes") initClientesTab();
 }
 
-// ---- Historial de ventas con menú de 3 puntos ----
+// ---- Pestaña Clientes ----
+async function initClientesTab(){
+  const box=$("#clientResults"); if(!box) return;
+  const count=await sbGet(`customers?store=eq.${C.STORE}&select=id&limit=1`);
+  if(!count || count.length===0){
+    box.innerHTML=`<div style="color:var(--text-dim);font-size:13px">No hay clientes importados aún. Toca ⬆️ Importar para cargar la base de 5.146 clientes de Shopify.</div>`;
+    return;
+  }
+  box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Escribe para buscar un cliente (mínimo 3 letras).</div>';
+}
+let _clientTimer=null;
+function searchClients(){
+  clearTimeout(_clientTimer);
+  _clientTimer=setTimeout(async()=>{
+    const q=($("#clientSearch").value||"").trim();
+    const box=$("#clientResults"); if(!box) return;
+    if(q.length<3){ box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Escribe al menos 3 letras.</div>'; return; }
+    box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Buscando…</div>';
+    const enc=encodeURIComponent(`%${q}%`);
+    const rows=await sbGet(`customers?store=eq.${C.STORE}&or=(full_name.ilike.${enc},email.ilike.${enc},phone.ilike.${enc})&limit=20`);
+    if(!rows||!rows.length){ box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Sin resultados.</div>'; return; }
+    box.innerHTML=rows.map(c=>`
+      <div class="client-card">
+        <div><b>${esc(c.full_name||"—")}</b></div>
+        <div style="font-size:12px;color:var(--text-dim)">${esc(c.email||"")} · ${esc(c.phone||"")} · ${esc(c.city||"")}${c.depto?", "+esc(c.depto):""}</div>
+        ${c.doc?`<div style="font-size:11px;color:var(--text-dim)">CC: ${esc(c.doc)}</div>`:""}
+      </div>`).join("");
+  }, 350);
+}
+function importClientesFromXlsx(){
+  alert("Para importar los 5.146 clientes, usa el script de importación masiva. Dame la señal y lo corro desde aquí (carga los clientes directamente a Supabase desde el Excel).");
+}
 async function loadSalesHistory(){
   const box=$("#salesHistory"); if(!box) return;
   box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Cargando…</div>';
