@@ -1,4 +1,4 @@
-const CACHE="bloom-v25";
+const CACHE="bloom-v26";
 const PUSH_LATEST_URL="https://bloom-push.jguillermoduran1988.workers.dev/push/latest?store=bloom";
 const SHELL=["./index.html","./app.js","./config.js","./push-client.js","./manifest.json","./colombia.js","./logo-bloom.svg","./icon-192.png","./icon-512.png"];
 
