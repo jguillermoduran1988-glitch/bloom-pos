@@ -103,7 +103,7 @@ export default {
 const ALEGRA_BASE = "https://api.alegra.com/api/v1";
 const ALEGRA_WAREHOUSE_ID = 2;       // bodega
 const ALEGRA_RESOLUTION_ID = 20;     // numeración de facturación
-const ALEGRA_TAX_ID = 1;             // IVA 19% (id estándar en Alegra Colombia)
+const ALEGRA_TAX_ID = 3;             // IVA 19% (id confirmado en cuenta Alegra)
 
 function alegraAuth(env) {
   return "Basic " + btoa(`${env.ALEGRA_EMAIL}:${env.ALEGRA_KEY}`);
@@ -172,14 +172,15 @@ async function createAlegraInvoice(env, sale) {
         const fullName = it.variant ? `${it.name} - ${it.variant}` : it.name;
         alegraItem = await createAlegraItem(env, { name: fullName, price: it.price, reference: ref });
       }
-      // Usa el precio real de venta (escalado al total).
-      // No forzamos IVA: Alegra aplica el impuesto configurado en el ítem.
-      // Ropa de baño en Colombia es excluida de IVA por la DIAN → Alegra aplica 0%.
-      const finalPrice = Math.round(it.price * priceRatio * 100) / 100;
+      // Precio escalado al total real de la venta (descuentos incluidos),
+      // luego dividido por 1.19 para obtener la base sin IVA que Alegra necesita.
+      const scaledPrice = it.price * priceRatio;
+      const basePrice = Math.round((scaledPrice / 1.19) * 100) / 100;
       items.push({
         id: alegraItem.id,
         quantity: it.qty || 1,
-        price: finalPrice,
+        price: basePrice,
+        tax: [{ id: ALEGRA_TAX_ID }],
       });
     }
 
