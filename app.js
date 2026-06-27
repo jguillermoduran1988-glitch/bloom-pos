@@ -1555,12 +1555,15 @@ function datosTab(which){
 // ---- Pestaña Clientes ----
 async function initClientesTab(){
   const box=$("#clientResults"); if(!box) return;
-  const count=await sbGet(`customers?store=eq.${C.STORE}&select=id&limit=1`);
-  if(!count || count.length===0){
-    box.innerHTML=`<div style="color:var(--text-dim);font-size:13px">No hay clientes importados aún. Toca ⬆️ Importar para cargar la base de 5.146 clientes de Shopify.</div>`;
+  box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Contando clientes…</div>';
+  // Busca sin filtrar por store por si se importaron con store diferente
+  const rows=await sbGet(`customers?select=id&limit=1`);
+  const hayClientes = rows && rows.length>0;
+  if(!hayClientes){
+    box.innerHTML=`<div style="color:var(--text-dim);font-size:13px">No hay clientes importados aún.</div>`;
     return;
   }
-  box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Escribe para buscar un cliente (mínimo 3 letras).</div>';
+  box.innerHTML='<div style="color:var(--text-dim);font-size:13px">✓ Base cargada. Escribe nombre, email o celular para buscar (mínimo 3 letras).</div>';
 }
 let _clientTimer=null;
 function searchClients(){
@@ -1568,16 +1571,28 @@ function searchClients(){
   _clientTimer=setTimeout(async()=>{
     const q=($("#clientSearch").value||"").trim();
     const box=$("#clientResults"); if(!box) return;
-    if(q.length<3){ box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Escribe al menos 3 letras.</div>'; return; }
+    if(q.length<3){
+      box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Escribe al menos 3 letras.</div>';
+      return;
+    }
     box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Buscando…</div>';
     const enc=encodeURIComponent(`%${q}%`);
-    const rows=await sbGet(`customers?store=eq.${C.STORE}&or=(full_name.ilike.${enc},email.ilike.${enc},phone.ilike.${enc})&limit=20`);
-    if(!rows||!rows.length){ box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Sin resultados.</div>'; return; }
+    // Busca en toda la tabla sin filtrar por store
+    const rows=await sbGet(`customers?or=(full_name.ilike.${enc},email.ilike.${enc},phone.ilike.${enc})&limit=20&order=full_name.asc`);
+    if(!rows||!rows.length){
+      box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Sin resultados para "'+esc(q)+'".</div>';
+      return;
+    }
     box.innerHTML=rows.map(c=>`
       <div class="client-card">
-        <div><b>${esc(c.full_name||"—")}</b></div>
-        <div style="font-size:12px;color:var(--text-dim)">${esc(c.email||"")} · ${esc(c.phone||"")} · ${esc(c.city||"")}${c.depto?", "+esc(c.depto):""}</div>
-        ${c.doc?`<div style="font-size:11px;color:var(--text-dim)">CC: ${esc(c.doc)}</div>`:""}
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div><b>${esc(c.full_name||"—")}</b></div>
+          ${c.doc?`<div style="font-size:11px;color:var(--accent-dark)">CC ${esc(c.doc)}</div>`:""}
+        </div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:2px">
+          ${c.email?`📧 ${esc(c.email)}`:""}${c.phone?` · 📱 ${esc(c.phone)}`:""}
+        </div>
+        ${(c.city||c.depto)?`<div style="font-size:11px;color:var(--text-dim)">\uD83D\uDCCD ${esc(c.city||"")}${c.depto?", "+esc(c.depto):""}</div>`:""}
       </div>`).join("");
   }, 350);
 }
