@@ -183,6 +183,8 @@ async function createAlegraInvoice(env, sale) {
       numberTemplate: { id: ALEGRA_RESOLUTION_ID },
       status: "draft",                   // BORRADOR mientras se hacen pruebas
       stamp: { generateStamp: false },   // no envía a la DIAN en borrador
+      paymentForm: "CASH",               // contado
+      paymentMethod: "TRANSFER",         // transferencia (forma de pago)
       anotation: `Venta POS Bloom${sale.order_name ? " · " + sale.order_name : ""}`,
     };
     const r = await fetch(`${ALEGRA_BASE}/invoices`, {
