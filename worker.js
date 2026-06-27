@@ -80,6 +80,16 @@ export default {
       return Response.json(result, { headers: cors });
     }
 
+    // -------- DEBUG temporal: ver source_name de últimos pedidos Shopify --------
+    if (request.method === "GET" && url.pathname === "/debug-sources") {
+      const r = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders.json?limit=20&status=any`, {
+        headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN },
+      });
+      const data = await r.json();
+      const sources = (data.orders || []).map(o => ({ id: o.order_number, name: o.name, source_name: o.source_name, channel: o.source_identifier }));
+      return Response.json(sources, { headers: cors });
+    }
+
     // -------- Buscar cliente en la DIAN vía Alegra --------
     if (request.method === "GET" && url.pathname === "/dian") {
       const idType = url.searchParams.get("idType") || "CC";
