@@ -1295,10 +1295,14 @@ function saveNote(){
     const persNotes=$("#persNotes").value.trim();
     const persDate=$("#persDate").value;
     if(persDate){
-      // marca este ítem como personalizado
       it.pers={ notes:persNotes, delivery_date:persDate };
     }else{
-      it.pers=null; // sin fecha = no es personalización
+      // Si escribió detalle de personalización pero no puso fecha, avisa
+      if(persNotes){
+        alert("⚠️ Para registrar la personalización necesitas poner la FECHA DE ENTREGA. Sin fecha no se guarda como pedido personalizado.");
+        return; // no cierra, deja corregir
+      }
+      it.pers=null;
     }
     renderCart();
   }
@@ -1448,13 +1452,17 @@ async function confirmSale(){
   try{
     for(const it of pos.cart){
       if(it.pers && it.pers.delivery_date){
-        await sbPost("custom_orders",{
-          sale_id: shopify.order_id||null,
+        const persResp = await sbPost("custom_orders",{
+          sale_id: shopify.order_id? String(shopify.order_id) : null,
           product_name: it.name, variant: null, price: it.price,
           notes: it.pers.notes||null, delivery_date: it.pers.delivery_date,
           customer_name: customer.full_name, customer_phone: customer.phone,
           store:C.STORE,
         });
+        if(!persResp.ok){
+          const e=await persResp.text().catch(()=> "");
+          console.error("Error guardando personalización:", persResp.status, e);
+        }
       }
     }
   }catch(e){ console.warn("No se pudieron guardar personalizaciones:",e); }
