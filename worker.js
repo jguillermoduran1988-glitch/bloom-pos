@@ -569,24 +569,33 @@ async function findOrCreateShopifyCustomer(env, cust) {
   if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN) return null;
   const headers = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
 
-  // 1) Busca por email primero (lo más confiable)
+  // 1) Busca por email primero (verificando coincidencia EXACTA)
   let found = null;
   if (cust.email) {
+    const emailLc = cust.email.trim().toLowerCase();
     const r = await fetch(
-      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=email:${encodeURIComponent(cust.email)}`,
+      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=${encodeURIComponent('email:'+emailLc)}`,
       { headers }
     );
-    if (r.ok) { const d = await r.json(); found = d.customers?.[0] || null; }
+    if (r.ok) {
+      const d = await r.json();
+      // Solo acepta si el email coincide EXACTAMENTE (Shopify hace búsqueda amplia)
+      found = (d.customers || []).find(c => (c.email || "").trim().toLowerCase() === emailLc) || null;
+    }
   }
-  // 2) Si no, busca por teléfono
+  // 2) Si no, busca por teléfono (verificando coincidencia exacta de los últimos 10 dígitos)
   if (!found && cust.phone) {
     let digits = cust.phone.replace(/\D/g, "");
     if (digits.startsWith("57") && digits.length > 10) digits = digits.slice(2);
+    const last10 = digits.slice(-10);
     const r = await fetch(
-      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=phone:${digits}`,
+      `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=${encodeURIComponent('phone:'+last10)}`,
       { headers }
     );
-    if (r.ok) { const d = await r.json(); found = d.customers?.[0] || null; }
+    if (r.ok) {
+      const d = await r.json();
+      found = (d.customers || []).find(c => (c.phone || "").replace(/\D/g, "").slice(-10) === last10) || null;
+    }
   }
   if (found) return found.id;
 
