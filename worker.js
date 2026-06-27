@@ -344,7 +344,7 @@ async function createShopifyOrder(env, o) {
     : undefined;
 
   // Cédula/NIT va en el campo "company" (convención Colombia para DIAN)
-  const docForCompany = o.billing ? `NIT ${o.billing.nit}` : (cust.doc ? `${cust.doc_type || "CC"} ${cust.doc}` : "");
+  const docForCompany = o.billing ? o.billing.nit : (cust.doc || "");
 
   const addr = cust.address ? {
     first_name: cust.name || cust.full_name, last_name: cust.last_name || "",
@@ -395,7 +395,27 @@ async function createShopifyOrder(env, o) {
     );
     const data = await r.json();
     if (!r.ok) return { ok: false, error: JSON.stringify(data?.errors || data) };
-    return { ok: true, draft: true, order_id: String(data.draft_order.id), order_name: data.draft_order.name };
+    const draftId = data.draft_order.id;
+    // Envía el correo de cotización al cliente (si tiene email)
+    if (cust.email) {
+      try {
+        await fetch(
+          `https://${env.SHOPIFY_STORE}/admin/api/2024-10/draft_orders/${draftId}/send_invoice.json`,
+          {
+            method: "POST",
+            headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              draft_order_invoice: {
+                to: cust.email,
+                subject: "Tu pedido en Bloom 🌸",
+                custom_message: "¡Gracias por tu compra! Aquí está el detalle de tu pedido.",
+              }
+            }),
+          }
+        );
+      } catch (e) { /* si falla el correo, la venta igual se crea */ }
+    }
+    return { ok: true, draft: true, order_id: String(draftId), order_name: data.draft_order.name };
   }
 
   // Orden real, pagada
@@ -624,7 +644,7 @@ async function findOrCreateShopifyCustomer(env, cust) {
   }
 
   // 3) No existe: créalo
-  const docCompany = cust.is_company ? `NIT ${cust.doc}` : (cust.doc ? `${cust.doc_type || "CC"} ${cust.doc}` : "");
+  const docCompany = cust.is_company ? cust.doc : (cust.doc || "");
   // Separa nombre y apellido si solo viene full_name
   let firstName = cust.name || "";
   let lastName = cust.last_name || "";
