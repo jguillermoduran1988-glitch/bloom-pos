@@ -80,7 +80,7 @@ async function notifyTeamMessage(env, body) {
   const notification = buildNotification(body);
   await saveLatestNotification(env, store, notification);
 
-  const results = await Promise.allSettled(targets.map(s => sendGenericPush(env, s)));
+  const results = await Promise.allSettled(targets.map(s => sendGenericPush(env, s, notification)));
   let sent = 0;
   const failures = [];
   for (let i = 0; i < results.length; i++) {
@@ -130,7 +130,7 @@ async function latestNotification(env, store) {
   return { ok: true, ...row.payload, updated_at: row.updated_at };
 }
 
-async function sendGenericPush(env, sub) {
+async function sendGenericPush(env, sub, notification) {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
     return { ok: false, status: 0, error: "faltan secretos VAPID" };
   }
@@ -139,12 +139,24 @@ async function sendGenericPush(env, sub) {
   const aud = `${endpoint.protocol}//${endpoint.host}`;
   const exp = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
   const jwt = await createVapidJwt(env, aud, exp);
+
+  // Codifica el payload como texto JSON para que el SW lo reciba en e.data
+  const payloadStr = notification ? JSON.stringify(notification) : null;
+  const bodyBytes = payloadStr ? new TextEncoder().encode(payloadStr) : null;
+
+  const headers = {
+    TTL: "60",
+    Authorization: `vapid t=${jwt}, k=${env.VAPID_PUBLIC_KEY}`,
+  };
+  if(bodyBytes){
+    headers["Content-Type"] = "application/json";
+    headers["Content-Length"] = String(bodyBytes.length);
+  }
+
   const r = await fetch(sub.endpoint, {
     method: "POST",
-    headers: {
-      TTL: "60",
-      Authorization: `vapid t=${jwt}, k=${env.VAPID_PUBLIC_KEY}`,
-    },
+    headers,
+    body: bodyBytes || null,
   });
   return { ok: r.ok, status: r.status, text: r.ok ? "" : await r.text().catch(() => "") };
 }
