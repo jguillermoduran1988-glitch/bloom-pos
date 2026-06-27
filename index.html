@@ -361,6 +361,10 @@
   .rep-filter{display:flex;gap:6px;margin-bottom:14px}
   .rep-filter button{padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-dim)}
   .rep-filter button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .top-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .top-pos{width:22px;font-weight:700;color:var(--accent);text-align:center;flex-shrink:0}
+  .top-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .top-val{font-size:12px;color:var(--text-dim);flex-shrink:0}
   .stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
   .paystat-row{margin-bottom:11px}
   .paystat-top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
@@ -590,7 +594,8 @@
       <div id="empresaFields" style="display:none">
         <div class="field"><label>Nombre de la empresa *</label><input id="empName" placeholder="Razón social"></div>
         <div class="field-row">
-          <div class="field"><label>NIT *</label><input id="empNit" placeholder="NIT" inputmode="numeric"></div>
+          <div class="field"><label>NIT * <span style="font-size:11px;color:var(--accent-dark);cursor:pointer" onclick="searchEmpresaDian()">🔍 Buscar en DIAN</span></label>
+            <input id="empNit" placeholder="NIT" inputmode="numeric" onblur="searchEmpresaDian()"></div>
           <div class="field"><label>Teléfono *</label><input id="empPhone" placeholder="300..." inputmode="numeric"></div>
         </div>
         <div class="field"><label>Correo *</label><input id="empEmail" placeholder="facturacion@empresa.com" inputmode="email"></div>
@@ -719,18 +724,34 @@
           <button class="on" onclick="setReportRange('today',this)">Hoy</button>
           <button onclick="setReportRange('week',this)">Semana</button>
           <button onclick="setReportRange('month',this)">Mes</button>
+          <button onclick="setReportRange('year',this)">Año</button>
+          <button onclick="setReportRange('custom',this)">📅 Personalizado</button>
+        </div>
+        <div id="customRangeWrap" style="display:none;gap:8px;margin-bottom:10px;display:none">
+          <input type="date" id="customFrom" onchange="loadReport('custom')">
+          <input type="date" id="customTo" onchange="loadReport('custom')">
         </div>
         <div class="report-grid" id="reportGrid"></div>
       </div>
       <div class="cfg-sec">
         <h3>💰 Resumen de ventas</h3>
-        <div class="desc">Totales del periodo seleccionado arriba.</div>
+        <div class="desc">Totales del periodo seleccionado.</div>
         <div class="stats-cards" id="statsCards"></div>
       </div>
       <div class="cfg-sec">
         <h3>💳 Ventas por medio de pago</h3>
         <div class="desc">Cómo te están pagando.</div>
         <div id="payStats"></div>
+      </div>
+      <div class="cfg-sec">
+        <h3>🏆 Top 10 clientes</h3>
+        <div class="desc">Quiénes más te compran en el periodo.</div>
+        <div id="topClientes"></div>
+      </div>
+      <div class="cfg-sec">
+        <h3>📦 Top 10 referencias más vendidas</h3>
+        <div class="desc">Productos más vendidos en el periodo.</div>
+        <div id="topRefs"></div>
       </div>
     </div>
 
@@ -825,6 +846,28 @@
         </div>
       </div>
       <div class="modal-foot"><button class="modal-save" onclick="saveNote()">Guardar</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ETIQUETA DE ENVÍO ===== -->
+  <div class="modal-bg" id="labelModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3>🏷️ Etiqueta de envío</h3><button class="modal-x" onclick="closeLabelModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="field"><label>Nombre destinatario</label><input id="lblNombre" placeholder="NOMBRE APELLIDO"></div>
+        <div class="field"><label>Cédula</label><input id="lblCedula" placeholder="Cédula" inputmode="numeric"></div>
+        <div class="field"><label>Teléfono</label><input id="lblTelefono" placeholder="300..." inputmode="numeric"></div>
+        <div class="field"><label>Dirección ✏️ editable</label><input id="lblDireccion" placeholder="Calle / Carrera / Manzana..."></div>
+        <div class="field"><label>Ciudad, Departamento</label><input id="lblCiudad" placeholder="CIUDAD, DEPARTAMENTO"></div>
+        <div class="field"><label>Tipo de pago</label>
+          <select id="lblPago">
+            <option value="CONTRAENTREGA">CONTRAENTREGA</option>
+            <option value="CONTADO">CONTADO</option>
+          </select>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Remitente: DISDUCOR SAS · NIT: 901813269-1 · Bucaramanga</div>
+      </div>
+      <div class="modal-foot"><button class="modal-save" onclick="dorintLabel()">🖨️ Imprimir etiqueta</button></div>
     </div>
   </div>
 
