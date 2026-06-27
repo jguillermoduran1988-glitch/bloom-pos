@@ -601,6 +601,14 @@
         </div>
         <div class="field"><label>Correo *</label><input id="empEmail" placeholder="facturacion@empresa.com" inputmode="email"></div>
         <div class="field"><label>Dirección *</label><input id="empAddress" placeholder="Dirección de la empresa"></div>
+        <div class="field-row">
+          <div class="field"><label>Departamento *</label>
+            <select id="empDepto" onchange="onEmpDeptoChange()"><option value="">Selecciona…</option></select>
+          </div>
+          <div class="field"><label>Ciudad *</label>
+            <select id="empCity"><option value="">Selecciona…</option></select>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-foot"><button class="modal-save" onclick="saveCustomerModal()">Guardar datos</button></div>
@@ -861,6 +869,33 @@
         </div>
       </div>
       <div class="modal-foot"><button class="modal-save" onclick="saveNote()">Guardar</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: EDITAR CLIENTE ===== -->
+  <div class="modal-bg" id="clientEditModal">
+    <div class="modal-box">
+      <div class="modal-head"><h3>✏️ Editar cliente</h3><button class="modal-x" onclick="closeClientEdit()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="editClientId">
+        <div class="field-row">
+          <div class="field"><label>Nombre completo</label><input id="editClientName" placeholder="NOMBRE APELLIDO"></div>
+          <div class="field"><label>Cédula</label><input id="editClientDoc" placeholder="CC" inputmode="numeric"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Email</label><input id="editClientEmail" placeholder="correo@email.com" inputmode="email"></div>
+          <div class="field"><label>Celular</label><input id="editClientPhone" placeholder="300..." inputmode="numeric"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Ciudad</label><input id="editClientCity" placeholder="CIUDAD"></div>
+          <div class="field"><label>Departamento</label><input id="editClientDepto" placeholder="DEPARTAMENTO"></div>
+        </div>
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px">📦 Historial de compras</div>
+          <div id="clientHistory" style="font-size:13px;color:var(--text-dim)">Cargando…</div>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="modal-save" onclick="saveClientEdit()">Guardar cambios</button></div>
     </div>
   </div>
 
