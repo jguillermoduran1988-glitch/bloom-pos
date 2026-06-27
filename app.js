@@ -899,7 +899,20 @@ function onEmpresaToggle(){
 
 function emailValido(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
 
-// Intercambia nombres <-> apellidos (útil cuando la DIAN los trae al revés)
+// Busca empresa por NIT en la DIAN vía Alegra
+async function searchEmpresaDian(){
+  const nit=($("#empNit").value||"").trim();
+  if(!nit || nit.length<6) return;
+  if($("#empName").value.trim()) return; // ya tiene nombre, no sobreescribir
+  try{
+    const r=await fetch(`${C.WORKER_URL}/dian?idType=NIT&id=${encodeURIComponent(nit)}`);
+    const d=await r.json();
+    if(d.ok && d.full_name){
+      $("#empName").value=d.full_name.toUpperCase();
+      if(d.email && !$("#empEmail").value) $("#empEmail").value=d.email.toLowerCase();
+    }
+  }catch(e){ console.warn("No se pudo buscar empresa en DIAN",e); }
+}
 function swapNameLastname(){
   const n=$("#custName").value;
   $("#custName").value=$("#custLastName").value;
@@ -934,8 +947,8 @@ function saveCustomerModal(){
   if(!city){ alert("Selecciona la ciudad"); return; }
 
   pos.customer={
-    es_empresa:false, doc_type:"CC", doc, name, last_name:lastName,
-    full_name:`${name} ${lastName}`.trim(), email, phone, address, depto, city,
+    es_empresa:false, doc_type:"CC", doc, name:name.toUpperCase(), last_name:lastName.toUpperCase(),
+    full_name:`${name} ${lastName}`.trim().toUpperCase(), email:email.toLowerCase(), phone, address:address.toUpperCase(), depto, city,
   };
 
   // ----- FACTURACIÓN EMPRESA (adicional, para el sistema de facturación) -----
@@ -1607,8 +1620,73 @@ async function invoiceAlegra(saleId){
 function invoiceSiigo(saleId){
   alert("La conexión con Siigo está pendiente. Pásame las indicaciones de la API de Siigo y la activo.");
 }
-function printLabel(saleId){
-  alert("El formato de etiqueta está pendiente. Pásame qué debe llevar y la implemento.");
+async function printLabel(saleId){
+  const sale=(await sbGet(`sales?id=eq.${saleId}`))?.[0];
+  if(!sale){ alert("No se encontró la venta"); return; }
+  // Pre-llena el modal de etiqueta
+  $("#lblNombre").value = (sale.customer_name||"").toUpperCase();
+  $("#lblCedula").value = sale.customer_doc||"";
+  $("#lblTelefono").value = sale.customer_phone||"";
+  $("#lblDireccion").value = (sale.customer_address||"").toUpperCase();
+  $("#lblCiudad").value = ((sale.customer_city||"")+(sale.customer_depto?", "+sale.customer_depto:"")).toUpperCase();
+  $("#lblPago").value = "CONTRAENTREGA";
+  $("#labelModal").classList.add("show");
+  // guarda id por si se necesita
+  $("#labelModal").dataset.saleId = saleId;
+}
+function closeLabelModal(){ $("#labelModal").classList.remove("show"); }
+function dorintLabel(){
+  const w=window.open("","_blank","width=600,height=450");
+  const svg=`<img src="logo-bloom.svg" style="height:60px;display:block;margin:0 auto 6px">`;
+  const nombre=$("#lblNombre").value.toUpperCase();
+  const cedula=$("#lblCedula").value;
+  const tel=$("#lblTelefono").value;
+  const dir=$("#lblDireccion").value.toUpperCase();
+  const ciudad=$("#lblCiudad").value.toUpperCase();
+  const pago=$("#lblPago").value;
+  w.document.write(`<!DOCTYPE html><html><head><style>
+    @page{size:4in 6in;margin:0}
+    body{font-family:Arial,sans-serif;width:4in;height:6in;padding:14px;box-sizing:border-box;margin:0}
+    .logo{text-align:center;margin-bottom:8px}
+    .logo img{height:56px}
+    hr{border:1px solid #000;margin:6px 0}
+    .rem{font-size:9pt;margin-bottom:6px;line-height:1.5}
+    .dest{font-size:11pt;font-weight:bold;line-height:1.7;margin:8px 0}
+    .pago{font-size:20pt;font-weight:bold;margin:10px 0;letter-spacing:2px}
+    .qr{text-align:right}
+    .qr img{width:80px}
+    .footer{position:absolute;bottom:14px;left:14px;right:14px;text-align:center;font-size:8pt;border-top:1px solid #000;padding-top:6px}
+    .footer b{display:block;font-size:10pt}
+  </style></head><body>
+    <div class="logo"><img src="${window.location.origin}/logo-bloom.svg" onerror="this.outerHTML='<b style=font-size:24pt>Bloom</b>'"></div>
+    <hr>
+    <div class="rem">
+      REMITENTE: DISDUCOR SAS<br>
+      NIT: 901813269-1<br>
+      DIRECCIÓN: CARRERA 34 # 46-132 Cabecera<br>
+      CELULAR: 318 306 3177<br>
+      CIUDAD: BUCARAMANGA, SANTANDER
+    </div>
+    <hr>
+    <div class="dest">
+      NOMBRE: ${nombre}<br>
+      CÉDULA: ${cedula}<br>
+      TELÉFONO: ${tel}<br>
+      DIRECCIÓN: ${dir}<br>
+      CIUDAD: ${ciudad}
+    </div>
+    <hr>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <div class="pago">${pago}</div>
+      <div class="qr"><img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=https://shopbloom.com.co" alt="QR"></div>
+    </div>
+    <div class="footer">
+      <span>f &nbsp;IG &nbsp; BLOOM.BGA</span>
+      <b>SHOPBLOOM.COM.CO</b>
+    </div>
+  </body></html>`);
+  w.document.close();
+  setTimeout(()=>w.print(), 600);
 }
 async function loadCustomOrders(){
   const box=$("#persTable"); if(!box) return;
@@ -2000,14 +2078,25 @@ async function delCashier(id,name){
 // ---- Config: reporte de ventas por vendedor ----
 function setReportRange(range,btn){
   document.querySelectorAll(".rep-filter button").forEach(b=>b.classList.remove("on"));
-  btn.classList.add("on"); loadReport(range);
+  btn.classList.add("on");
+  const cw=$("#customRangeWrap");
+  if(range==="custom"){ cw.style.display="flex"; }
+  else { cw.style.display="none"; }
+  loadReport(range);
 }
 async function loadReport(range){
-  const now=new Date(); let from=new Date();
-  if(range==="today") from.setHours(0,0,0,0);
-  else if(range==="week") from.setDate(now.getDate()-7);
-  else if(range==="month") from.setDate(now.getDate()-30);
-  const rows=await sbGet(`sales?store=eq.${C.STORE}&status=eq.completada&created_at=gte.${from.toISOString()}&select=seller_name,total,payment_method,payment_detail`);
+  const now=new Date(); let from=new Date(), to=new Date();
+  to.setHours(23,59,59,999);
+  if(range==="today"){ from.setHours(0,0,0,0); }
+  else if(range==="week"){ from.setDate(now.getDate()-7); from.setHours(0,0,0,0); }
+  else if(range==="month"){ from=new Date(now.getFullYear(),now.getMonth(),1); }
+  else if(range==="year"){ from=new Date(now.getFullYear(),0,1); }
+  else if(range==="custom"){
+    const f=$("#customFrom")?.value, t=$("#customTo")?.value;
+    if(!f||!t) return;
+    from=new Date(f+"T00:00:00"); to=new Date(t+"T23:59:59");
+  }
+  const rows=await sbGet(`sales?store=eq.${C.STORE}&status=eq.completada&created_at=gte.${from.toISOString()}&created_at=lte.${to.toISOString()}&select=seller_name,total,payment_method,payment_detail,items,customer_name`);
 
   // --- Ventas por vendedor ---
   const byseller={};
@@ -2030,18 +2119,21 @@ async function loadReport(range){
   const totalVentas = rows.reduce((s,r)=>s+Number(r.total||0),0);
   const numVentas = rows.length;
   const promedio = numVentas? Math.round(totalVentas/numVentas) : 0;
+  // item promedio: total ítems / total ventas
+  const totalItems = rows.reduce((s,r)=>s+(Array.isArray(r.items)?r.items.reduce((a,i)=>a+(i.qty||1),0):0),0);
+  const itemProm = numVentas? (totalItems/numVentas).toFixed(1) : 0;
   const cards=$("#statsCards");
   if(cards){
     cards.innerHTML=`
       <div class="rep-card"><div class="nm">💵 Total vendido</div><div class="big">${money(totalVentas)}</div></div>
       <div class="rep-card"><div class="nm">🧾 N° de ventas</div><div class="big">${numVentas}</div></div>
-      <div class="rep-card"><div class="nm">📈 Ticket promedio</div><div class="big">${money(promedio)}</div></div>`;
+      <div class="rep-card"><div class="nm">📈 Ticket promedio</div><div class="big">${money(promedio)}</div></div>
+      <div class="rep-card"><div class="nm">🛍 Ítem promedio</div><div class="big">${itemProm}</div></div>`;
   }
 
   // --- Ventas por medio de pago ---
   const bypay={};
   for(const s of rows){
-    // usa payment_detail si existe (pago mixto), si no el payment_method
     const detail = Array.isArray(s.payment_detail)? s.payment_detail : null;
     if(detail && detail.length){
       for(const d of detail){
@@ -2069,6 +2161,46 @@ async function loadReport(range){
         payBox.appendChild(row);
       }
     }
+  }
+
+  // --- Top 10 clientes ---
+  const byClient={};
+  for(const s of rows){
+    const n=s.customer_name||"Sin nombre";
+    if(!byClient[n])byClient[n]={total:0,count:0};
+    byClient[n].total+=Number(s.total||0); byClient[n].count++;
+  }
+  const topC=$("#topClientes");
+  if(topC){
+    const top=Object.entries(byClient).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+    if(!top.length){topC.innerHTML='<div style="color:var(--text-dim);font-size:13px">Sin datos</div>';}
+    else topC.innerHTML=top.map(([n,d],i)=>`
+      <div class="top-row">
+        <span class="top-pos">${i+1}</span>
+        <span class="top-name">${esc(n)}</span>
+        <span class="top-val">${money(d.total)} · ${d.count}v</span>
+      </div>`).join("");
+  }
+
+  // --- Top 10 referencias ---
+  const byRef={};
+  for(const s of rows){
+    for(const it of (Array.isArray(s.items)?s.items:[])){
+      const ref=it.name||(it.sku||"—");
+      if(!byRef[ref])byRef[ref]={qty:0,total:0};
+      byRef[ref].qty+=(it.qty||1); byRef[ref].total+=Number(it.price||0)*(it.qty||1);
+    }
+  }
+  const topR=$("#topRefs");
+  if(topR){
+    const top=Object.entries(byRef).sort((a,b)=>b[1].qty-a[1].qty).slice(0,10);
+    if(!top.length){topR.innerHTML='<div style="color:var(--text-dim);font-size:13px">Sin datos</div>';}
+    else topR.innerHTML=top.map(([n,d],i)=>`
+      <div class="top-row">
+        <span class="top-pos">${i+1}</span>
+        <span class="top-name">${esc(n)}</span>
+        <span class="top-val">${d.qty} uds · ${money(d.total)}</span>
+      </div>`).join("");
   }
 }
 
