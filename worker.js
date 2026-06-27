@@ -233,10 +233,10 @@ async function findOrCreateAlegraClient(env, cust) {
     email: cust.email || undefined,
     phonePrimary: cust.phone || undefined,
     mobile: cust.phone || undefined,
-    address: cust.address ? {
+    address: (cust.address && cust.city && cust.depto) ? {
       address: cust.address,
-      city: cust.city || undefined,
-      department: cust.depto || undefined,
+      city: cust.city,
+      department: cust.depto,
       country: "COL",
     } : undefined,
     type: "client",
