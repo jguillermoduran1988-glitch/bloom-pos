@@ -213,17 +213,35 @@ async function findOrCreateAlegraClient(env, cust) {
     if (r.ok) {
       const data = await r.json();
       const arr = Array.isArray(data) ? data : (data.data || []);
+      // coincidencia exacta de identificación
+      const exact = arr.find(c => String(c.identification) === String(cust.doc));
+      if (exact) return exact.id;
       if (arr.length) return arr[0].id;
     }
   }
-  // crea el cliente
+  // crea el cliente (estructura Colombia)
+  const esEmpresa = cust.is_company || false;
   const payload = {
     name: cust.full_name || cust.name || "Consumidor final",
     identification: cust.doc || undefined,
     email: cust.email || undefined,
     phonePrimary: cust.phone || undefined,
-    address: cust.address ? { address: cust.address, city: cust.city || undefined } : undefined,
-    type: ["client"],
+    mobile: cust.phone || undefined,
+    address: cust.address ? {
+      address: cust.address,
+      city: cust.city || undefined,
+      department: cust.depto || undefined,
+      country: "COL",
+    } : undefined,
+    type: "client",
+    // Datos fiscales Colombia
+    identificationObject: cust.doc ? {
+      type: esEmpresa ? "NIT" : "CC",
+      number: cust.doc,
+    } : undefined,
+    kindOfPerson: esEmpresa ? "LEGAL_ENTITY" : "PERSON_ENTITY",
+    regime: "SIMPLIFIED_REGIME",
+    ignoreRepeated: true,   // no falla si ya existe
   };
   const r = await fetch(`${ALEGRA_BASE}/contacts`, {
     method: "POST",
