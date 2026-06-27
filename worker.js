@@ -131,11 +131,6 @@ async function createAlegraItem(env, { name, price, reference }) {
     reference: reference || undefined,
     price: [{ idPriceList: 1, price: priceWithoutTax }],
     tax: [{ id: ALEGRA_TAX_ID }],
-    inventory: {
-      unit: "unit",
-      availableQuantity: 0,
-      warehouses: [{ id: ALEGRA_WAREHOUSE_ID, initialQuantity: 0 }],
-    },
     type: "product",
   };
   const r = await fetch(`${ALEGRA_BASE}/items`, {
