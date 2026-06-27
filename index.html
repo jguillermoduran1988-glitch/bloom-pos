@@ -262,6 +262,7 @@
   .sale-menu.show{display:flex}
   .sale-menu button{text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;cursor:pointer}
   .sale-menu button:active{background:var(--accent-soft)}
+  .client-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:8px}
   .ci-n{flex:1;min-width:0}
   .ci-n .nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ci-n .vr{font-size:11px;color:var(--text-dim)}
@@ -712,6 +713,7 @@
       <button id="datTab1" class="on" onclick="datosTab('tienda')">🏪 Datos tienda</button>
       <button id="datTab2" onclick="datosTab('tabla')">📋 Tabla de ventas</button>
       <button id="datTab4" onclick="datosTab('ventas')">🧾 Ventas</button>
+      <button id="datTab5" onclick="datosTab('clientes')">👥 Clientes</button>
       <button id="datTab3" onclick="datosTab('pers')">✨ Personalización</button>
     </div>
 
@@ -770,6 +772,19 @@
         <h3>🧾 Historial de ventas</h3>
         <div class="desc">Toca los 3 puntos de cada venta para facturar o imprimir etiqueta.</div>
         <div id="salesHistory"></div>
+      </div>
+    </div>
+
+    <!-- Pestaña: Clientes -->
+    <div id="datPaneClientes" style="display:none">
+      <div class="cfg-sec">
+        <h3>👥 Base de clientes</h3>
+        <div class="desc">5.146 clientes importados de Shopify. Búsqueda por nombre, email o celular.</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="clientSearch" placeholder="Buscar por nombre, email o celular…" style="flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;outline:none" oninput="searchClients()">
+          <button onclick="importClientesFromXlsx()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer">⬆️ Importar</button>
+        </div>
+        <div id="clientResults"></div>
       </div>
     </div>
 
