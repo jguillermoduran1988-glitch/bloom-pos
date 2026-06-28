@@ -2302,7 +2302,15 @@ async function renderUsersList(){
       <span class="cfg-photo" onclick="setUserPin('${u.id}','${esc(u.name)}')" title="PIN">
         <span class="material-symbols-outlined" style="font-size:16px">key</span>
       </span>
-      <span class="del" onclick="deleteUser('${u.id}','${esc(u.name)}',this)" title="Toca 2 veces para eliminar">
+      ${u.active
+        ? `<span class="del" onclick="deactivateUser('${u.id}','${esc(u.name)}')" title="Desactivar" style="color:#e67e22">
+             <span class="material-symbols-outlined" style="font-size:16px">person_off</span>
+           </span>`
+        : `<span class="del" onclick="activateUser('${u.id}','${esc(u.name)}')" title="Activar" style="color:#27ae60">
+             <span class="material-symbols-outlined" style="font-size:16px">person_add</span>
+           </span>`
+      }
+      <span class="del" onclick="deleteUser('${u.id}','${esc(u.name)}',this)" title="Toca 2 veces para eliminar definitivamente">
         <span class="material-symbols-outlined" style="font-size:16px">delete</span>
       </span>`;
     if(!u.active) row.style.opacity="0.45";
@@ -2340,11 +2348,7 @@ async function setUserPin(id,name){
   await loadUsers(); await renderUsersList();
 }
 
-async function deactivateUser(id,name,btn){
-  if(!btn._ok){ btn._ok=true; const orig=btn.innerHTML;
-    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;color:#e74c3c">help</span>';
-    setTimeout(()=>{btn._ok=false;btn.innerHTML=orig;},2000); return; }
-  btn._ok=false;
+async function deactivateUser(id,name){
   await sbPatch(`sellers?id=eq.${id}`,{active:false});
   await loadUsers(); await renderUsersList();
 }
