@@ -2707,6 +2707,7 @@ async function loadReport(range){
     else{
       const tot=entries.reduce((s,[,d])=>s+d.total,0)||1;
       for(const [m,d] of entries){
+        if(!d.total) continue;
         const pct=Math.round(d.total/tot*100);
         const row=el("div","paystat-row");
         row.innerHTML=`<div class="paystat-top"><span>${esc(m)}</span><span><b>${money(d.total)}</b> · ${pct}%</span></div>

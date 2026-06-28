@@ -424,7 +424,7 @@
     .pos-tabs button{flex:1;padding:13px;border:none;background:none;font-size:14px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
     .pos-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
     /* Por defecto se ve el catálogo, se oculta el carrito */
-    .pos-catalog{display:block}
+    .pos-catalog{display:flex;flex-direction:column;height:100%;overflow:hidden}
     .pos-cart{display:none}
     body.show-cart .pos-catalog{display:none}
     body.show-cart .pos-cart{display:flex}
@@ -786,9 +786,9 @@
         <div class="rep-filter" style="margin-top:-8px">
           <button onclick="setReportRange('custom',this)"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">calendar_month</span> Personalizado</button>
         </div>
-        <div id="customRangeWrap" style="display:none;gap:8px;margin-bottom:10px;display:none">
-          <input type="date" id="customFrom" onchange="loadReport('custom')">
-          <input type="date" id="customTo" onchange="loadReport('custom')">
+        <div id="customRangeWrap" style="display:none;gap:8px;margin-bottom:10px">
+          <input type="date" id="customFrom" oninput="loadReport('custom')" onchange="loadReport('custom')">
+          <input type="date" id="customTo" oninput="loadReport('custom')" onchange="loadReport('custom')">
         </div>
         <div class="report-grid" id="reportGrid"></div>
       </div>
