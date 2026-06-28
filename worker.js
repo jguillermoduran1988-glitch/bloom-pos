@@ -104,6 +104,12 @@ export default {
       return Response.json(result, { headers: cors });
     }
 
+    // ── Importador temporal Shopify → Supabase ──
+    if (request.method === "GET" && url.pathname === "/import-orders") {
+      const result = await importOrdersBatch(env, url);
+      return Response.json(result, { headers: cors });
+    }
+
     return new Response("Not found", { status: 404 });
   },
 };
@@ -853,4 +859,77 @@ async function findOrCreatePosCustomer(env, { email, phone, name, address, city,
   if (!cr.ok) return null;
   const created = await cr.json();
   return created?.[0]?.id || null;
+}
+
+// ── Importador temporal Shopify → Supabase ──────────────────────────────────
+async function importOrdersBatch(env, url) {
+  const SB_URL  = "https://qojehszkcuggmjxefvnv.supabase.co";
+  const SB_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvamVoc3prY3VnZ21qeGVmdm52Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjQxNTM1NCwiZXhwIjoyMDk3OTkxMzU0fQ.xqV9Zs8izLq9fi1MAyV9BWm1HONUNq6DZJgt3vbLyRc";
+  const STORE   = "bloom";
+  const sbH     = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" };
+
+  const cursor  = url.searchParams.get("cursor") || null;
+  let shopifyUrl = `https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders.json?status=any&limit=50`;
+  if (cursor) shopifyUrl = `https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders.json?page_info=${cursor}&limit=50`;
+
+  const sr = await fetch(shopifyUrl, { headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN } });
+  if (!sr.ok) return { ok: false, error: `Shopify ${sr.status}` };
+  const sdata = await sr.json();
+  const orders = sdata.orders || [];
+
+  // cursor siguiente
+  const link = sr.headers.get("Link") || "";
+  const nextMatch = link.match(/<[^>]*[?&]page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+  const nextCursor = nextMatch ? nextMatch[1] : null;
+
+  // IDs ya existentes para no duplicar
+  const ids = orders.map(o => String(o.id));
+  const existR = await fetch(`${SB_URL}/rest/v1/sales?store=eq.${STORE}&shopify_order_id=in.(${ids.join(",")})&select=shopify_order_id`, { headers: sbH });
+  const existing = new Set((await existR.json() || []).map(r => String(r.shopify_order_id)));
+
+  let imported = 0, skipped = 0;
+  for (const o of orders) {
+    const oid = String(o.id);
+    if (existing.has(oid)) { skipped++; continue; }
+
+    const src = o.source_name || "";
+    const isTienda = src === "6133741" || src === "pos";
+    const c   = o.customer || {};
+    const ba  = o.billing_address || o.shipping_address || {};
+    const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ").toUpperCase() || null;
+    const email    = c.email || o.email || null;
+    const phone    = (c.phone || ba.phone || "").replace(/\D/g,"").replace(/^57/,"").slice(-10) || null;
+    const items    = (o.line_items || []).map(li => ({
+      name: li.title,
+      variant: li.variant_title && li.variant_title !== "Default Title" ? li.variant_title : null,
+      price: Number(li.price), qty: li.quantity, sku: li.sku || null,
+    }));
+
+    // upsert cliente
+    if (email) {
+      const eR = await fetch(`${SB_URL}/rest/v1/customers?store=eq.${STORE}&email=eq.${encodeURIComponent(email)}&select=id&limit=1`, { headers: sbH });
+      const ec = await eR.json();
+      if (!ec || !ec.length) {
+        await fetch(`${SB_URL}/rest/v1/customers`, { method:"POST", headers: sbH,
+          body: JSON.stringify({ store:STORE, full_name:fullName, email, phone, address:ba.address1||null, city:ba.city||null }) });
+      }
+    }
+
+    const sale = {
+      store:STORE, shopify_order_id:oid, shopify_order_name:o.name,
+      seller_name: isTienda ? "Tienda" : "Shopify Online",
+      customer_name:fullName, customer_email:email, customer_phone:phone,
+      customer_address:ba.address1||null, customer_city:ba.city||null,
+      sale_type: isTienda ? "tienda" : "shopify",
+      payment_method: (o.payment_gateway_names||[]).join(", "),
+      payment_detail: (o.payment_gateway_names||[]).map(g=>({method:g, amount:Number(o.total_price)})),
+      items, subtotal:Number(o.subtotal_price), total:Number(o.total_price),
+      discount_amount:Number(o.total_discounts||0),
+      status:"completada", created_at:o.created_at,
+    };
+    const ins = await fetch(`${SB_URL}/rest/v1/sales`, { method:"POST", headers:sbH, body:JSON.stringify(sale) });
+    if (ins.ok) imported++; else skipped++;
+  }
+
+  return { ok:true, imported, skipped, done:!nextCursor, nextCursor, batch: orders.length };
 }
