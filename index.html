@@ -695,22 +695,18 @@
 <div class="screen" id="screen-config" style="display:none">
   <div class="config">
     <div class="cfg-sec">
-      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">face_3</span> Vendedores</h3>
-      <div class="desc">Agrega a tu equipo para saber cuánto vende cada uno.</div>
-      <div id="sellersList"></div>
-      <div class="cfg-add">
-        <input id="newSeller" placeholder="Nombre del vendedor">
-        <button onclick="addSeller()">Agregar</button>
-      </div>
-    </div>
-
-    <div class="cfg-sec">
-      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">face_3</span> Cajeros</h3>
-      <div class="desc">Quién maneja la caja. Pueden tener clave de 4 dígitos.</div>
-      <div id="cashiersList"></div>
-      <div class="cfg-add">
-        <input id="newCashier" placeholder="Nombre del cajero">
-        <button onclick="addCashier()">Agregar</button>
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">badge</span> Usuarios</h3>
+      <div class="desc">Vendedores, cajeros y administradores del POS.</div>
+      <div id="usersList"></div>
+      <div class="cfg-add" style="flex-direction:column;align-items:stretch;gap:8px">
+        <input id="newUserName" placeholder="Nombre">
+        <input type="password" id="newUserPin" maxlength="4" inputmode="numeric" placeholder="PIN (4 dígitos — solo cajeros/master)">
+        <div style="display:flex;gap:16px;font-size:13px;padding:2px 0">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="nuSeller" checked> Vendedor</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="nuCashier"> Cajero</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="nuMaster"> Master</label>
+        </div>
+        <button onclick="addUser()">Agregar usuario</button>
       </div>
     </div>
 

@@ -614,8 +614,8 @@ async function checkCustomOrderAlerts(){
 // ===== CAJERO =====
 function renderCashierBtn(){
   const btn=$("#cashierBtn"); if(!btn) return;
-  if(pos.cashier){ btn.textContent=`${msIcon("face_3")} ${pos.cashier.name}`; btn.classList.add("set"); }
-  else{ btn.textContent="<span class=\"material-symbols-outlined\" style=\"font-size:15px;vertical-align:-3px\">face_3</span> Cajero"; btn.classList.remove("set"); }
+  if(pos.cashier){ btn.innerHTML=`<span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> ${esc(pos.cashier.name)}`; btn.classList.add("set"); }
+  else{ btn.innerHTML='<span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> Cajero'; btn.classList.remove("set"); }
 }
 function openCashierPick(){
   const box=$("#cashierPickList"); box.innerHTML="";
