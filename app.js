@@ -43,6 +43,10 @@ async function sbGet(path){
   const r=await fetch(`${SB.url}/rest/v1/${path}`,{headers:{apikey:SB.key,Authorization:`Bearer ${SB.key}`}});
   return r.ok?r.json():[];
 }
+async function sbDelete(path){
+  return fetch(`${SB.url}/rest/v1/${path}`,{method:"DELETE",
+    headers:{apikey:SB.key,Authorization:`Bearer ${SB.key}`,"Content-Type":"application/json"}});
+}
 async function sbPatch(path,body){
   return fetch(`${SB.url}/rest/v1/${path}`,{method:"PATCH",
     headers:{apikey:SB.key,Authorization:`Bearer ${SB.key}`,"Content-Type":"application/json",Prefer:"return=minimal"},
@@ -2298,14 +2302,9 @@ async function renderUsersList(){
       <span class="cfg-photo" onclick="setUserPin('${u.id}','${esc(u.name)}')" title="PIN">
         <span class="material-symbols-outlined" style="font-size:16px">key</span>
       </span>
-      ${u.active
-        ? `<span class="del" onclick="deactivateUser('${u.id}','${esc(u.name)}',this)" title="Toca 2 veces para desactivar">
-             <span class="material-symbols-outlined" style="font-size:16px">person_off</span>
-           </span>`
-        : `<span class="del" onclick="activateUser('${u.id}','${esc(u.name)}')" title="Activar" style="color:#27ae60">
-             <span class="material-symbols-outlined" style="font-size:16px">person_add</span>
-           </span>`
-      }`;
+      <span class="del" onclick="deleteUser('${u.id}','${esc(u.name)}',this)" title="Toca 2 veces para eliminar">
+        <span class="material-symbols-outlined" style="font-size:16px">delete</span>
+      </span>`;
     if(!u.active) row.style.opacity="0.45";
     box.appendChild(row);
   }
@@ -2352,6 +2351,14 @@ async function deactivateUser(id,name,btn){
 
 async function activateUser(id,name){
   await sbPatch(`sellers?id=eq.${id}`,{active:true});
+  await loadUsers(); await renderUsersList();
+}
+async function deleteUser(id,name,btn){
+  if(!btn._ok){ btn._ok=true; const orig=btn.innerHTML;
+    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;color:#e74c3c">help</span>';
+    setTimeout(()=>{btn._ok=false;btn.innerHTML=orig;},2000); return; }
+  btn._ok=false;
+  await sbDelete(`sellers?id=eq.${id}`);
   await loadUsers(); await renderUsersList();
 }
 
