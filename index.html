@@ -53,6 +53,7 @@
   .plus-menu.show{display:flex}
   .plus-menu button{display:flex;flex-direction:column;align-items:center;gap:3px;border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:10px 16px;font-size:22px;cursor:pointer;min-width:74px}
   .plus-menu button span{font-size:11px;color:var(--text-dim)}
+  .plus-menu button .material-symbols-outlined{font-size:30px;color:var(--accent-dark)}
   .plus-menu button.rec{background:#c0392b;color:#fff}
   .team-sales-strip{display:flex;gap:6px;overflow-x:auto;padding:8px 16px;border-top:1px solid var(--border)}
   .team-sale-chip{flex-shrink:0;font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:14px;cursor:pointer;background:var(--bg);white-space:nowrap}
@@ -418,7 +419,7 @@
   <!-- ===== SIDEBAR ===== -->
   <aside class="sidebar">
     <div class="side-head">
-      <div class="brand"><img src="logo-bloom.svg" alt="Bloom" style="height:26px;display:block"></div>
+      <div class="brand"><img src="logo-bloom.svg" alt="Bloom" style="height:36px;display:block"></div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')"><span class="material-symbols-outlined" style="font-size:18px">point_of_sale</span></button>
         <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')"><span class="material-symbols-outlined" style="font-size:18px">analytics</span></button>
@@ -448,7 +449,7 @@
     <div class="qr-bar" id="qrBar" style="display:none"></div>
     <div class="composer" id="composer" style="display:none">
       <textarea id="input" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
-      <button class="send" onclick="sendCurrent()">➤</button>
+      <button class="send" onclick="sendCurrent()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
     </div>
   </main>
 
@@ -526,7 +527,7 @@
     </div>
     <div class="cart pos-cart">
       <div class="cart-head">
-        <h3>🛒 Venta</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">shopping_cart</span> Venta</h3>
         <div style="display:flex;align-items:center;gap:8px">
           <button class="cashier-btn" id="cashierBtn" onclick="openCashierPick()"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> Cajero</button>
           <span id="cartCount" style="font-size:13px;color:var(--text-dim)">0 items</span>
@@ -545,12 +546,12 @@
         <div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div>
 
         <button class="cart-btn" onclick="openDiscountModal()">
-          <span id="discBtnLabel">🏷️ Agregar descuento</span>
+          <span id="discBtnLabel"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">sell</span> Agregar descuento</span>
         </button>
 
         <!-- Botones que abren los pop-ups -->
         <button class="cart-btn" id="btnCustomer" onclick="openCustomerModal()">
-          <span id="custBtnLabel">📋 Datos del cliente *</span>
+          <span id="custBtnLabel"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">assignment</span> Datos del cliente *</span>
         </button>
 
         <div class="field" style="margin-top:8px">
@@ -571,7 +572,7 @@
 <!-- ============ MODAL: DATOS DEL CLIENTE ============ -->
 <div class="modal-bg" id="customerModal">
   <div class="modal-box">
-    <div class="modal-head"><h3>📋 Datos del cliente</h3><button class="modal-x" onclick="closeCustomerModal()">✕</button></div>
+    <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">assignment</span> Datos del cliente</h3><button class="modal-x" onclick="closeCustomerModal()">✕</button></div>
     <div class="modal-body">
 
       <!-- Buscar cliente existente -->
@@ -579,7 +580,7 @@
         <label>Buscar cliente (cédula, nombre o celular)</label>
         <div style="display:flex;gap:8px">
           <input id="custSearch" placeholder="Escribe y toca buscar…" oninput="custSearchDebounced()">
-          <button class="scan-btn" onclick="doCustomerSearch()" title="Buscar" style="width:44px">🔍</button>
+          <button class="scan-btn" onclick="doCustomerSearch()" title="Buscar" style="width:44px"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">search</span></button>
         </div>
         <div id="custSearchResults" class="cust-results"></div>
       </div>
@@ -587,7 +588,7 @@
       <!-- ===== DATOS DEL CLIENTE (siempre) ===== -->
       <div id="personaFields">
         <div class="field-row">
-          <div class="field"><label>Nombres * <span class="swap-btn" onclick="swapNameLastname()" title="Intercambiar nombres y apellidos">🔄</span></label><input id="custName" placeholder="Nombres"></div>
+          <div class="field"><label>Nombres * <span class="swap-btn" onclick="swapNameLastname()" title="Intercambiar nombres y apellidos"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">swap_horiz</span></span></label><input id="custName" placeholder="Nombres"></div>
           <div class="field"><label>Apellidos *</label><input id="custLastName" placeholder="Apellidos"></div>
         </div>
         <div class="field-row">
@@ -613,14 +614,14 @@
       <!-- Toggle: facturación electrónica empresa (ADICIONAL) -->
       <label class="emp-toggle">
         <input type="checkbox" id="custEsEmpresa" onchange="onEmpresaToggle()">
-        <span>🏢 Facturación electrónica a empresa</span>
+        <span><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-4px">business</span> Facturación electrónica a empresa</span>
       </label>
 
       <!-- ===== DATOS DE FACTURACIÓN EMPRESA (adicional) ===== -->
       <div id="empresaFields" style="display:none">
         <div class="field"><label>Nombre de la empresa *</label><input id="empName" placeholder="Razón social"></div>
         <div class="field-row">
-          <div class="field"><label>NIT * <span style="font-size:11px;color:var(--accent-dark);cursor:pointer" onclick="searchEmpresaDian()">🔍 Buscar en DIAN</span></label>
+          <div class="field"><label>NIT * <span style="font-size:11px;color:var(--accent-dark);cursor:pointer" onclick="searchEmpresaDian()"><span class="material-symbols-outlined" style="font-size:13px;vertical-align:-3px">manage_search</span> Buscar en DIAN</span></label>
             <input id="empNit" placeholder="NIT" inputmode="numeric" onblur="searchEmpresaDian()"></div>
           <div class="field"><label>Teléfono *</label><input id="empPhone" placeholder="300..." inputmode="numeric"></div>
         </div>
@@ -643,7 +644,7 @@
 <!-- ============ MODAL: MEDIOS DE PAGO ============ -->
 <div class="modal-bg" id="paymentModal">
   <div class="modal-box">
-    <div class="modal-head"><h3>💳 Medios de pago</h3><button class="modal-x" onclick="closePaymentModal()">✕</button></div>
+    <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">credit_card</span> Medios de pago</h3><button class="modal-x" onclick="closePaymentModal()">✕</button></div>
     <div class="modal-body">
       <div class="pay-total-info">Total a pagar: <b id="payModalTotal">$0</b></div>
       <label class="modal-label">Toca un medio para agregarlo (hasta 4):</label>
@@ -657,7 +658,7 @@
 <!-- ============ MODAL: DESCUENTO ============ -->
 <div class="modal-bg" id="discountModal">
   <div class="modal-box modal-sm">
-    <div class="modal-head"><h3>🏷️ Descuento</h3><button class="modal-x" onclick="closeDiscountModal()">✕</button></div>
+    <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">sell</span> Descuento</h3><button class="modal-x" onclick="closeDiscountModal()">✕</button></div>
     <div class="modal-body">
       <div class="disc-type">
         <button id="discTypePct" class="on" onclick="setDiscType('pct')">Porcentaje %</button>
@@ -718,11 +719,11 @@
     </div>
 
     <div class="cfg-sec">
-      <h3>🔗 Shopify</h3>
+      <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">link</span> Shopify</h3>
       <div class="desc">Modo de creación de ventas en Shopify.</div>
       <label class="emp-toggle">
         <input type="checkbox" id="setShopifyDraft" onchange="saveSettings()">
-        <span>🧪 Crear ventas como BORRADOR (modo pruebas)</span>
+        <span><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">science</span> Crear ventas como BORRADOR (modo pruebas)</span>
       </label>
       <div class="desc" style="margin-top:8px;font-size:12px">Si está activo, las ventas se crean como borrador en Shopify (no afectan inventario ni finanzas). Desactívalo cuando quieras que las ventas se creen ya pagadas.</div>
     </div>
@@ -756,14 +757,14 @@
     <!-- Pestaña: Datos tienda -->
     <div id="datPaneTienda">
       <div class="cfg-sec">
-        <h3>📊 Ventas por vendedor</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">bar_chart</span> Ventas por vendedor</h3>
         <div class="desc">Cuánto ha vendido cada quien.</div>
         <div class="rep-filter">
           <button class="on" onclick="setReportRange('today',this)">Hoy</button>
           <button onclick="setReportRange('week',this)">Semana</button>
           <button onclick="setReportRange('month',this)">Mes</button>
           <button onclick="setReportRange('year',this)">Año</button>
-          <button onclick="setReportRange('custom',this)">📅 Personalizado</button>
+          <button onclick="setReportRange('custom',this)"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">calendar_month</span> Personalizado</button>
         </div>
         <div id="customRangeWrap" style="display:none;gap:8px;margin-bottom:10px;display:none">
           <input type="date" id="customFrom" onchange="loadReport('custom')">
@@ -772,27 +773,27 @@
         <div class="report-grid" id="reportGrid"></div>
       </div>
       <div class="cfg-sec">
-        <h3>💰 Resumen de ventas</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">payments</span> Resumen de ventas</h3>
         <div class="desc">Totales del periodo seleccionado.</div>
         <div class="stats-cards" id="statsCards"></div>
       </div>
       <div class="cfg-sec">
-        <h3>📊 Ventas por canal</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">bar_chart</span> Ventas por canal</h3>
         <div class="desc">Comparativo entre tienda, WhatsApp y Shopify online.</div>
         <div id="canalStats"></div>
       </div>
       <div class="cfg-sec">
-        <h3>💳 Ventas por medio de pago</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">credit_card</span> Ventas por medio de pago</h3>
         <div class="desc">Cómo te están pagando.</div>
         <div id="payStats"></div>
       </div>
       <div class="cfg-sec">
-        <h3>🏆 Top 10 clientes</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">emoji_events</span> Top 10 clientes</h3>
         <div class="desc">Quiénes más te compran en el periodo.</div>
         <div id="topClientes"></div>
       </div>
       <div class="cfg-sec">
-        <h3>📦 Top 10 referencias más vendidas</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">inventory_2</span> Top 10 referencias más vendidas</h3>
         <div class="desc">Productos más vendidos en el periodo.</div>
         <div id="topRefs"></div>
       </div>
@@ -801,7 +802,7 @@
     <!-- Pestaña: Tabla de ventas (pendiente de definir contenido) -->
     <div id="datPaneTabla" style="display:none">
       <div class="cfg-sec">
-        <h3>📋 Tabla de ventas</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">assignment</span> Tabla de ventas</h3>
         <div class="desc">Próximamente. Dime qué columnas quieres aquí.</div>
         <div id="ventasTable"></div>
       </div>
@@ -810,7 +811,7 @@
     <!-- Pestaña: Ventas (historial con 3 puntos) -->
     <div id="datPaneVentas" style="display:none">
       <div class="cfg-sec">
-        <h3>🧾 Historial de ventas</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">receipt_long</span> Historial de ventas</h3>
         <div class="desc">Toca los 3 puntos de cada venta para facturar o imprimir etiqueta.</div>
         <div id="salesHistory"></div>
       </div>
@@ -819,7 +820,7 @@
     <!-- Pestaña: Clientes -->
     <div id="datPaneClientes" style="display:none">
       <div class="cfg-sec">
-        <h3>👥 Base de clientes</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">diversity_4</span> Base de clientes</h3>
         <div class="desc">5.146 clientes importados de Shopify. Búsqueda por nombre, email o celular.</div>
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <input id="clientSearch" placeholder="Buscar por nombre, email o celular…" style="flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;outline:none" oninput="searchClients()">
@@ -832,7 +833,7 @@
     <!-- Pestaña: Personalización -->
     <div id="datPanePers" style="display:none">
       <div class="cfg-sec">
-        <h3>✨ Pedidos personalizados</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">auto_awesome</span> Pedidos personalizados</h3>
         <div class="desc">Pendientes de entregar. Marca como entregado para quitarlos.</div>
         <div id="persTable"></div>
       </div>
@@ -845,7 +846,7 @@
   <div class="team-wrap">
     <div class="team-head">
       <div>
-        <h3 style="font-size:16px">👥 Chat del equipo</h3>
+        <h3 style="font-size:16px"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-4px">diversity_2</span> Chat del equipo</h3>
         <div style="font-size:12px;color:var(--text-dim)" id="teamWho">Escribes como: —</div>
       </div>
       <button class="cashier-btn" onclick="pickTeamAuthor()">Cambiar</button>
@@ -856,7 +857,7 @@
     <div class="team-input">
       <button class="team-plus" id="plusBtn" onclick="togglePlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
       <input id="teamText" placeholder="Escribe un mensaje…" onkeydown="if(event.key==='Enter')sendTeamMsg()" oninput="onTeamTyping()">
-      <button class="team-send" onclick="sendTeamMsg()">➤</button>
+      <button class="team-send" onclick="sendTeamMsg()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
     </div>
     <div id="plusMenu" class="plus-menu">
       <button onclick="toggleEmojiPicker();closePlusMenu()"><span class="material-symbols-outlined">add_reaction</span><span>Emojis</span></button>
@@ -881,8 +882,8 @@
     <div class="modal-box modal-sm">
       <div class="modal-head"><h3 id="noteProductName">Producto</h3><button class="modal-x" onclick="closeNoteModal()">✕</button></div>
       <div class="note-tabs">
-        <button id="noteTab1" class="on" onclick="noteTab('obs')">📝 Observación</button>
-        <button id="noteTab2" onclick="noteTab('pers')">✨ Personalización</button>
+        <button id="noteTab1" class="on" onclick="noteTab('obs')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">edit_note</span> Observación</button>
+        <button id="noteTab2" onclick="noteTab('pers')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">auto_awesome</span> Personalización</button>
       </div>
       <div class="modal-body">
         <!-- Pestaña Observación -->
@@ -908,7 +909,7 @@
   <!-- ===== MODAL: EDITAR CLIENTE ===== -->
   <div class="modal-bg" id="clientEditModal">
     <div class="modal-box">
-      <div class="modal-head"><h3>✏️ Editar cliente</h3><button class="modal-x" onclick="closeClientEdit()">✕</button></div>
+      <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">edit</span> Editar cliente</h3><button class="modal-x" onclick="closeClientEdit()">✕</button></div>
       <div class="modal-body">
         <input type="hidden" id="editClientId">
         <div class="field-row">
@@ -924,7 +925,7 @@
           <div class="field"><label>Ciudad / Municipio</label><select id="editClientCity"><option value="">Selecciona…</option></select></div>
         </div>
         <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px">📦 Historial de compras</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">inventory_2</span> Historial de compras</div>
           <div id="clientHistory" style="font-size:13px;color:var(--text-dim)">Cargando…</div>
         </div>
       </div>
@@ -935,7 +936,7 @@
   <!-- ===== MODAL: ETIQUETA DE ENVÍO ===== -->
   <div class="modal-bg" id="labelModal">
     <div class="modal-box modal-sm">
-      <div class="modal-head"><h3>🏷️ Etiqueta de envío</h3><button class="modal-x" onclick="closeLabelModal()">✕</button></div>
+      <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">sell</span> Etiqueta de envío</h3><button class="modal-x" onclick="closeLabelModal()">✕</button></div>
       <div class="modal-body">
         <div class="field"><label>Nombre destinatario</label><input id="lblNombre" placeholder="NOMBRE APELLIDO"></div>
         <div class="field"><label>Cédula</label><input id="lblCedula" placeholder="Cédula" inputmode="numeric"></div>
@@ -950,7 +951,7 @@
         </div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Remitente: DISDUCOR SAS · NIT: 901813269-1 · Bucaramanga</div>
       </div>
-      <div class="modal-foot"><button class="modal-save" onclick="dorintLabel()">🖨️ Imprimir etiqueta</button></div>
+      <div class="modal-foot"><button class="modal-save" onclick="dorintLabel()"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">print</span> Imprimir etiqueta</button></div>
     </div>
   </div>
 
@@ -976,7 +977,7 @@
   <!-- ===== MODAL: ELEGIR / CAMBIAR CAJERO ===== -->
   <div class="modal-bg" id="cashierModal">
     <div class="modal-box modal-sm">
-      <div class="modal-head"><h3>👤 Cambiar cajero</h3><button class="modal-x" onclick="closeCashierPick()">✕</button></div>
+      <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">face_3</span> Cambiar cajero</h3><button class="modal-x" onclick="closeCashierPick()">✕</button></div>
       <div class="modal-body">
         <div class="desc" style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">Selecciona quién está en caja.</div>
         <div id="cashierPickList"></div>
@@ -987,7 +988,7 @@
   <!-- ===== MODAL: CLAVE DEL CAJERO ===== -->
   <div class="modal-bg" id="pinModal">
     <div class="modal-box modal-sm">
-      <div class="modal-head"><h3>🔒 Clave del cajero</h3><button class="modal-x" onclick="closePin()">✕</button></div>
+      <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">lock</span> Clave del cajero</h3><button class="modal-x" onclick="closePin()">✕</button></div>
       <div class="modal-body">
         <div class="desc" id="pinMsg" style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">Ingresa la clave de 4 dígitos.</div>
         <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••">
@@ -1000,7 +1001,7 @@
   <!-- ===== MODAL: PRODUCTO RÁPIDO ===== -->
   <div class="modal-bg" id="quickProductModal">
     <div class="modal-box modal-sm">
-      <div class="modal-head"><h3>➕ Producto rápido</h3><button class="modal-x" onclick="closeQuickProduct()">✕</button></div>
+      <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">add_2</span> Producto rápido</h3><button class="modal-x" onclick="closeQuickProduct()">✕</button></div>
       <div class="modal-body">
         <div class="desc" style="margin-bottom:14px;font-size:13px;color:var(--text-dim)">Se agrega a la venta y se crea como producto nuevo en Shopify.</div>
         <div class="field"><label>Nombre del producto *</label><input id="qpName" placeholder="Ej: Bikini edición especial"></div>
@@ -1018,7 +1019,7 @@
   <div class="overlay center" id="scannerModal">
     <div class="modal" style="max-width:420px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h3>📷 Escanear producto</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">photo_camera</span> Escanear producto</h3>
         <button class="iconbtn" onclick="closeScanner()">✕</button>
       </div>
       <div id="scannerView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:240px"></div>

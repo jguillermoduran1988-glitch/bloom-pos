@@ -139,8 +139,8 @@ function renderChatList(){
   for(const c of items){
     const item=el("div","chat-item"+(c.phone===state.active?" sel":""));
     let refBadge="";
-    if(c.ref_source_type==="ad") refBadge=`<span class="ref-badge ad">📣 pauta</span>`;
-    else if(c.ref_source_type) refBadge=`<span class="ref-badge">📸 historia</span>`;
+    if(c.ref_source_type==="ad") refBadge=`<span class=\"ref-badge ad\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">campaign</span> pauta</span>`;
+    else if(c.ref_source_type) refBadge=`<span class=\"ref-badge\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">photo_camera</span> historia</span>`;
     item.innerHTML=`
       <div class="av">${initials(c.name)}</div>
       <div class="ci-body">
@@ -207,13 +207,13 @@ function msgNode(m){
   // Nota privada del vendedor — NUNCA se envía al cliente
   if(m.msg_type==="note"){
     const d=el("div","msg-note");
-    d.innerHTML=`<span class="lock">🔒</span> ${waFormat(m.body)}
+    d.innerHTML=`<span class=\"lock\"><span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">lock</span></span> ${waFormat(m.body)}
       <div class="t">nota interna · ${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
     return d;
   }
   if(m.msg_type==="referral"){
     const d=el("div","msg-ref");
-    d.innerHTML=`<div class="tag">📣 escribió desde un anuncio</div>
+    d.innerHTML=`<div class=\"tag\"><span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">campaign</span> escribió desde un anuncio</div>
       ${m.media_url?`<img src="${esc(m.media_url)}" alt="">`:""}
       <div class="h">${esc(m.body||"")}</div>`;
     return d;
@@ -260,7 +260,7 @@ function renderPanel(){
   if(c.ref_source_type){
     rdiv.innerHTML=`<div class="ref-card">
       ${c.ref_media_url?`<img src="${esc(c.ref_media_url)}" alt="">`:""}
-      <div class="src">${c.ref_source_type==="ad"?"📣 Pauta":"📸 Historia / Post"}</div>
+      <div class="src">${c.ref_source_type==="ad"?"<span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">campaign</span> Pauta":"<span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">photo_camera</span> Historia / Post"}</div>
       <div class="h">${esc(c.ref_headline||"Anuncio de Bloom")}</div>
       ${c.ref_body?`<div class="b">${esc(c.ref_body)}</div>`:""}
     </div>`;
@@ -458,7 +458,7 @@ function renderProducts(){
   for(const p of list){
     const card=el("div","pc"+(picker.selected.has(p.id)?" on":""));
     const stk=p.stock<=2?`<span class="low">${p.stock} disp.</span>`:`<span class="ok">${p.stock} stock</span>`;
-    const img=p.image?`<img src="${esc(p.image)}" alt="">`:(p.emoji||"🛍");
+    const img=p.image?`<img src="${esc(p.image)}" alt="">`:(p.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>");
     card.innerHTML=`<div class="pc-img">${img}</div><div class="pc-b"><div class="pc-n">${esc(p.name)}</div><div class="pc-p">${money(p.price)}</div><div class="pc-s">${stk}</div></div>`;
     card.onclick=()=>{if(picker.selected.has(p.id))picker.selected.delete(p.id);else if(picker.selected.size<3)picker.selected.add(p.id);renderProducts();updateSendBtn();};
     grid.appendChild(card);
@@ -597,17 +597,17 @@ async function checkCustomOrderAlerts(){
 // ===== CAJERO =====
 function renderCashierBtn(){
   const btn=$("#cashierBtn"); if(!btn) return;
-  if(pos.cashier){ btn.textContent=`👤 ${pos.cashier.name}`; btn.classList.add("set"); }
-  else{ btn.textContent="👤 Cajero"; btn.classList.remove("set"); }
+  if(pos.cashier){ btn.textContent=`${msIcon("face_3")} ${pos.cashier.name}`; btn.classList.add("set"); }
+  else{ btn.textContent="<span class=\"material-symbols-outlined\" style=\"font-size:15px;vertical-align:-3px\">face_3</span> Cajero"; btn.classList.remove("set"); }
 }
 function openCashierPick(){
   const box=$("#cashierPickList"); box.innerHTML="";
   if(!pos.cashiers.length){
-    box.innerHTML='<div style="color:var(--text-dim);font-size:13px">No hay cajeros. Créalos en Config ⚙️.</div>';
+    box.innerHTML='<div style="color:var(--text-dim);font-size:13px">No hay cajeros. Créalos en Config.</div>';
   }else{
     for(const c of pos.cashiers){
       const row=el("div","cust-result");
-      const lock = c.require_pin ? " 🔒" : "";
+      const lock = c.require_pin ? " <span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-2px\">lock</span>" : "";
       const av = c.photo_url?`<img src="${esc(c.photo_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px">`:"👤 ";
       row.innerHTML=`<div class="r-nm">${av}${esc(c.name)}${lock}</div>`;
       row.onclick=()=>{ pos.cashier=c; renderCashierBtn(); closeCashierPick(); };
@@ -713,7 +713,7 @@ async function saveQuickProduct(){
   }catch(e){ console.warn("No se pudo crear en Shopify (¿Worker sin conectar?):", e); }
 
   const label = [color,size].filter(Boolean).join(" · ");
-  const p={ id:productId, name: label?`${name} (${label})`:name, price, emoji:"🆕",
+  const p={ id:productId, name: label?`${name} (${label})`:name, price, emoji:"<span class=\"material-symbols-outlined\" style=\"font-size:22px;color:var(--accent)\">fiber_new</span>",
     variants: variantId?[{variant_id:variantId, size:size||null, price, stock:99}]:null };
   addToCart(p, variantId);
 
@@ -991,7 +991,7 @@ function saveCustomerModal(){
   pos.customerSaved=true;
   const btn=$("#btnCustomer");
   btn.classList.add("done");
-  const extra = pos.billing ? " 🏢" : "";
+  const extra = pos.billing ? " <span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">business</span>" : "";
   $("#custBtnLabel").innerHTML=`✓ ${esc(pos.customer.full_name)}${extra} <span class="chk">editar</span>`;
   closeCustomerModal();
   refreshConfirmState();
@@ -1053,12 +1053,12 @@ function saveDiscount(){
   renderCart();
   // marca el botón
   const lbl = discTypeTmp==="pct" ? `${raw}%` : money(raw);
-  $("#discBtnLabel").innerHTML = raw>0 ? `🏷️ Descuento: ${lbl} <span class="chk">editar</span>` : "🏷️ Agregar descuento";
+  $("#discBtnLabel").innerHTML = raw>0 ? `<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">sell</span> Descuento: ${lbl} <span class="chk">editar</span>` : "<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">sell</span> Agregar descuento";
 }
 function clearDiscount(){
   pos.discount={type:null,value:0};
   $("#discInput").value="";
-  $("#discBtnLabel").innerHTML="🏷️ Agregar descuento";
+  $("#discBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">sell</span> Agregar descuento";
   closeDiscountModal();
   renderCart();
 }
@@ -1096,7 +1096,7 @@ function renderPosCatalog(){
   const list = pos.catalog.filter(p=>p.stock>0 && match(p));
   for(const p of list){
     const card=el("div","pos-card");
-    const img=p.image?`<img src="${esc(p.image)}">`:(p.emoji||"🛍");
+    const img=p.image?`<img src="${esc(p.image)}">`:(p.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>");
     card.innerHTML=`<div class="img">${img}</div><div class="b"><div class="n">${esc(p.name)}</div><div class="p">${money(p.price)}</div><div class="s">${p.stock} disp.</div></div>`;
     card.onclick=()=>addToCart(p);
     grid.appendChild(card);
@@ -1128,7 +1128,7 @@ function pushToCart(p, v){
   const key = variant_id || p.id;
   const existing=pos.cart.find(i=>i.key===key);
   if(existing) existing.qty++;
-  else pos.cart.push({key,id:p.id,variant_id,name:p.name,variant:label,price,basePrice:price,qty:1,image:p.image||null,emoji:p.emoji||"🛍",barcode:v.barcode||null,sku:v.sku||null});
+  else pos.cart.push({key,id:p.id,variant_id,name:p.name,variant:label,price,basePrice:price,qty:1,image:p.image||null,emoji:p.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>",barcode:v.barcode||null,sku:v.sku||null});
   renderCart();
   if(window.innerWidth<=720) posTab("carrito");
 }
@@ -1211,7 +1211,7 @@ function renderCart(){
     for(const it of pos.cart){
       const row=el("div","ci");
       const edited = it.price !== it.basePrice ? ' title="precio editado"' : '';
-      const thumb = it.image ? `<img src="${esc(it.image)}" class="ci-img">` : `<span class="ci-img ci-emoji">${it.emoji||"🛍"}</span>`;
+      const thumb = it.image ? `<img src="${esc(it.image)}" class="ci-img">` : `<span class="ci-img ci-emoji">${it.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>"}</span>`;
       row.innerHTML=`${thumb}
         <div class="ci-n"><div class="nm">${esc(it.name)}</div>${it.variant?`<div class="vr">Talla ${esc(it.variant)}</div>`:""}
         <div class="ci-price-edit"${edited}>$<input type="text" inputmode="numeric" value="${it.price.toLocaleString('es-CO')}" onchange="cartPrice('${it.key}',this.value)" onclick="this.select()">${it.price!==it.basePrice?' ✏️':''}</div>
@@ -1249,7 +1249,7 @@ function renderCart(){
   if(pos.splitPayments.length && paySum!==total){
     const btn=$("#btnPayment");
     btn.classList.remove("done");
-    $("#payBtnLabel").innerHTML="💳 Medios de pago * <span style='color:#c0392b'>(revisar)</span>";
+    $("#payBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">credit_card</span> Medios de pago * <span style='color:#c0392b'>(revisar)</span>";
   }
   refreshConfirmState();
 }
@@ -1498,9 +1498,9 @@ async function confirmSale(){
     $("#custDepto").value="Santander"; onDeptoChange();
     if($("#custCity")) $("#custCity").value="Bucaramanga";
   }
-  $("#btnCustomer").classList.remove("done"); $("#custBtnLabel").innerHTML="📋 Datos del cliente *";
-  $("#btnPayment").classList.remove("done"); $("#payBtnLabel").innerHTML="💳 Medios de pago *";
-  $("#discBtnLabel").innerHTML="🏷️ Agregar descuento";
+  $("#btnCustomer").classList.remove("done"); $("#custBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">assignment</span> Datos del cliente *";
+  $("#btnPayment").classList.remove("done"); $("#payBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">credit_card</span> Medios de pago *";
+  $("#discBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">sell</span> Agregar descuento";
   setTimeout(()=>{ renderCart(); renderPayGrid(); btn.textContent="Registrar venta"; },1800);
 }
 
@@ -1616,7 +1616,7 @@ function renderClientList(rows, title){
         </div>
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:2px">
-        ${c.email?`📧 ${esc(c.email)}`:""}${c.phone?` · 📱 ${esc(c.phone)}`:""}
+        ${c.email?`<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">email</span> ${esc(c.email)}`:""}${c.phone?` · <span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">smartphone</span> ${esc(c.phone)}`:""}
       </div>
       ${(c.city||c.depto)?`<div style="font-size:11px;color:var(--text-dim)">📍 ${esc(c.city||"")}${c.depto?", "+esc(c.depto):""}</div>`:""}
     </div>`).join("");
@@ -1725,7 +1725,7 @@ async function loadSalesHistory(){
     card.innerHTML=`
       <div class="sale-card-main">
         <div>
-          <div><b>${money(s.total)}</b> <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"🚚 Envío":"🏪 Tienda"}</span></div>
+          <div><b>${money(s.total)}</b> <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">local_shipping</span> Envío":"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda"}</span></div>
           <div style="font-size:12px;color:var(--text-dim)">${esc(s.customer_name||"Sin cliente")} · ${fecha}</div>
           ${s.alegra_invoice?`<div style="font-size:11px;color:#1d8a5e">✓ Factura Alegra: ${esc(s.alegra_invoice)}</div>`:""}
         </div>
@@ -1784,11 +1784,11 @@ async function invoiceAlegra(saleId){
       loadSalesHistory();
     }else{
       alert("Error al crear factura: "+(d.error||"desconocido"));
-      if(btn){ btn.textContent="📄 Crear factura Alegra"; btn.disabled=false; }
+      if(btn){ btn.textContent="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">description</span> Crear factura Alegra"; btn.disabled=false; }
     }
   }catch(e){
     alert("No se pudo conectar con el Worker: "+e);
-    if(btn){ btn.textContent="📄 Crear factura Alegra"; btn.disabled=false; }
+    if(btn){ btn.textContent="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">description</span> Crear factura Alegra"; btn.disabled=false; }
   }
 }
 function invoiceSiigo(saleId){
@@ -1874,10 +1874,10 @@ async function loadCustomOrders(){
     const dias = fecha? Math.ceil((fecha-hoy)/(1000*60*60*24)) : null;
     let urg=""; let urgColor="var(--text-dim)";
     if(dias!==null){
-      if(dias<0){ urg=`⚠️ Atrasado ${-dias}d`; urgColor="#c0392b"; }
-      else if(dias===0){ urg="🔴 ¡HOY!"; urgColor="#c0392b"; }
-      else if(dias<=3){ urg=`🟠 En ${dias}d`; urgColor="#e67e22"; }
-      else urg=`🟢 En ${dias}d`;
+      if(dias<0){ urg=`<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px;color:#c0392b\">warning</span> Atrasado ${-dias}d`; urgColor="#c0392b"; }
+      else if(dias===0){ urg="<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px;color:#c0392b\">emergency_home</span> ¡HOY!"; urgColor="#c0392b"; }
+      else if(dias<=3){ urg=`<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px;color:#e67e22\">schedule</span> En ${dias}d`; urgColor="#e67e22"; }
+      else urg=`<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px;color:#27ae60\">schedule</span> En ${dias}d`;
     }
     const card=el("div","pers-card");
     card.innerHTML=`
@@ -2335,7 +2335,7 @@ async function loadReport(range){
   }
 
   // --- Ventas por canal ---
-  const canales = { tienda: { label: "🏪 Tienda", total: 0, count: 0 }, envios: { label: "💬 WhatsApp", total: 0, count: 0 }, shopify: { label: "🛒 Shopify", total: 0, count: 0 } };
+  const canales = { tienda: { label: "<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda", total: 0, count: 0 }, envios: { label: "💬 WhatsApp", total: 0, count: 0 }, shopify: { label: "🛒 Shopify", total: 0, count: 0 } };
   for (const s of rows) {
     const t = s.sale_type === "shopify" ? "shopify" : (s.sale_type === "tienda" ? "tienda" : "envios");
     canales[t].total += Number(s.total || 0);
