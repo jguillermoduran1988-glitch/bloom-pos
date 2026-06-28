@@ -1642,6 +1642,23 @@ function searchClients(){
 
 // ---- Editar cliente + historial ----
 let _editClientData=null;
+function onEditDeptoChange(){
+  const deptoSel=$("#editClientDepto"), citySel=$("#editClientCity");
+  const chosen=deptoSel.value;
+  citySel.innerHTML='<option value="">Selecciona…</option>';
+  if(chosen && window.COLOMBIA && window.COLOMBIA[chosen]){
+    window.COLOMBIA[chosen].forEach(c=>{ const o=document.createElement("option"); o.value=c.toUpperCase(); o.textContent=c; citySel.appendChild(o); });
+  }
+}
+function populateEditDeptoSelects(depto, city){
+  const deptoSel=$("#editClientDepto");
+  deptoSel.innerHTML='<option value="">Selecciona…</option>';
+  if(window.COLOMBIA){
+    Object.keys(window.COLOMBIA).sort().forEach(d=>{ const o=document.createElement("option"); o.value=d; o.textContent=d; if(d===depto) o.selected=true; deptoSel.appendChild(o); });
+  }
+  onEditDeptoChange();
+  if(city){ const citySel=$("#editClientCity"); [...citySel.options].forEach(o=>{ if(o.value===city.toUpperCase()) o.selected=true; }); }
+}
 async function openClientEdit(id){
   const rows=await sbGet(`customers?id=eq.${id}`);
   const c=rows&&rows[0]; if(!c) return;
@@ -1651,8 +1668,7 @@ async function openClientEdit(id){
   $("#editClientDoc").value=c.doc||"";
   $("#editClientEmail").value=c.email||"";
   $("#editClientPhone").value=c.phone||"";
-  $("#editClientCity").value=c.city||"";
-  $("#editClientDepto").value=c.depto||"";
+  populateEditDeptoSelects(c.depto||"", c.city||"");
   // Carga historial de compras por email
   const histBox=$("#clientHistory");
   histBox.innerHTML="Cargando historial…";
@@ -1686,7 +1702,7 @@ async function saveClientEdit(){
     email:($("#editClientEmail").value||"").trim().toLowerCase()||null,
     phone:($("#editClientPhone").value||"").trim()||null,
     city:($("#editClientCity").value||"").trim().toUpperCase()||null,
-    depto:($("#editClientDepto").value||"").trim().toUpperCase()||null,
+    depto:($("#editClientDepto").value||"").trim()||null,
   };
   await sbPatch(`customers?id=eq.${id}`, data);
   closeClientEdit();

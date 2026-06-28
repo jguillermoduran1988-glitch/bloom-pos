@@ -519,8 +519,8 @@
     <div class="pos-catalog">
       <div class="pos-search-row">
         <input class="pos-search" id="posSearch" placeholder="Buscar producto o escanear…" oninput="renderPosCatalog()">
-        <button class="scan-btn" onclick="openScanner()" title="Escanear código de barras / QR">📷</button>
-        <button class="scan-btn" onclick="openQuickProduct()" title="Crear producto rápido" style="font-size:22px">➕</button>
+        <button class="scan-btn" onclick="openScanner()" title="Escanear código de barras / QR"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">photo_camera</span></button>
+        <button class="scan-btn" onclick="openQuickProduct()" title="Crear producto rápido"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">add_2</span></button>
       </div>
       <div class="pos-grid" id="posGrid"></div>
     </div>
@@ -528,7 +528,7 @@
       <div class="cart-head">
         <h3>🛒 Venta</h3>
         <div style="display:flex;align-items:center;gap:8px">
-          <button class="cashier-btn" id="cashierBtn" onclick="openCashierPick()">👤 Cajero</button>
+          <button class="cashier-btn" id="cashierBtn" onclick="openCashierPick()"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> Cajero</button>
           <span id="cartCount" style="font-size:13px;color:var(--text-dim)">0 items</span>
         </div>
       </div>
@@ -559,7 +559,7 @@
         </div>
 
         <button class="cart-btn" id="btnPayment" onclick="openPaymentModal()">
-          <span id="payBtnLabel">💳 Medios de pago *</span>
+          <span id="payBtnLabel"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">credit_card</span> Medios de pago *</span>
         </button>
 
         <button class="pos-confirm" id="confirmSale" disabled onclick="confirmSale()">Registrar venta</button>
@@ -680,7 +680,7 @@
 <div class="screen" id="screen-config" style="display:none">
   <div class="config">
     <div class="cfg-sec">
-      <h3>👥 Vendedores</h3>
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">face_3</span> Vendedores</h3>
       <div class="desc">Agrega a tu equipo para saber cuánto vende cada uno.</div>
       <div id="sellersList"></div>
       <div class="cfg-add">
@@ -690,7 +690,7 @@
     </div>
 
     <div class="cfg-sec">
-      <h3>🧑‍💼 Cajeros</h3>
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">face_3</span> Cajeros</h3>
       <div class="desc">Quién maneja la caja. Pueden tener clave de 4 dígitos.</div>
       <div id="cashiersList"></div>
       <div class="cfg-add">
@@ -700,7 +700,7 @@
     </div>
 
     <div class="cfg-sec">
-      <h3>🧾 Recibo POS</h3>
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">receipt</span> Recibo POS</h3>
       <div class="desc">Configura el recibo que se imprime/comparte al vender.</div>
       <label class="emp-toggle" style="margin-bottom:12px">
         <input type="checkbox" id="setReceiptEnabled" onchange="saveSettings()">
@@ -728,7 +728,7 @@
     </div>
 
     <div class="cfg-sec">
-      <h3>💳 Métodos de pago</h3>
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">credit_card</span> Métodos de pago</h3>
       <div class="desc">Los que aparecen al registrar una venta en el POS.</div>
       <div id="paymentsList"></div>
       <div class="cfg-add">
@@ -745,7 +745,7 @@
     <div class="note-tabs" style="margin-bottom:16px" id="datTabs">
       <button id="datTab1" class="on" onclick="datosTab('tienda')"><span class="material-symbols-outlined">storefront</span> <span class="dat-tab-lbl">Tienda</span></button>
       <button id="datTab4" onclick="datosTab('ventas')"><span class="material-symbols-outlined">receipt_long</span> <span class="dat-tab-lbl">Ventas</span></button>
-      <button id="datTab5" onclick="datosTab('clientes')"><span class="material-symbols-outlined">groups</span> <span class="dat-tab-lbl">Clientes</span></button>
+      <button id="datTab5" onclick="datosTab('clientes')"><span class="material-symbols-outlined">diversity_4</span> <span class="dat-tab-lbl">Clientes</span></button>
       <div class="dat-tabs-extra" id="datTabsExtra">
         <button id="datTab2" onclick="datosTab('tabla')"><span class="material-symbols-outlined">table_chart</span> <span class="dat-tab-lbl">Tabla</span></button>
         <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">auto_awesome</span> <span class="dat-tab-lbl">Pers.</span></button>
@@ -854,14 +854,14 @@
     <div id="teamSalesStrip" class="team-sales-strip"></div>
     <div class="team-typing" id="teamTyping"></div>
     <div class="team-input">
-      <button class="team-plus" id="plusBtn" onclick="togglePlusMenu()">＋</button>
+      <button class="team-plus" id="plusBtn" onclick="togglePlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
       <input id="teamText" placeholder="Escribe un mensaje…" onkeydown="if(event.key==='Enter')sendTeamMsg()" oninput="onTeamTyping()">
       <button class="team-send" onclick="sendTeamMsg()">➤</button>
     </div>
     <div id="plusMenu" class="plus-menu">
-      <button onclick="toggleEmojiPicker();closePlusMenu()">😀<span>Emojis</span></button>
-      <button onclick="attachTeamPhoto();closePlusMenu()">📷<span>Foto</span></button>
-      <button id="voiceBtn" onclick="toggleVoice()">🎤<span>Nota de voz</span></button>
+      <button onclick="toggleEmojiPicker();closePlusMenu()"><span class="material-symbols-outlined">add_reaction</span><span>Emojis</span></button>
+      <button onclick="attachTeamPhoto();closePlusMenu()"><span class="material-symbols-outlined">photo_camera</span><span>Foto</span></button>
+      <button id="voiceBtn" onclick="toggleVoice()"><span class="material-symbols-outlined">mic</span><span>Nota de voz</span></button>
     </div>
     <div id="emojiPicker" class="emoji-picker"></div>
   </div>
@@ -871,7 +871,7 @@
 <nav class="navbar">
   <button class="on" id="nav-chats" onclick="switchScreen('chats')"><span class="ic material-symbols-outlined">chat_bubble</span>Chats</button>
   <button id="nav-pos" onclick="switchScreen('pos')"><span class="ic material-symbols-outlined">point_of_sale</span>POS</button>
-  <button id="nav-equipo" onclick="switchScreen('equipo')"><span class="ic material-symbols-outlined">group</span>Equipo</button>
+  <button id="nav-equipo" onclick="switchScreen('equipo')"><span class="ic material-symbols-outlined">diversity_2</span>Equipo</button>
   <button id="nav-datos" onclick="switchScreen('datos')"><span class="ic material-symbols-outlined">analytics</span>Datos</button>
   <button id="nav-config" onclick="switchScreen('config')"><span class="ic material-symbols-outlined">settings</span>Config</button>
 </nav>
@@ -920,8 +920,8 @@
           <div class="field"><label>Celular</label><input id="editClientPhone" placeholder="300..." inputmode="numeric"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Ciudad</label><input id="editClientCity" placeholder="CIUDAD"></div>
-          <div class="field"><label>Departamento</label><input id="editClientDepto" placeholder="DEPARTAMENTO"></div>
+          <div class="field"><label>Departamento</label><select id="editClientDepto" onchange="onEditDeptoChange()"><option value="">Selecciona…</option></select></div>
+          <div class="field"><label>Ciudad / Municipio</label><select id="editClientCity"><option value="">Selecciona…</option></select></div>
         </div>
         <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
           <div style="font-size:13px;font-weight:600;margin-bottom:8px">📦 Historial de compras</div>
