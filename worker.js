@@ -758,6 +758,15 @@ async function importShopifyOnlineOrder(env, order) {
   }
 
   const ship = order.shipping_address || order.billing_address || {};
+  const email = order.email || null;
+  const rawPhone = ship.phone || order.phone || null;
+  const phone = rawPhone ? rawPhone.replace(/\D/g, "").slice(-10) : null;
+  const customerName = ship.name || email || "Cliente Online";
+
+  // Buscar cliente en POS por email o teléfono, si no existe crearlo
+  await findOrCreatePosCustomer(env, { email, phone, name: customerName,
+    address: ship.address1 || null, city: ship.city || null, depto: ship.province || null });
+
   const items = (order.line_items || []).map(li => ({
     name: li.title,
     variant: li.variant_title || null,
@@ -776,9 +785,9 @@ async function importShopifyOnlineOrder(env, order) {
   const payload = {
     shopify_order_id:   order.id,
     shopify_order_name: order.name,
-    customer_name:      ship.name  || order.email || "Cliente Online",
-    customer_email:     order.email || null,
-    customer_phone:     ship.phone || order.phone || null,
+    customer_name:      customerName,
+    customer_email:     email,
+    customer_phone:     phone,
     customer_address:   ship.address1 || null,
     customer_city:      ship.city || null,
     customer_depto:     ship.province || null,
@@ -789,7 +798,7 @@ async function importShopifyOnlineOrder(env, order) {
     discount_amount:    discount,
     discount_type:      discount > 0 ? "fixed" : null,
     discount_value:     discount,
-    sale_type:          "envios",
+    sale_type:          "shopify",
     payment_method:     order.payment_gateway || "online",
     payment_detail:     [{ method: order.payment_gateway || "online", amount: total }],
     seller_name:        "Shopify Online",
@@ -805,4 +814,42 @@ async function importShopifyOnlineOrder(env, order) {
   if (!r.ok) return { ok: false, error: await r.text() };
   const saved = await r.json();
   return { ok: true, sale_id: saved?.[0]?.id };
+}
+
+async function findOrCreatePosCustomer(env, { email, phone, name, address, city, depto }) {
+  const sb = env.SUPABASE_URL;
+  const h = sbHeaders(env);
+
+  // Buscar por email
+  if (email) {
+    const r = await fetch(`${sb}/rest/v1/customers?store=eq.bloom&email=eq.${encodeURIComponent(email)}&limit=1&select=id`, { headers: h });
+    if (r.ok) { const rows = await r.json(); if (rows.length) return rows[0].id; }
+  }
+  // Buscar por teléfono
+  if (phone) {
+    const r = await fetch(`${sb}/rest/v1/customers?store=eq.bloom&phone=eq.${encodeURIComponent(phone)}&limit=1&select=id`, { headers: h });
+    if (r.ok) { const rows = await r.json(); if (rows.length) return rows[0].id; }
+  }
+
+  // Crear cliente nuevo
+  const parts = (name || "Cliente").trim().split(/\s+/);
+  const payload = {
+    full_name: name || "Cliente Online",
+    name: parts[0] || "Cliente",
+    last_name: parts.slice(1).join(" ") || "",
+    email: email || null,
+    phone: phone || null,
+    address: address || null,
+    city: city || null,
+    depto: depto || null,
+    store: "bloom",
+  };
+  const cr = await fetch(`${sb}/rest/v1/customers`, {
+    method: "POST",
+    headers: sbHeaders(env, "return=representation"),
+    body: JSON.stringify(payload),
+  });
+  if (!cr.ok) return null;
+  const created = await cr.json();
+  return created?.[0]?.id || null;
 }

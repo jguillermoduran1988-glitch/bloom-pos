@@ -2283,7 +2283,7 @@ async function loadReport(range){
     if(!f||!t) return;
     from=new Date(f+"T00:00:00"); to=new Date(t+"T23:59:59");
   }
-  const rows=await sbGet(`sales?store=eq.${C.STORE}&status=eq.completada&created_at=gte.${from.toISOString()}&created_at=lte.${to.toISOString()}&select=seller_name,total,payment_method,payment_detail,items,customer_name`);
+  const rows=await sbGet(`sales?store=eq.${C.STORE}&status=eq.completada&created_at=gte.${from.toISOString()}&created_at=lte.${to.toISOString()}&select=seller_name,total,payment_method,payment_detail,items,customer_name,sale_type`);
 
   // --- Ventas por vendedor ---
   const byseller={};
@@ -2316,6 +2316,25 @@ async function loadReport(range){
       <div class="rep-card"><div class="nm">🧾 N° de ventas</div><div class="big">${numVentas}</div></div>
       <div class="rep-card"><div class="nm">📈 Ticket promedio</div><div class="big">${money(promedio)}</div></div>
       <div class="rep-card"><div class="nm">🛍 Ítem promedio</div><div class="big">${itemProm}</div></div>`;
+  }
+
+  // --- Ventas por canal ---
+  const canales = { tienda: { label: "🏪 Tienda", total: 0, count: 0 }, envios: { label: "💬 WhatsApp", total: 0, count: 0 }, shopify: { label: "🛒 Shopify", total: 0, count: 0 } };
+  for (const s of rows) {
+    const t = s.sale_type === "shopify" ? "shopify" : (s.sale_type === "tienda" ? "tienda" : "envios");
+    canales[t].total += Number(s.total || 0);
+    canales[t].count++;
+  }
+  const canalBox = $("#canalStats");
+  if (canalBox) {
+    const grandTotal = Object.values(canales).reduce((s, c) => s + c.total, 0) || 1;
+    canalBox.innerHTML = Object.entries(canales).map(([, c]) => {
+      const pct = Math.round(c.total / grandTotal * 100);
+      return `<div class="paystat-row">
+        <div class="paystat-top"><span>${c.label}</span><span><b>${money(c.total)}</b> · ${c.count} venta${c.count !== 1 ? "s" : ""} · ${pct}%</span></div>
+        <div class="paystat-bar"><div class="paystat-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join("");
   }
 
   // --- Ventas por medio de pago ---
