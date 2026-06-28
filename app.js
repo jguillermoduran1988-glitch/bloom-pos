@@ -2340,7 +2340,7 @@ async function renderUsersList(){
              <span class="material-symbols-outlined" style="font-size:16px">person_add</span>
            </span>`
       }
-      <span class="del" onclick="deleteUser('${u.id}','${esc(u.name)}',this)" title="Toca 2 veces para eliminar definitivamente">
+      <span class="del" onclick="deleteUser('${u.id}','${esc(u.name)}')" title="Eliminar usuario">
         <span class="material-symbols-outlined" style="font-size:16px">delete</span>
       </span>`;
     if(!u.active) row.style.opacity="0.45";
@@ -2406,11 +2406,21 @@ async function saveUserRoles(id){
   await sbPatch(`sellers?id=eq.${id}`,{is_cashier:c,is_master:m});
   await loadUsers(); await renderUsersList();
 }
-async function deleteUser(id,name,btn){
-  if(!btn._ok){ btn._ok=true; const orig=btn.innerHTML;
-    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;color:#e74c3c">help</span>';
-    setTimeout(()=>{btn._ok=false;btn.innerHTML=orig;},2000); return; }
-  btn._ok=false;
+function deleteUser(id,name){
+  const box=$("#usersList"); if(!box) return;
+  // quitar cualquier confirmación previa
+  box.querySelectorAll(".del-confirm").forEach(e=>e.remove());
+  const row=[...box.querySelectorAll(".cfg-row")].find(r=>r.querySelector(`[onclick*="${id}"]`));
+  if(!row) return;
+  const conf=document.createElement("div");
+  conf.className="del-confirm";
+  conf.style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fdecea;border-radius:8px;margin-top:4px;font-size:13px";
+  conf.innerHTML=`<span style="flex:1">¿Eliminar a <b>${esc(name)}</b>? Esta acción no se puede deshacer.</span>
+    <button onclick="confirmDeleteUser('${id}')" style="background:#e74c3c;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px">Eliminar</button>
+    <button onclick="this.closest('.del-confirm').remove()" style="background:none;border:1px solid var(--border);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Cancelar</button>`;
+  row.after(conf);
+}
+async function confirmDeleteUser(id){
   await sbDelete(`sellers?id=eq.${id}`);
   await loadUsers(); await renderUsersList();
 }
