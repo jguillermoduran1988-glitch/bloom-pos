@@ -786,9 +786,10 @@
         <div class="rep-filter" style="margin-top:-8px">
           <button onclick="setReportRange('custom',this)"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">calendar_month</span> Personalizado</button>
         </div>
-        <div id="customRangeWrap" style="display:none;gap:8px;margin-bottom:10px">
-          <input type="date" id="customFrom" oninput="loadReport('custom')" onchange="loadReport('custom')">
-          <input type="date" id="customTo" oninput="loadReport('custom')" onchange="loadReport('custom')">
+        <div id="customRangeWrap" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center">
+          <input type="date" id="customFrom">
+          <input type="date" id="customTo">
+          <button onclick="loadReport('custom')" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;cursor:pointer">Aplicar</button>
         </div>
         <div class="report-grid" id="reportGrid"></div>
       </div>
