@@ -2411,22 +2411,22 @@ function deleteUser(id){
   const panel=document.createElement("div");
   panel.className="inline-panel";
   panel.style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fdecea;border-radius:8px;margin-top:4px;font-size:13px;flex-wrap:wrap";
-  panel.innerHTML=`<span style="flex:1">¿Eliminar permanentemente?</span>
-    <button onclick="confirmDeleteUser('${id}')" style="background:#e74c3c;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">Sí, eliminar</button>
+  panel.innerHTML=`<span style="flex:1;font-size:12px">Si tiene ventas se desactivará. Si no tiene ventas se eliminará.</span>
+    <button onclick="confirmDeleteUser('${id}')" style="background:#e74c3c;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">Confirmar</button>
     <button onclick="_clearInlinePanel()" style="background:none;border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer">Cancelar</button>`;
   row.after(panel);
 }
 async function confirmDeleteUser(id){
   _clearInlinePanel();
-  try{
-    const r = await sbDelete(`sellers?id=eq.${id}`);
-    if(r.status===200||r.status===204){
-      await loadUsers(); await renderUsersList();
-    } else {
-      const body = await r.text();
-      alert("Error al eliminar: "+r.status+" - "+body);
-    }
-  }catch(e){ alert("Error: "+e.message); }
+  // No se puede borrar si tiene ventas asociadas — se desactiva en su lugar
+  const r = await sbDelete(`sellers?id=eq.${id}`);
+  if(r.status===200||r.status===204){
+    await loadUsers(); await renderUsersList();
+  } else {
+    // FK violation: tiene ventas, solo desactivar
+    await sbPatch(`sellers?id=eq.${id}`,{active:false});
+    await loadUsers(); await renderUsersList();
+  }
 }
 
 function editUser(id){
