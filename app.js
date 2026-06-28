@@ -591,41 +591,26 @@ async function initPos(){
 function initBarcodeInput(){
   const inp = $("#posSearch"); if(!inp || inp._barcodeReady) return;
   inp._barcodeReady = true;
-  let _barcodeTimer, _lastKey = 0;
   inp.addEventListener("keydown", e=>{
-    if(e.key === "Enter"){
-      e.preventDefault();
-      const code = inp.value.trim();
-      if(!code) return;
-      // Buscar coincidencia exacta de barcode
-      const found = findByBarcode(code);
-      if(found){
-        addToCart(found.product, found.variant_id);
-        inp.value = ""; renderPosCatalog(); return;
-      }
-      // Si hay un único resultado en el catálogo filtrado, agregarlo
-      const visible = pos.catalog.filter(p=>matchSearch(p, code));
-      if(visible.length === 1){ addToCart(visible[0]); inp.value=""; renderPosCatalog(); }
-    } else {
-      // Detectar velocidad de escritura (scanner = muy rápido)
-      const now = Date.now();
-      if(now - _lastKey < 30) clearTimeout(_barcodeTimer), _barcodeTimer = setTimeout(()=>{
-        const code = inp.value.trim();
-        const found = findByBarcode(code);
-        if(found){ addToCart(found.product, found.variant_id); inp.value=""; renderPosCatalog(); }
-      }, 80);
-      _lastKey = now;
+    if(e.key !== "Enter") return;
+    e.preventDefault();
+    const code = inp.value.trim();
+    if(!code) return;
+    const found = findProductByCode(code);
+    if(found){
+      addToCart(found.product, found.variant_id);
+      inp.value = ""; renderPosCatalog();
+      if(navigator.vibrate) navigator.vibrate(60);
+      return;
     }
+    // Si hay exactamente un resultado en catálogo filtrado, agrégalo
+    const q = code.toLowerCase();
+    const matches = pos.catalog.filter(p=>
+      p.name.toLowerCase().includes(q) ||
+      (p.variants||[]).some(v=>(v.barcode&&String(v.barcode).toLowerCase().includes(q))||(v.sku&&String(v.sku).toLowerCase().includes(q)))
+    );
+    if(matches.length === 1){ addToCart(matches[0]); inp.value=""; renderPosCatalog(); }
   });
-}
-
-function matchSearch(p, q){
-  q = q.toLowerCase();
-  if(p.name.toLowerCase().includes(q)) return true;
-  return (p.variants||[]).some(v=>
-    (v.barcode && String(v.barcode).toLowerCase().includes(q)) ||
-    (v.sku && String(v.sku).toLowerCase().includes(q))
-  );
 }
 
 // Alerta de pedidos personalizados próximos (≤3 días) al abrir el POS
