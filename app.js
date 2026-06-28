@@ -589,27 +589,35 @@ async function initPos(){
 }
 
 function initBarcodeInput(){
-  const inp = $("#posSearch"); if(!inp || inp._barcodeReady) return;
-  inp._barcodeReady = true;
-  inp.addEventListener("keydown", e=>{
-    if(e.key !== "Enter") return;
-    e.preventDefault();
-    const code = inp.value.trim();
-    if(!code) return;
-    const found = findProductByCode(code);
-    if(found){
-      addToCart(found.product, found.variant_id);
-      inp.value = ""; renderPosCatalog();
-      if(navigator.vibrate) navigator.vibrate(60);
-      return;
+  if(window._barcodeListenerActive) return;
+  window._barcodeListenerActive = true;
+  let buf = "", lastKey = 0;
+  document.addEventListener("keydown", e=>{
+    // Solo en pantalla POS
+    const posEl = $("#screen-pos");
+    if(!posEl || posEl.style.display==="none") return;
+    // No interceptar si el foco está en otro input (PIN, nombre, etc.)
+    const a = document.activeElement;
+    if(a && a.id !== "posSearch" && (a.tagName==="INPUT"||a.tagName==="TEXTAREA")) return;
+    if(e.ctrlKey||e.altKey||e.metaKey) return;
+    const now = Date.now();
+    // Si pasaron más de 100ms entre teclas, el buffer es de escritura manual — resetear
+    if(now - lastKey > 100) buf = "";
+    lastKey = now;
+    if(e.key==="Enter"){
+      e.preventDefault();
+      const code = buf.trim();
+      buf = "";
+      if(code.length < 2) return;
+      const found = findProductByCode(code);
+      if(found){
+        addToCart(found.product, found.variant_id);
+        const inp=$("#posSearch"); if(inp){inp.value="";renderPosCatalog();}
+        if(navigator.vibrate) navigator.vibrate(60);
+      }
+    } else if(e.key.length===1){
+      buf += e.key;
     }
-    // Si hay exactamente un resultado en catálogo filtrado, agrégalo
-    const q = code.toLowerCase();
-    const matches = pos.catalog.filter(p=>
-      p.name.toLowerCase().includes(q) ||
-      (p.variants||[]).some(v=>(v.barcode&&String(v.barcode).toLowerCase().includes(q))||(v.sku&&String(v.sku).toLowerCase().includes(q)))
-    );
-    if(matches.length === 1){ addToCart(matches[0]); inp.value=""; renderPosCatalog(); }
   });
 }
 
