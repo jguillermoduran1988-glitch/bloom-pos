@@ -2299,7 +2299,7 @@ async function renderUsersList(){
         <span class="material-symbols-outlined" style="font-size:16px">key</span>
       </span>
       ${u.active
-        ? `<span class="del" onclick="deactivateUser('${u.id}','${esc(u.name)}')" title="Desactivar">
+        ? `<span class="del" onclick="deactivateUser('${u.id}','${esc(u.name)}',this)" title="Toca 2 veces para desactivar">
              <span class="material-symbols-outlined" style="font-size:16px">person_off</span>
            </span>`
         : `<span class="del" onclick="activateUser('${u.id}','${esc(u.name)}')" title="Activar" style="color:#27ae60">
@@ -2341,8 +2341,11 @@ async function setUserPin(id,name){
   await loadUsers(); await renderUsersList();
 }
 
-async function deactivateUser(id,name){
-  if(!confirm(`¿Desactivar a ${name}?`)) return;
+async function deactivateUser(id,name,btn){
+  if(!btn._ok){ btn._ok=true; const orig=btn.innerHTML;
+    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;color:#e74c3c">help</span>';
+    setTimeout(()=>{btn._ok=false;btn.innerHTML=orig;},2000); return; }
+  btn._ok=false;
   await sbPatch(`sellers?id=eq.${id}`,{active:false});
   await loadUsers(); await renderUsersList();
 }
