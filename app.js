@@ -2600,6 +2600,7 @@ function setReportRange(range,btn){
   loadReport(range);
 }
 async function loadReport(range){
+  if(!pos.payments?.length) await loadPayments();
   const now=new Date(); let from=new Date(), to=new Date();
   to.setHours(23,59,59,999);
   if(range==="today"){ from.setHours(0,0,0,0); }
