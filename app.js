@@ -2524,6 +2524,7 @@ function renderPaymentsList(){
       ? `<img src="${esc(p.icon_url)}" class="cfg-avatar">`
       : `<span class="ic">${p.icon||"💳"}</span>`;
     row.innerHTML=`${ic}<span class="nm">${esc(p.name)}</span>
+      <span class="cfg-photo" onclick="renamePayment('${p.id}','${esc(p.name)}')" title="Renombrar">✏️</span>
       <span class="cfg-photo" onclick="setPaymentIcon('${p.id}')" title="Cambiar ícono">🖼️</span>
       <span class="del" onclick="delPayment('${p.id}','${esc(p.name)}')">🗑</span>`;
     box.appendChild(row);
@@ -2533,6 +2534,13 @@ async function addPayment(){
   const name=$("#newPayment").value.trim(); if(!name)return;
   await sbPost("payment_methods",{name,icon:"💳",position:pos.payments.length,store:C.STORE});
   $("#newPayment").value=""; await loadPayments(); renderPaymentsList();
+}
+async function renamePayment(id, currentName){
+  const name = prompt("Nuevo nombre:", currentName);
+  if(!name || name.trim()===currentName) return;
+  await sbPatch(`payment_methods?id=eq.${id}`, {name: name.trim()});
+  await loadPayments(); renderPaymentsList();
+  renderPayGrid();
 }
 async function setPaymentIcon(id){
   const dataUrl=await pickImage(100);
