@@ -1182,7 +1182,7 @@ function pushToCart(p, v){
   const variant_id = v.variant_id || null;
   const parts = [];
   if(v.color) parts.push(`Color: ${v.color}`);
-  if(v.talla) parts.push(v.talla);
+  if(v.talla) parts.push(`Talla: ${v.talla}`);
   const label = parts.join(" · ") || v.size || null;
   const price = v.price ?? p.price;
   const key = variant_id || p.id;

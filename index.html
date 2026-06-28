@@ -232,7 +232,9 @@
   }
   /* ============ POS ============ */
   .pos{display:grid;grid-template-columns:1fr 460px;width:100%;height:100%;overflow:hidden}
-  .pos-catalog{padding:14px 16px;overflow-y:auto;border-right:1px solid var(--border);min-height:0}
+  .pos-catalog{display:flex;flex-direction:column;border-right:1px solid var(--border);min-height:0;overflow:hidden}
+  .pos-search-wrap{padding:14px 16px 0;flex-shrink:0}
+  .pos-catalog-scroll{padding:10px 16px 14px;overflow-y:auto;flex:1;min-height:0}
   .pos-search{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;font-size:14px;outline:none;margin-bottom:12px}
   .pos-search-row{display:flex;gap:8px;margin-bottom:12px}
   .pos-search-row .pos-search{margin-bottom:0;flex:1}
@@ -535,12 +537,16 @@
       <button id="tabCarrito" onclick="posTab('carrito')"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">shopping_cart</span> Carrito <span class="cart-badge" id="tabCartBadge">0</span></button>
     </div>
     <div class="pos-catalog">
-      <div class="pos-search-row">
-        <input class="pos-search" id="posSearch" placeholder="Buscar producto o escanear…" oninput="renderPosCatalog()">
-        <button class="scan-btn" onclick="openScanner()" title="Escanear código de barras / QR"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">photo_camera</span></button>
-        <button class="scan-btn" onclick="openQuickProduct()" title="Crear producto rápido"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">add_2</span></button>
+      <div class="pos-search-wrap">
+        <div class="pos-search-row">
+          <input class="pos-search" id="posSearch" placeholder="Buscar producto o escanear…" oninput="renderPosCatalog()">
+          <button class="scan-btn" onclick="openScanner()" title="Escanear código de barras / QR"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">photo_camera</span></button>
+          <button class="scan-btn" onclick="openQuickProduct()" title="Crear producto rápido"><span class="material-symbols-outlined" style="font-size:20px;line-height:1">add_2</span></button>
+        </div>
       </div>
-      <div class="pos-grid" id="posGrid"></div>
+      <div class="pos-catalog-scroll">
+        <div class="pos-grid" id="posGrid"></div>
+      </div>
     </div>
     <div class="cart pos-cart">
       <div class="cart-head">
