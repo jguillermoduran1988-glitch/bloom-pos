@@ -1180,7 +1180,10 @@ function addToCart(p, forcedVariantId){
 
 function pushToCart(p, v){
   const variant_id = v.variant_id || null;
-  const label = [v.color, v.talla].filter(Boolean).join(" · ") || v.size || null;
+  const parts = [];
+  if(v.color) parts.push(`Color: ${v.color}`);
+  if(v.talla) parts.push(v.talla);
+  const label = parts.join(" · ") || v.size || null;
   const price = v.price ?? p.price;
   const key = variant_id || p.id;
   const existing=pos.cart.find(i=>i.key===key);
@@ -1270,7 +1273,7 @@ function renderCart(){
       const edited = it.price !== it.basePrice ? ' title="precio editado"' : '';
       const thumb = it.image ? `<img src="${esc(it.image)}" class="ci-img">` : `<span class="ci-img ci-emoji">${it.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>"}</span>`;
       row.innerHTML=`${thumb}
-        <div class="ci-n"><div class="nm">${esc(it.name)}</div>${it.variant?`<div class="vr">Talla ${esc(it.variant)}</div>`:""}
+        <div class="ci-n"><div class="nm">${esc(it.name)}</div>${it.variant?`<div class="vr">${esc(it.variant)}</div>`:""}
         <div class="ci-price-edit"${edited}>$<input type="text" inputmode="numeric" value="${it.price.toLocaleString('es-CO')}" onchange="cartPrice('${it.key}',this.value)" onclick="this.select()">${it.price!==it.basePrice?' ✏️':''}</div>
         <button class="ci-note-btn" onclick="openNoteModal('${it.key}')">${it.pers?.delivery_date?`✨ Personalizado · ${it.pers.delivery_date}`:(it.note?`📝 ${esc(it.note.slice(0,20))}${it.note.length>20?'…':''}`:'📝 Obs. / Personalización')}</button></div>
         <div class="qty"><button onclick="cartQty('${it.key}',-1)">−</button><span>${it.qty}</span><button onclick="cartQty('${it.key}',1)">+</button></div>
