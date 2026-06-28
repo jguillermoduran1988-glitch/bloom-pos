@@ -531,7 +531,7 @@ $("#searchBox").addEventListener("input",e=>{clearTimeout(searchTimer);searchTim
 // ====================================================================
 const pos = { catalog:[], cart:[], saleType:"tienda", payment:null, sellers:[], payments:[], splitPayments:[],
   discount:{type:null, value:0}, customer:null, billing:null, customerSaved:false,
-  cashiers:[], cashier:null, settings:null, teamAuthor:null };
+  cashiers:[], cashier:null, settings:null, teamAuthor:null, users:[], currentUser:null };
 // splitPayments: [{method, icon, amount}] hasta 4
 // discount: {type:'pct'|'val', value:number}
 
@@ -549,19 +549,36 @@ function switchScreen(name){
 }
 
 // ---- Cargar vendedores y métodos de pago ----
-async function loadSellers(){ pos.sellers = await sbGet(`sellers?store=eq.${C.STORE}&active=eq.true&order=name.asc`); }
+async function loadUsers(){
+  const all = await sbGet(`users?store=eq.${C.STORE}&active=eq.true&order=name.asc`) || [];
+  pos.users = all;
+  pos.sellers = all.filter(u=>u.is_seller);
+  pos.cashiers = all.filter(u=>u.is_cashier||u.is_master);
+}
+async function loadSellers(){
+  if(pos.users.length){ pos.sellers=pos.users.filter(u=>u.is_seller); return; }
+  pos.sellers = await sbGet(`sellers?store=eq.${C.STORE}&active=eq.true&order=name.asc`) || [];
+}
 async function loadPayments(){ pos.payments = await sbGet(`payment_methods?store=eq.${C.STORE}&active=eq.true&order=position.asc`); }
 
 // ---- POS ----
-async function loadCashiers(){ pos.cashiers = await sbGet(`cashiers?store=eq.${C.STORE}&active=eq.true&order=name.asc`); }
+async function loadCashiers(){
+  if(pos.users.length){ pos.cashiers=pos.users.filter(u=>u.is_cashier||u.is_master); return; }
+  pos.cashiers = await sbGet(`cashiers?store=eq.${C.STORE}&active=eq.true&order=name.asc`) || [];
+}
 
 async function initPos(){
   pos.catalog = await fetchProducts();
-  await loadSellers(); await loadPayments(); await loadCashiers(); await loadSettings();
+  await loadUsers(); await loadPayments(); await loadSettings();
   renderPosCatalog(); renderSellerSelect(); renderPayGrid(); renderCart();
   renderCashierBtn();
   initDeptos();
   checkCustomOrderAlerts();
+  // Login: restaurar sesión o mostrar modal si hay cajeros configurados
+  if(!pos.currentUser){
+    const restored = await restoreSession();
+    if(!restored) showLoginModal();
+  }
 }
 
 // Alerta de pedidos personalizados próximos (≤3 días) al abrir el POS
@@ -1996,7 +2013,9 @@ async function checkTyping(){
 }
 async function loadTeamSalesStrip(){
   const box=$("#teamSalesStrip"); if(!box) return;
-  const rows=await sbGet(`sales?store=eq.${C.STORE}&order=created_at.desc&limit=8&select=id,total,customer_name,created_at`);
+  const todayStart=new Date(); todayStart.setHours(0,0,0,0);
+  const todayEnd=new Date(); todayEnd.setHours(23,59,59,999);
+  const rows=await sbGet(`sales?store=eq.${C.STORE}&status=eq.completada&created_at=gte.${todayStart.toISOString()}&created_at=lte.${todayEnd.toISOString()}&order=created_at.desc&limit=12&select=id,total,customer_name,created_at`);
   box.innerHTML="";
   if(!rows||!rows.length){ box.style.display="none"; return; }
   box.style.display="flex";
@@ -2173,6 +2192,166 @@ async function sendTeamMsg(){
   });
   await loadTeamMsgs();
 }
+
+// ════════════════════════════════════════════════════════
+// SISTEMA DE USUARIOS (login unificado vendedor/cajero)
+// ════════════════════════════════════════════════════════
+
+let _loginPending = null;
+
+function showLoginModal(){
+  const loginables = (pos.users||[]).filter(u=>u.is_cashier||u.is_master);
+  if(!loginables.length) return; // sin cajeros configurados, no mostrar
+  const grid = $("#loginGrid");
+  grid.style.gridTemplateColumns = loginables.length <= 2 ? "1fr 1fr" : "repeat(3,1fr)";
+  grid.innerHTML = "";
+  for(const u of loginables){
+    const ini = u.name.trim().split(/\s+/).map(w=>w[0]).join("").substring(0,2).toUpperCase();
+    const badge = [u.is_master?"Master":null, u.is_cashier?"Cajero":null].filter(Boolean).join(" · ");
+    const card = el("div","login-card");
+    card.innerHTML = `<div class="login-avatar">${ini}</div><div class="login-name">${esc(u.name)}</div><div class="login-badge">${badge}</div>`;
+    card.onclick = ()=>selectLoginUser(u);
+    grid.appendChild(card);
+  }
+  $("#loginPinSec").style.display = "none";
+  $("#loginModal").style.display = "flex";
+}
+
+function selectLoginUser(u){
+  _loginPending = u;
+  document.querySelectorAll(".login-card").forEach(c=>c.classList.remove("sel"));
+  event.currentTarget.classList.add("sel");
+  if(u.pin){
+    $("#loginPinMsg").textContent = `Clave de ${u.name}`;
+    $("#loginPinInput").value = "";
+    $("#loginPinSec").style.display = "block";
+    setTimeout(()=>{ const inp=$("#loginPinInput"); if(inp) inp.focus(); },100);
+  } else {
+    loginUser(u);
+  }
+}
+
+function backToLoginGrid(){
+  $("#loginPinSec").style.display = "none";
+  _loginPending = null;
+  document.querySelectorAll(".login-card").forEach(c=>c.classList.remove("sel"));
+}
+
+function confirmLoginPin(){
+  if(!_loginPending) return;
+  const entered = ($("#loginPinInput").value||"").trim();
+  if(entered !== String(_loginPending.pin)){
+    alert("PIN incorrecto"); $("#loginPinInput").value=""; return;
+  }
+  loginUser(_loginPending);
+}
+
+function loginUser(u){
+  pos.currentUser = u;
+  if(u.is_cashier || u.is_master){
+    pos.cashier = { id:u.id, name:u.name, require_pin:!!u.pin, pin:u.pin };
+    renderCashierBtn();
+  }
+  pos.teamAuthor = { type: u.is_master?"master":"cajero", id:u.id, name:u.name };
+  renderTeamWho();
+  try{ localStorage.setItem("bloom_current_user_id", u.id); }catch(e){}
+  $("#loginModal").style.display = "none";
+  _loginPending = null;
+}
+
+function skipLogin(){
+  pos.currentUser = null;
+  try{ localStorage.removeItem("bloom_current_user_id"); }catch(e){}
+  $("#loginModal").style.display = "none";
+  _loginPending = null;
+}
+
+async function restoreSession(){
+  let savedId; try{ savedId=localStorage.getItem("bloom_current_user_id"); }catch(e){}
+  if(!savedId) return false;
+  const u = (pos.users||[]).find(u=>u.id===savedId);
+  if(!u) return false;
+  loginUser(u); return true;
+}
+
+// ─── Config: Usuarios ────────────────────────────────────────────────────────
+
+async function renderUsersList(){
+  const box=$("#usersList"); if(!box) return;
+  // cargar todos (incluyendo inactivos) para mostrar en config
+  const all = await sbGet(`users?store=eq.${C.STORE}&order=name.asc`) || [];
+  box.innerHTML="";
+  for(const u of all){
+    const row=el("div","cfg-row");
+    const ini = u.name.trim().split(/\s+/).map(w=>w[0]).join("").substring(0,2).toUpperCase();
+    const roles = [
+      u.is_seller?'<span class="role-chip seller">Vendedor</span>':'',
+      u.is_cashier?'<span class="role-chip cashier">Cajero</span>':'',
+      u.is_master?'<span class="role-chip master">Master</span>':'',
+    ].join("");
+    const pinBadge = u.pin
+      ? `<span style="font-size:10px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-2px">lock</span> PIN activo</span>`
+      : `<span style="font-size:10px;color:var(--text-dim)">Sin PIN</span>`;
+    row.innerHTML=`<div class="login-avatar" style="width:32px;height:32px;font-size:13px;flex-shrink:0">${ini}</div>
+      <span class="nm" style="flex:1">${esc(u.name)}<br><span class="user-roles">${roles}</span></span>
+      ${pinBadge}
+      <span class="cfg-photo" onclick="setUserPin('${u.id}','${esc(u.name)}')" title="PIN">
+        <span class="material-symbols-outlined" style="font-size:16px">key</span>
+      </span>
+      ${u.active
+        ? `<span class="del" onclick="deactivateUser('${u.id}','${esc(u.name)}')" title="Desactivar">
+             <span class="material-symbols-outlined" style="font-size:16px">person_off</span>
+           </span>`
+        : `<span class="del" onclick="activateUser('${u.id}','${esc(u.name)}')" title="Activar" style="color:#27ae60">
+             <span class="material-symbols-outlined" style="font-size:16px">person_add</span>
+           </span>`
+      }`;
+    if(!u.active) row.style.opacity="0.45";
+    box.appendChild(row);
+  }
+}
+
+async function addUser(){
+  const name=($("#newUserName").value||"").trim(); if(!name) return;
+  const pinRaw=($("#newUserPin").value||"").trim();
+  const isSeller=$("#nuSeller").checked;
+  const isCashier=$("#nuCashier").checked;
+  const isMaster=$("#nuMaster").checked;
+  if((isCashier||isMaster) && pinRaw && pinRaw.replace(/\D/g,"").length!==4){
+    alert("El PIN debe ser de exactamente 4 dígitos"); return;
+  }
+  const pin = (isCashier||isMaster) && pinRaw ? pinRaw.replace(/\D/g,"").slice(0,4) : null;
+  await sbPost("users",{name,store:C.STORE,pin,is_seller:isSeller,is_cashier:isCashier,is_master:isMaster});
+  $("#newUserName").value=""; $("#newUserPin").value="";
+  $("#nuSeller").checked=true; $("#nuCashier").checked=false; $("#nuMaster").checked=false;
+  await loadUsers(); await renderUsersList();
+}
+
+async function setUserPin(id,name){
+  const usar=confirm(`¿${name} usará PIN de 4 dígitos?\nAceptar=sí | Cancelar=quitar PIN`);
+  if(!usar){
+    await sbPatch(`users?id=eq.${id}`,{pin:null});
+    await renderUsersList(); return;
+  }
+  const pin=prompt(`PIN de 4 dígitos para ${name}:`);
+  if(pin===null) return;
+  const clean=String(pin).replace(/\D/g,"").slice(0,4);
+  if(clean.length!==4){ alert("Debe ser exactamente 4 dígitos"); return; }
+  await sbPatch(`users?id=eq.${id}`,{pin:clean});
+  await loadUsers(); await renderUsersList();
+}
+
+async function deactivateUser(id,name){
+  if(!confirm(`¿Desactivar a ${name}?`)) return;
+  await sbPatch(`users?id=eq.${id}`,{active:false});
+  await loadUsers(); await renderUsersList();
+}
+
+async function activateUser(id,name){
+  await sbPatch(`users?id=eq.${id}`,{active:true});
+  await loadUsers(); await renderUsersList();
+}
+
 function renderSellersList(){
   const box=$("#sellersList"); box.innerHTML="";
   for(const s of pos.sellers){
