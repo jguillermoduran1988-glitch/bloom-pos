@@ -1638,82 +1638,17 @@ function toggleDatMore(){
   if(btn) btn.classList.toggle("on");
 }
 function datosTab(which){
-  ["tienda","tabla","ventas","clientes","pers"].forEach(t=>{
+  ["tienda","ventas","clientes","pers"].forEach(t=>{
     const p=$("#datPane"+t.charAt(0).toUpperCase()+t.slice(1));
     if(p) p.style.display = which===t?"block":"none";
   });
-  const tabMap={tienda:"datTab1",tabla:"datTab2",ventas:"datTab4",clientes:"datTab5",pers:"datTab3"};
+  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3"};
   Object.entries(tabMap).forEach(([t,id])=>{ const b=document.getElementById(id); if(b) b.classList.toggle("on",which===t); });
   if(which==="pers") loadCustomOrders();
   if(which==="ventas") loadSalesHistory();
   if(which==="clientes") initClientesTab();
-  if(which==="tabla") initVentasTabla();
 }
 
-// ── Tabla Ventas Mensuales ─────────────────────────────────────────────────
-const VT_COLS = [
-  {key:"efectivo",       label:"Efectivo"},
-  {key:"tarjeta_debito", label:"T. Débito"},
-  {key:"tarjeta_credito",label:"T. Crédito"},
-  {key:"bold",           label:"Bold"},
-  {key:"wompi",          label:"Wompi"},
-  {key:"addi",           label:"Addi"},
-  {key:"supay",          label:"Su+Pay"},
-  {key:"transferencia",  label:"Transferencia"},
-  {key:"qr",             label:"QR"},
-  {key:"nequi",          label:"Nequi"},
-  {key:"daviplata",      label:"Daviplata"},
-];
-
-function initVentasTabla(){
-  const sel = $("#vtMes"); if(!sel || sel._ready) return;
-  sel._ready = true;
-  const now = new Date();
-  const months = [];
-  for(let y=2023;y<=now.getFullYear();y++){
-    const maxM = y===now.getFullYear() ? now.getMonth()+1 : 12;
-    const minM = y===2023 ? 11 : 1;
-    for(let m=minM;m<=maxM;m++) months.push({y,m});
-  }
-  months.reverse();
-  sel.innerHTML = months.map(({y,m})=>{
-    const label = new Date(y,m-1,1).toLocaleString("es-CO",{month:"long",year:"numeric"});
-    return `<option value="${y}-${m}">${label.charAt(0).toUpperCase()+label.slice(1)}</option>`;
-  }).join("");
-  loadVentasTabla();
-}
-
-async function loadVentasTabla(){
-  const sel = $("#vtMes"); if(!sel) return;
-  const [y,m] = sel.value.split("-").map(Number);
-  const box = $("#ventasTable");
-  box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-dim)">Cargando…</div>`;
-  const rows = await sbGet(`ventas_diarias?store=eq.${C.STORE}&year=eq.${y}&month=eq.${m}&order=day.asc`) || [];
-  const byDay = {};
-  rows.forEach(r => byDay[r.day] = r);
-  const daysInMonth = new Date(y,m,0).getDate();
-  // Totales
-  const tots = {};
-  VT_COLS.forEach(c => tots[c.key] = 0);
-  let grandTotal = 0;
-  const fmt = n => n ? Number(n).toLocaleString("es-CO") : '<span class="vt-empty">—</span>';
-  let html = `<table class="vt-table"><thead><tr>
-    <th>Día</th>${VT_COLS.map(c=>`<th>${c.label}</th>`).join("")}<th>Total</th>
-  </tr></thead><tbody>`;
-  for(let d=1;d<=daysInMonth;d++){
-    const r = byDay[d] || {};
-    const rowTotal = r.total || VT_COLS.reduce((s,c)=>s+(Number(r[c.key])||0),0);
-    VT_COLS.forEach(c => tots[c.key] += Number(r[c.key])||0);
-    grandTotal += rowTotal;
-    html += `<tr><td>${d}</td>${VT_COLS.map(c=>`<td>${fmt(r[c.key])}</td>`).join("")}<td>${rowTotal?Number(rowTotal).toLocaleString("es-CO"):'<span class="vt-empty">—</span>'}</td></tr>`;
-  }
-  html += `</tbody><tfoot><tr class="vt-total"><td>Total</td>${VT_COLS.map(c=>`<td>${tots[c.key]?Number(tots[c.key]).toLocaleString("es-CO"):'—'}</td>`).join("")}<td>${Number(grandTotal).toLocaleString("es-CO")}</td></tr></tfoot></table>`;
-  box.innerHTML = html;
-  const vtEl = $("#vtTotal");
-  if(vtEl) vtEl.textContent = grandTotal ? `Total mes: $${Number(grandTotal).toLocaleString("es-CO")}` : "";
-}
-
-// ---- Pestaña Clientes ----
 // ---- Pestaña Clientes ----
 async function initClientesTab(){
   const box=$("#clientResults"); if(!box) return;
