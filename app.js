@@ -2646,6 +2646,9 @@ async function loadReport(range){
 
 // ---------- Arranque ----------
 async function init(){
+  await loadUsers();
+  const restored = await restoreSession();
+  if(!restored) showLoginModal();
   await loadPipelines();
   await loadQuickReplies();
   await loadChats();
