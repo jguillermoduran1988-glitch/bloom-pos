@@ -2301,31 +2301,27 @@ async function restoreSession(){
 
 async function renderUsersList(){
   const box=$("#usersList"); if(!box) return;
-  // cargar todos (incluyendo inactivos) para mostrar en config
   const all = await sbGet(`sellers?store=eq.${C.STORE}&order=name.asc`) || [];
   box.innerHTML="";
   for(const u of all){
     const row=el("div","cfg-row");
+    row.dataset.uid = u.id;
     const ini = u.name.trim().split(/\s+/).map(w=>w[0]).join("").substring(0,2).toUpperCase();
     const roles = [
       '<span class="role-chip seller">Vendedor</span>',
       u.is_cashier?'<span class="role-chip cashier">Cajero</span>':'',
       u.is_master?'<span class="role-chip master">Master</span>':'',
     ].join("");
-    const pinBadge = u.pin
-      ? `<span style="font-size:10px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-2px">lock</span> PIN activo</span>`
-      : `<span style="font-size:10px;color:var(--text-dim)">Sin PIN</span>`;
     const avatarHtml = u.photo_url
       ? `<img src="${esc(u.photo_url)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0">`
       : `<div class="login-avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0">${ini}</div>`;
     row.innerHTML=`${avatarHtml}
-      <span class="nm" style="flex:1">${esc(u.name)}<br><span class="user-roles" id="roles-${u.id}">${roles}</span></span>
-      ${pinBadge}
-      <span class="cfg-photo" onclick="setUserPhoto('${u.id}')" title="Foto">
-        <span class="material-symbols-outlined" style="font-size:16px">photo_camera</span>
+      <span style="flex:1;min-width:0">
+        <span style="font-weight:600;font-size:13px">${esc(u.name)}</span>
+        <span class="user-roles" id="roles-${u.id}" style="display:block">${roles}</span>
       </span>
-      <span class="cfg-photo" onclick="setUserPin('${u.id}','${esc(u.name)}')" title="PIN">
-        <span class="material-symbols-outlined" style="font-size:16px">key</span>
+      <span class="cfg-photo" onclick="editUser('${u.id}')" title="Editar">
+        <span class="material-symbols-outlined" style="font-size:16px">edit</span>
       </span>
       ${pos.currentUser?.is_master
         ? `<span class="cfg-photo" onclick="toggleRoleEditor('${u.id}',${!!u.is_cashier},${!!u.is_master})" title="Editar roles">
@@ -2340,7 +2336,7 @@ async function renderUsersList(){
              <span class="material-symbols-outlined" style="font-size:16px">person_add</span>
            </span>`
       }
-      <span class="del" onclick="deleteUser('${u.id}','${esc(u.name)}')" title="Eliminar usuario">
+      <span class="del" onclick="deleteUser('${u.id}')" title="Eliminar">
         <span class="material-symbols-outlined" style="font-size:16px">delete</span>
       </span>`;
     if(!u.active) row.style.opacity="0.45";
@@ -2406,22 +2402,58 @@ async function saveUserRoles(id){
   await sbPatch(`sellers?id=eq.${id}`,{is_cashier:c,is_master:m});
   await loadUsers(); await renderUsersList();
 }
-function deleteUser(id,name){
-  const box=$("#usersList"); if(!box) return;
-  // quitar cualquier confirmación previa
-  box.querySelectorAll(".del-confirm").forEach(e=>e.remove());
-  const row=[...box.querySelectorAll(".cfg-row")].find(r=>r.querySelector(`[onclick*="${id}"]`));
-  if(!row) return;
-  const conf=document.createElement("div");
-  conf.className="del-confirm";
-  conf.style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fdecea;border-radius:8px;margin-top:4px;font-size:13px";
-  conf.innerHTML=`<span style="flex:1">¿Eliminar a <b>${esc(name)}</b>? Esta acción no se puede deshacer.</span>
-    <button onclick="confirmDeleteUser('${id}')" style="background:#e74c3c;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px">Eliminar</button>
-    <button onclick="this.closest('.del-confirm').remove()" style="background:none;border:1px solid var(--border);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Cancelar</button>`;
-  row.after(conf);
+function _getUserRow(id){ return $("#usersList")?.querySelector(`.cfg-row[data-uid="${id}"]`); }
+function _clearInlinePanel(){ $("#usersList")?.querySelectorAll(".inline-panel").forEach(e=>e.remove()); }
+
+function deleteUser(id){
+  _clearInlinePanel();
+  const row=_getUserRow(id); if(!row) return;
+  const panel=document.createElement("div");
+  panel.className="inline-panel";
+  panel.style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fdecea;border-radius:8px;margin-top:4px;font-size:13px;flex-wrap:wrap";
+  panel.innerHTML=`<span style="flex:1">¿Eliminar permanentemente?</span>
+    <button onclick="confirmDeleteUser('${id}')" style="background:#e74c3c;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">Sí, eliminar</button>
+    <button onclick="_clearInlinePanel()" style="background:none;border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer">Cancelar</button>`;
+  row.after(panel);
 }
 async function confirmDeleteUser(id){
+  _clearInlinePanel();
   await sbDelete(`sellers?id=eq.${id}`);
+  await loadUsers(); await renderUsersList();
+}
+
+function editUser(id){
+  _clearInlinePanel();
+  const row=_getUserRow(id); if(!row) return;
+  const u=(pos.users||[]).find(u=>u.id===id)||{};
+  const panel=document.createElement("div");
+  panel.className="inline-panel";
+  panel.style="padding:10px;background:var(--bg-alt);border-radius:8px;margin-top:4px;display:flex;flex-direction:column;gap:8px";
+  panel.innerHTML=`<input id="editUserName" value="${esc(u.name||'')}" placeholder="Nombre" style="width:100%">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="saveEditUser('${id}')" style="flex:1;font-weight:600">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">save</span> Guardar
+      </button>
+      ${u.photo_url?`<button onclick="removeUserPhoto('${id}')" style="flex:1;background:none;border:1px solid var(--border);color:#e74c3c">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">no_photography</span> Quitar foto
+      </button>`:''}
+      <button onclick="setUserPhoto('${id}')" style="flex:1;background:none;border:1px solid var(--border)">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">photo_camera</span> ${u.photo_url?'Cambiar foto':'Agregar foto'}
+      </button>
+      <button onclick="_clearInlinePanel()" style="background:none;border:1px solid var(--border);padding:6px 12px;border-radius:6px;cursor:pointer">Cancelar</button>
+    </div>`;
+  row.after(panel);
+  $("#editUserName")?.focus();
+}
+async function saveEditUser(id){
+  const name=($("#editUserName")?.value||"").trim(); if(!name) return;
+  await sbPatch(`sellers?id=eq.${id}`,{name});
+  _clearInlinePanel();
+  await loadUsers(); await renderUsersList();
+}
+async function removeUserPhoto(id){
+  await sbPatch(`sellers?id=eq.${id}`,{photo_url:null});
+  _clearInlinePanel();
   await loadUsers(); await renderUsersList();
 }
 
