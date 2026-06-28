@@ -2297,11 +2297,16 @@ async function renderUsersList(){
       ? `<span style="font-size:10px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-2px">lock</span> PIN activo</span>`
       : `<span style="font-size:10px;color:var(--text-dim)">Sin PIN</span>`;
     row.innerHTML=`<div class="login-avatar" style="width:32px;height:32px;font-size:13px;flex-shrink:0">${ini}</div>
-      <span class="nm" style="flex:1">${esc(u.name)}<br><span class="user-roles">${roles}</span></span>
+      <span class="nm" style="flex:1">${esc(u.name)}<br><span class="user-roles" id="roles-${u.id}">${roles}</span></span>
       ${pinBadge}
       <span class="cfg-photo" onclick="setUserPin('${u.id}','${esc(u.name)}')" title="PIN">
         <span class="material-symbols-outlined" style="font-size:16px">key</span>
       </span>
+      ${pos.currentUser?.is_master
+        ? `<span class="cfg-photo" onclick="toggleRoleEditor('${u.id}',${!!u.is_cashier},${!!u.is_master})" title="Editar roles">
+             <span class="material-symbols-outlined" style="font-size:16px">manage_accounts</span>
+           </span>`
+        : ''}
       ${u.active
         ? `<span class="del" onclick="deactivateUser('${u.id}','${esc(u.name)}')" title="Desactivar" style="color:#e67e22">
              <span class="material-symbols-outlined" style="font-size:16px">person_off</span>
@@ -2355,6 +2360,25 @@ async function deactivateUser(id,name){
 
 async function activateUser(id,name){
   await sbPatch(`sellers?id=eq.${id}`,{active:true});
+  await loadUsers(); await renderUsersList();
+}
+function toggleRoleEditor(id, isCashier, isMaster){
+  const span = $(`#roles-${id}`); if(!span) return;
+  if(span.querySelector('.role-editor')){ renderUsersList(); return; }
+  span.innerHTML=`<span class="role-editor" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
+      <input type="checkbox" id="re-cashier-${id}" ${isCashier?'checked':''}> Cajero
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
+      <input type="checkbox" id="re-master-${id}" ${isMaster?'checked':''}> Master
+    </label>
+    <button onclick="saveUserRoles('${id}')" style="font-size:11px;padding:2px 8px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer">Guardar</button>
+  </span>`;
+}
+async function saveUserRoles(id){
+  const c=!!($(`#re-cashier-${id}`)?.checked);
+  const m=!!($(`#re-master-${id}`)?.checked);
+  await sbPatch(`sellers?id=eq.${id}`,{is_cashier:c,is_master:m});
   await loadUsers(); await renderUsersList();
 }
 async function deleteUser(id,name,btn){
