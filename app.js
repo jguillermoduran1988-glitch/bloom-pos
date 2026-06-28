@@ -1550,8 +1550,8 @@ function pickImage(maxSize){
 
 // ---- Config: vendedores ----
 async function initConfig(){
-  await loadSellers(); await loadPayments(); await loadCashiers(); await loadSettings();
-  renderSellersList(); renderPaymentsList(); renderCashiersList(); renderSettings();
+  await loadUsers(); await loadPayments(); await loadSettings();
+  await renderUsersList(); renderPaymentsList(); renderSettings();
 }
 
 // ===== Configuración del POS (settings) =====
