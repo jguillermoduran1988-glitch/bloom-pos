@@ -550,7 +550,7 @@ function switchScreen(name){
 
 // ---- Cargar vendedores y métodos de pago ----
 async function loadUsers(){
-  const all = await sbGet(`users?store=eq.${C.STORE}&active=eq.true&order=name.asc`) || [];
+  const all = await sbGet(`sellers?store=eq.${C.STORE}&active=eq.true&order=name.asc`) || [];
   pos.users = all;
   pos.sellers = all.filter(u=>u.is_seller);
   pos.cashiers = all.filter(u=>u.is_cashier||u.is_master);
@@ -2279,7 +2279,7 @@ async function restoreSession(){
 async function renderUsersList(){
   const box=$("#usersList"); if(!box) return;
   // cargar todos (incluyendo inactivos) para mostrar en config
-  const all = await sbGet(`users?store=eq.${C.STORE}&order=name.asc`) || [];
+  const all = await sbGet(`sellers?store=eq.${C.STORE}&order=name.asc`) || [];
   box.innerHTML="";
   for(const u of all){
     const row=el("div","cfg-row");
@@ -2321,7 +2321,7 @@ async function addUser(){
     alert("El PIN debe ser de exactamente 4 dígitos"); return;
   }
   const pin = (isCashier||isMaster) && pinRaw ? pinRaw.replace(/\D/g,"").slice(0,4) : null;
-  await sbPost("users",{name,store:C.STORE,pin,is_seller:isSeller,is_cashier:isCashier,is_master:isMaster});
+  await sbPost("sellers",{name,store:C.STORE,pin,is_cashier:isCashier,is_master:isMaster});
   $("#newUserName").value=""; $("#newUserPin").value="";
   $("#nuSeller").checked=true; $("#nuCashier").checked=false; $("#nuMaster").checked=false;
   await loadUsers(); await renderUsersList();
@@ -2330,25 +2330,25 @@ async function addUser(){
 async function setUserPin(id,name){
   const usar=confirm(`¿${name} usará PIN de 4 dígitos?\nAceptar=sí | Cancelar=quitar PIN`);
   if(!usar){
-    await sbPatch(`users?id=eq.${id}`,{pin:null});
+    await sbPatch(`sellers?id=eq.${id}`,{pin:null});
     await renderUsersList(); return;
   }
   const pin=prompt(`PIN de 4 dígitos para ${name}:`);
   if(pin===null) return;
   const clean=String(pin).replace(/\D/g,"").slice(0,4);
   if(clean.length!==4){ alert("Debe ser exactamente 4 dígitos"); return; }
-  await sbPatch(`users?id=eq.${id}`,{pin:clean});
+  await sbPatch(`sellers?id=eq.${id}`,{pin:clean});
   await loadUsers(); await renderUsersList();
 }
 
 async function deactivateUser(id,name){
   if(!confirm(`¿Desactivar a ${name}?`)) return;
-  await sbPatch(`users?id=eq.${id}`,{active:false});
+  await sbPatch(`sellers?id=eq.${id}`,{active:false});
   await loadUsers(); await renderUsersList();
 }
 
 async function activateUser(id,name){
-  await sbPatch(`users?id=eq.${id}`,{active:true});
+  await sbPatch(`sellers?id=eq.${id}`,{active:true});
   await loadUsers(); await renderUsersList();
 }
 
