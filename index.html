@@ -390,10 +390,10 @@
   .report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
   .rep-card{background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:13px}
   .rep-card .nm{font-size:13px;font-weight:600}
-  .rep-card .big{font-size:22px;font-weight:700;color:var(--accent);margin-top:4px}
+  .rep-card .big{font-size:17px;font-weight:700;color:var(--accent);margin-top:4px;word-break:break-all}
   .rep-card .sub{font-size:11px;color:var(--text-dim);margin-top:2px}
-  .rep-filter{display:flex;gap:6px;margin-bottom:14px}
-  .rep-filter button{padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-dim)}
+  .rep-filter{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;flex-wrap:nowrap}
+  .rep-filter button{padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-dim);white-space:nowrap;flex-shrink:0}
   .rep-filter button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
   .top-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
   .top-pos{width:22px;font-weight:700;color:var(--accent);text-align:center;flex-shrink:0}

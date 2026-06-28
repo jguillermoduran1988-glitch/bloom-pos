@@ -1944,7 +1944,8 @@ async function loadCustomOrders(){
         <div><b>${esc(o.product_name)}</b>${o.variant?` <span style="color:var(--text-dim)">(${esc(o.variant)})</span>`:""}</div>
         <div style="color:${urgColor};font-weight:600;font-size:12px">${urg}</div>
       </div>
-      <div class="pers-card-row"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">person</span> ${esc(o.customer_name||"—")} · <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">phone_iphone</span> ${esc(o.customer_phone||"—")}</div>
+      <div class="pers-card-row"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">person</span> ${esc(o.customer_name||"—")}</div>
+      <div class="pers-card-row"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">phone_iphone</span> ${esc(o.customer_phone||"—")}</div>
       <div class="pers-card-row"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">calendar_month</span> Entrega: <b>${o.delivery_date||"—"}</b> · <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">payments</span> ${money(o.price)}</div>
       <div style="margin:8px 0 4px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;color:var(--text-dim)">Detalle personalización:</span>
@@ -2622,8 +2623,10 @@ async function loadReport(range){
     const entries=Object.entries(byseller).sort((a,b)=>b[1].total-a[1].total);
     if(!entries.length){grid.innerHTML='<div style="color:var(--text-dim);font-size:13px">Sin ventas en este periodo</div>';}
     else for(const [name,d] of entries){
+      const isShopify = name.toLowerCase().includes("shopify");
+      const icon = isShopify ? "shopping_bag" : "sell";
       const card=el("div","rep-card");
-      card.innerHTML=`<div class="nm">👤 ${esc(name)}</div><div class="big">${money(d.total)}</div><div class="sub">${d.count} venta${d.count!==1?"s":""}</div>`;
+      card.innerHTML=`<div class="nm"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">${icon}</span> ${esc(name)}</div><div class="big">${money(d.total)}</div><div class="sub">${d.count} venta${d.count!==1?"s":""}</div>`;
       grid.appendChild(card);
     }
   }
