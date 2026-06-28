@@ -547,7 +547,10 @@ function switchScreen(name){
     const nav=document.getElementById("nav-"+s); if(nav) nav.classList.toggle("on", s===name);
   });
   if(name==="pos" && !pos.catalog.length) initPos();
-  if(name==="config") initConfig();
+  if(name==="config"){
+    if(!pos.currentUser?.is_master){ alert("Solo el master puede acceder a la configuración."); switchScreen("pos"); return; }
+    initConfig();
+  }
   if(name==="datos") initDatos();
   if(name==="equipo") initTeam();
 }
@@ -556,7 +559,7 @@ function switchScreen(name){
 async function loadUsers(){
   const all = await sbGet(`sellers?store=eq.${C.STORE}&active=eq.true&order=name.asc`) || [];
   pos.users = all;
-  pos.sellers = all.filter(u=>u.is_seller);
+  pos.sellers = all;
   pos.cashiers = all.filter(u=>u.is_cashier||u.is_master);
 }
 async function loadSellers(){
@@ -2219,10 +2222,7 @@ function showLoginModal(){
     card.innerHTML = `
       <div class="login-avatar">${avatarInner}</div>
       <div class="login-name">${esc(u.name)}</div>
-      <div class="login-badge">${badge}</div>
-      <button class="login-photo-btn" title="Cambiar foto" onclick="event.stopPropagation();setLoginPhoto('${u.id}')">
-        <span class="material-symbols-outlined" style="font-size:14px">photo_camera</span>
-      </button>`;
+      <div class="login-badge">${badge}</div>`;
     card.onclick = ()=>selectLoginUser(u);
     grid.appendChild(card);
   }
