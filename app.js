@@ -2418,8 +2418,15 @@ function deleteUser(id){
 }
 async function confirmDeleteUser(id){
   _clearInlinePanel();
-  await sbDelete(`sellers?id=eq.${id}`);
-  await loadUsers(); await renderUsersList();
+  try{
+    const r = await sbDelete(`sellers?id=eq.${id}`);
+    if(r.status===200||r.status===204){
+      await loadUsers(); await renderUsersList();
+    } else {
+      const body = await r.text();
+      alert("Error al eliminar: "+r.status+" - "+body);
+    }
+  }catch(e){ alert("Error: "+e.message); }
 }
 
 function editUser(id){
