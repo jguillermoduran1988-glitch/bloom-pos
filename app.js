@@ -578,7 +578,7 @@ async function initPos(){
   pos.catalog = await fetchProducts();
   await loadUsers(); await loadPayments(); await loadSettings();
   renderPosCatalog(); renderSellerSelect(); renderPayGrid(); renderCart();
-  renderCashierBtn();
+  renderCashierBtn(); renderHoldsBtn();
   initDeptos();
   checkCustomOrderAlerts();
   initBarcodeInput();
@@ -656,6 +656,134 @@ function renderCashierBtn(){
   const btn=$("#cashierBtn"); if(!btn) return;
   if(pos.cashier){ btn.innerHTML=`<span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> ${esc(pos.cashier.name)}`; btn.classList.add("set"); }
   else{ btn.innerHTML='<span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> Cajero'; btn.classList.remove("set"); }
+}
+
+// ===== VENTAS EN ESPERA =====
+function _holdsLoad(){ try{ return JSON.parse(localStorage.getItem("bloom_holds")||"[]"); }catch{ return []; } }
+function _holdsSave(h){ localStorage.setItem("bloom_holds", JSON.stringify(h)); }
+
+function renderHoldsBtn(){
+  const holds=_holdsLoad();
+  const lbl=$("#holdsLabel"); if(!lbl) return;
+  if(holds.length){
+    lbl.innerHTML=`En espera <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px">${holds.length}</span>`;
+  } else {
+    lbl.textContent="En espera";
+  }
+}
+
+function holdsAction(){
+  if(pos.cart.length){
+    // Tiene carrito activo → preguntar si poner en espera
+    const nombre = pos.customer?.name || pos.customer?.full_name || null;
+    const label = nombre || `Espera ${_holdsLoad().length+1}`;
+    const holds=_holdsLoad();
+    holds.push({
+      ts: Date.now(), label,
+      cart: JSON.parse(JSON.stringify(pos.cart)),
+      customer: pos.customer ? JSON.parse(JSON.stringify(pos.customer)) : null,
+      customerSaved: pos.customerSaved,
+      billing: pos.billing ? JSON.parse(JSON.stringify(pos.billing)) : null,
+      splitPayments: JSON.parse(JSON.stringify(pos.splitPayments)),
+      discount: JSON.parse(JSON.stringify(pos.discount)),
+      saleType: pos.saleType,
+      cashier: pos.cashier ? JSON.parse(JSON.stringify(pos.cashier)) : null,
+    });
+    _holdsSave(holds);
+    clearPosCart();
+    renderHoldsBtn();
+    if(_holdsLoad().length>0) openHoldsModal();
+  } else {
+    openHoldsModal();
+  }
+}
+
+function clearPosCart(){
+  pos.cart=[]; pos.payment=null; pos.splitPayments=[];
+  pos.discount={type:null,value:0}; pos.customer=null; pos.billing=null; pos.customerSaved=false;
+  ["custDoc","custName","custLastName","custEmail","custAddress","custPhone",
+   "empName","empNit","empPhone","empEmail","empAddress"].forEach(id=>{const e=$("#"+id);if(e)e.value="";});
+  if($("#custEsEmpresa")){ $("#custEsEmpresa").checked=false; if(typeof onEmpresaToggle==="function") onEmpresaToggle(); }
+  if($("#custDepto")&&window.COLOMBIA){$("#custDepto").value="Santander"; onDeptoChange(); if($("#custCity"))$("#custCity").value="Bucaramanga";}
+  $("#btnCustomer").classList.remove("done");
+  $("#custBtnLabel").innerHTML='<span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">assignment</span> Datos del cliente *';
+  $("#btnPayment").classList.remove("done");
+  $("#payBtnLabel").innerHTML='<span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">credit_card</span> Medios de pago *';
+  $("#discBtnLabel").innerHTML='<span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">sell</span> Agregar descuento';
+  renderCart(); renderPayGrid(); refreshConfirmState();
+}
+
+function openHoldsModal(){
+  renderHoldsPanel();
+  $("#holdsModal").classList.add("show");
+}
+function closeHoldsModal(){ $("#holdsModal").classList.remove("show"); }
+
+function renderHoldsPanel(){
+  const holds=_holdsLoad();
+  const box=$("#holdsBody"); box.innerHTML="";
+  if(!holds.length){
+    box.innerHTML='<div style="color:var(--text-dim);font-size:13px;padding:8px 0">No hay ventas en espera.</div>';
+    return;
+  }
+  for(let i=0;i<holds.length;i++){
+    const h=holds[i];
+    const total=h.cart.reduce((s,it)=>s+(it.price||0)*(it.qty||1),0);
+    const items=h.cart.reduce((s,it)=>s+(it.qty||1),0);
+    const hora=new Date(h.ts).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+    const row=el("div","cfg-row");
+    row.style.cssText="flex-direction:column;align-items:flex-start;gap:4px;padding:12px;cursor:default";
+    row.innerHTML=`
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+        <b style="font-size:14px">${esc(h.label)}</b>
+        <span style="font-size:12px;color:var(--text-dim)">${hora}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text-dim)">${items} producto${items!==1?"s":""} · <b>${money(total)}</b></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button onclick="restoreHold(${i})" style="padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer">Recuperar</button>
+        <button onclick="deleteHold(${i})" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;cursor:pointer;color:var(--text-dim)">Eliminar</button>
+      </div>`;
+    box.appendChild(row);
+  }
+}
+
+function restoreHold(i){
+  if(pos.cart.length && !confirm("El carrito actual se perderá. ¿Continuar?")) return;
+  const holds=_holdsLoad();
+  const h=holds.splice(i,1)[0];
+  _holdsSave(holds);
+  clearPosCart();
+  pos.cart=h.cart; pos.customer=h.customer; pos.customerSaved=h.customerSaved;
+  pos.billing=h.billing; pos.splitPayments=h.splitPayments; pos.discount=h.discount;
+  if(h.saleType) pos.saleType=h.saleType;
+  if(h.cashier){ pos.cashier=h.cashier; renderCashierBtn(); }
+  // Restaurar botones de UI
+  if(pos.customerSaved && pos.customer){
+    const n=[pos.customer.full_name||pos.customer.name||"",pos.customer.email||""].filter(Boolean).join(" · ");
+    $("#btnCustomer").classList.add("done");
+    $("#custBtnLabel").textContent=`✓ ${n}`;
+  }
+  if(pos.splitPayments.length){
+    const resumen=pos.splitPayments.map(p=>`${p.method} ${money(p.amount)}`).join(" + ");
+    $("#btnPayment").classList.add("done");
+    $("#payBtnLabel").innerHTML=`✓ ${esc(resumen)} <span class="chk">editar</span>`;
+  }
+  if(h.saleType==="envios"){
+    $("#typeTienda")?.classList.remove("on"); $("#typeDespacho")?.classList.add("on");
+  } else {
+    $("#typeTienda")?.classList.add("on"); $("#typeDespacho")?.classList.remove("on");
+  }
+  renderCart(); renderPayGrid(); refreshConfirmState();
+  renderHoldsBtn();
+  closeHoldsModal();
+}
+
+function deleteHold(i){
+  const holds=_holdsLoad();
+  holds.splice(i,1);
+  _holdsSave(holds);
+  renderHoldsBtn();
+  renderHoldsPanel();
 }
 function openCashierPick(){
   const box=$("#cashierPickList"); box.innerHTML="";
@@ -1549,20 +1677,7 @@ async function confirmSale(){
   }catch(e){ console.warn("No se pudo guardar cliente en base:",e); }
 
   btn.textContent = shopify.ok ? `✓ Venta ${shopify.order_name||""}` : "✓ Registrada (revisar Shopify)";
-  // limpia TODO para la siguiente venta
-  pos.cart=[]; pos.payment=null; pos.splitPayments=[];
-  pos.discount={type:null,value:0}; pos.customer=null; pos.billing=null; pos.customerSaved=false;
-  ["custDoc","custName","custLastName","custEmail","custAddress","custPhone","empName","empNit","empPhone","empEmail","empAddress"].forEach(id=>{const e=$("#"+id);if(e)e.value="";});
-  if($("#custEsEmpresa")){ $("#custEsEmpresa").checked=false; onEmpresaToggle(); }
-  // vuelve a Santander/Bucaramanga por defecto
-  if($("#custDepto") && window.COLOMBIA){
-    $("#custDepto").value="Santander"; onDeptoChange();
-    if($("#custCity")) $("#custCity").value="Bucaramanga";
-  }
-  $("#btnCustomer").classList.remove("done"); $("#custBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">assignment</span> Datos del cliente *";
-  $("#btnPayment").classList.remove("done"); $("#payBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">credit_card</span> Medios de pago *";
-  $("#discBtnLabel").innerHTML="<span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">sell</span> Agregar descuento";
-  setTimeout(()=>{ renderCart(); renderPayGrid(); btn.textContent="Registrar venta"; },1800);
+  setTimeout(()=>{ clearPosCart(); btn.textContent="Registrar venta"; },1800);
 }
 
 // ---- Helper: leer imagen y reducirla a base64 pequeño ----

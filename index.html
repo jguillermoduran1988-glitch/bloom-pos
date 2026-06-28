@@ -552,6 +552,7 @@
       <div class="cart-head">
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">shopping_cart</span> Venta</h3>
         <div style="display:flex;align-items:center;gap:8px">
+          <button class="cashier-btn" id="holdsBtn" onclick="holdsAction()" title="Ventas en espera"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">pause_circle</span> <span id="holdsLabel">En espera</span></button>
           <button class="cashier-btn" id="cashierBtn" onclick="openCashierPick()"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> Cajero</button>
           <span id="cartCount" style="font-size:13px;color:var(--text-dim)">0 items</span>
         </div>
@@ -589,6 +590,14 @@
         <button class="pos-confirm" id="confirmSale" disabled onclick="confirmSale()">Registrar venta</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: VENTAS EN ESPERA ============ -->
+<div class="modal-bg" id="holdsModal">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">pause_circle</span> Ventas en espera</h3><button class="modal-x" onclick="closeHoldsModal()">✕</button></div>
+    <div class="modal-body" id="holdsBody"></div>
   </div>
 </div>
 
