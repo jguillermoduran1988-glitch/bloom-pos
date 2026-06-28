@@ -560,6 +560,23 @@ function sbHeaders(env, prefer) {
   };
 }
 
+// Cache de payment_methods para resolver gateway → id sin query repetida
+let _pmCache = null;
+async function resolvePaymentMethodId(env, gatewayName) {
+  if (!_pmCache) {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/payment_methods?store=eq.bloom&active=eq.true&select=id,name,aliases`, {
+      headers: sbHeaders(env, "return=representation"),
+    });
+    const methods = await r.json().catch(() => []);
+    _pmCache = new Map();
+    for (const m of methods) {
+      _pmCache.set(m.name.toLowerCase(), m.id);
+      for (const a of (m.aliases || [])) _pmCache.set(a.toLowerCase(), m.id);
+    }
+  }
+  return _pmCache.get((gatewayName || "").toLowerCase()) || null;
+}
+
 // ============ Enviar a WhatsApp ============
 async function sendWhatsApp(env, phone, message) {
   const res = await fetch(
@@ -801,6 +818,7 @@ async function importShopifyOnlineOrder(env, order) {
     discount_value:     discount,
     sale_type:          "shopify",
     payment_method:     order.payment_gateway || "online",
+    payment_method_id:  await resolvePaymentMethodId(env, order.payment_gateway),
     payment_detail:     [{ method: order.payment_gateway || "online", amount: total }],
     seller_name:        "Shopify Online",
     status:             "completada",

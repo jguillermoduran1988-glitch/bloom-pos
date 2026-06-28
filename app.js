@@ -1401,7 +1401,7 @@ function togglePayMethod(p){
     pos.splitPayments.splice(i,1);  // quitar
   }else{
     if(pos.splitPayments.length>=4){ alert("Máximo 4 medios de pago por venta"); return; }
-    pos.splitPayments.push({method:p.name, icon:p.icon||"💳", icon_url:p.icon_url||null, amount:0});
+    pos.splitPayments.push({method:p.name, id:p.id||null, icon:p.icon||"💳", icon_url:p.icon_url||null, amount:0});
   }
   autoFillLastPayment();
   renderPayGrid();
@@ -1498,7 +1498,8 @@ async function confirmSale(){
     billing_detail: pos.billing || null,
     cashier_id: pos.cashier?.id || null, cashier_name: pos.cashier?.name || null,
     sale_type:pos.saleType, payment_method:paymentMethods,
-    payment_detail:pos.splitPayments.map(p=>({method:p.method,amount:p.amount})),
+    payment_method_id: pos.splitPayments.length===1 ? (pos.splitPayments[0].id||null) : null,
+    payment_detail:pos.splitPayments.map(p=>({method:p.method,id:p.id||null,amount:p.amount})),
     discount_type:pos.discount.type||null, discount_value:pos.discount.value||0, discount_amount:desc,
     items:order.items, subtotal:sub, total:total,
     status:"completada", store:C.STORE,
