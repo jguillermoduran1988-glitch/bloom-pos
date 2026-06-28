@@ -2072,7 +2072,7 @@ async function loadTeamSalesStrip(){
   }
 }
 async function commentSale(saleId, label){
-  if(!pos.teamAuthor){ pickTeamAuthor(); if(!pos.teamAuthor) return; }
+  if(!pos.teamAuthor){ alert("Inicia sesión para escribir en el chat."); return; }
   const txt=prompt(`Comentario sobre la venta (${label}):`);
   if(!txt || !txt.trim()) return;
   await sbPost("team_messages",{
@@ -2090,23 +2090,7 @@ function getCurrentScreen(){
 }
 function renderTeamWho(){
   const w=$("#teamWho");
-  if(w) w.textContent = pos.teamAuthor ? `Escribes como: ${pos.teamAuthor.name}` : "Escribes como: — (toca Cambiar)";
-}
-async function pickTeamAuthor(){
-  // junta cajeros y vendedores
-  if(!pos.cashiers.length) await loadCashiers();
-  if(!pos.sellers.length) await loadSellers();
-  const todos=[
-    ...pos.cashiers.map(c=>({type:"cajero", id:c.id, name:c.name})),
-    ...pos.sellers.map(s=>({type:"vendedor", id:s.id, name:s.name})),
-  ];
-  if(!todos.length){ alert("Primero crea cajeros o vendedores en Config."); return; }
-  const lista=todos.map((t,i)=>`${i+1}. ${t.name} (${t.type})`).join("\n");
-  const pick=prompt(`¿Quién eres?\n${lista}`);
-  const idx=parseInt(pick)-1;
-  if(isNaN(idx)||!todos[idx])return;
-  pos.teamAuthor=todos[idx];
-  renderTeamWho();
+  if(w) w.textContent = pos.teamAuthor ? `Escribes como: ${pos.teamAuthor.name}` : "Escribes como: —";
 }
 async function loadTeamMsgs(){
   const rows=await sbGet(`team_messages?store=eq.${C.STORE}&order=created_at.asc&limit=200`);
@@ -2165,7 +2149,7 @@ async function deleteTeamMsg(id, mediaPath){
 
 // ----- Adjuntar FOTO -----
 function attachTeamPhoto(){
-  if(!pos.teamAuthor){ pickTeamAuthor(); if(!pos.teamAuthor) return; }
+  if(!pos.teamAuthor){ alert("Inicia sesión para escribir en el chat."); return; }
   const input=document.createElement("input");
   input.type="file"; input.accept="image/*";
   input.onchange=async()=>{
@@ -2184,7 +2168,7 @@ function attachTeamPhoto(){
 // ----- Grabar NOTA DE VOZ -----
 let mediaRecorder=null, audioChunks=[];
 async function toggleVoice(){
-  if(!pos.teamAuthor){ pickTeamAuthor(); if(!pos.teamAuthor) return; }
+  if(!pos.teamAuthor){ alert("Inicia sesión para escribir en el chat."); return; }
   const btn=$("#voiceBtn");
   if(mediaRecorder && mediaRecorder.state==="recording"){
     mediaRecorder.stop(); return;
@@ -2226,7 +2210,7 @@ async function toggleVoice(){
 async function sendTeamMsg(){
   const inp=$("#teamText"); const body=(inp.value||"").trim();
   if(!body) return;
-  if(!pos.teamAuthor){ pickTeamAuthor(); return; }
+  if(!pos.teamAuthor){ alert("Inicia sesión para escribir en el chat."); return; }
   inp.value="";
   await sbPost("team_messages",{
     author_type:pos.teamAuthor.type, author_id:pos.teamAuthor.id,

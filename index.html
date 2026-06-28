@@ -767,7 +767,7 @@
       <button id="datTab4" onclick="datosTab('ventas')"><span class="material-symbols-outlined">receipt_long</span> <span class="dat-tab-lbl">Ventas</span></button>
       <button id="datTab5" onclick="datosTab('clientes')"><span class="material-symbols-outlined">diversity_4</span> <span class="dat-tab-lbl">Clientes</span></button>
       <div class="dat-tabs-extra" id="datTabsExtra">
-        <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">auto_awesome</span> <span class="dat-tab-lbl">Pers.</span></button>
+        <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">package_2</span> <span class="dat-tab-lbl">Pers.</span></button>
       </div>
       <button class="dat-more-btn" id="datMoreBtn" onclick="toggleDatMore()" title="Más opciones"><span class="material-symbols-outlined">more_horiz</span></button>
     </div>
@@ -775,7 +775,7 @@
     <!-- Pestaña: Datos tienda -->
     <div id="datPaneTienda">
       <div class="cfg-sec">
-        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">bar_chart</span> Ventas por vendedor</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">person_pin</span> Ventas por vendedor</h3>
         <div class="desc">Cuánto ha vendido cada quien.</div>
         <div class="rep-filter">
           <button class="on" onclick="setReportRange('today',this)">Hoy</button>
@@ -791,7 +791,7 @@
         <div class="report-grid" id="reportGrid"></div>
       </div>
       <div class="cfg-sec">
-        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">payments</span> Resumen de ventas</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">receipt_long</span> Resumen de ventas</h3>
         <div class="desc">Totales del periodo seleccionado.</div>
         <div class="stats-cards" id="statsCards"></div>
       </div>
@@ -835,7 +835,6 @@
         <div class="desc">5.146 clientes importados de Shopify. Búsqueda por nombre, email o celular.</div>
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <input id="clientSearch" placeholder="Buscar por nombre, email o celular…" style="flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;outline:none" oninput="searchClients()">
-          <button onclick="importClientesFromXlsx()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer">⬆️ Importar</button>
         </div>
         <div id="clientResults"></div>
       </div>
@@ -844,7 +843,7 @@
     <!-- Pestaña: Personalización -->
     <div id="datPanePers" style="display:none">
       <div class="cfg-sec">
-        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">auto_awesome</span> Pedidos personalizados</h3>
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">package_2</span> Pedidos personalizados</h3>
         <div class="desc">Pendientes de entregar. Marca como entregado para quitarlos.</div>
         <div id="persTable"></div>
       </div>
@@ -860,7 +859,6 @@
         <h3 style="font-size:16px"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-4px">diversity_2</span> Chat del equipo</h3>
         <div style="font-size:12px;color:var(--text-dim)" id="teamWho">Escribes como: —</div>
       </div>
-      <button class="cashier-btn" onclick="pickTeamAuthor()">Cambiar</button>
     </div>
     <div class="team-msgs" id="teamMsgs"></div>
     <div id="teamSalesStrip" class="team-sales-strip"></div>
