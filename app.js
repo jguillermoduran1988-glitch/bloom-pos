@@ -1944,11 +1944,11 @@ async function loadCustomOrders(){
         <div><b>${esc(o.product_name)}</b>${o.variant?` <span style="color:var(--text-dim)">(${esc(o.variant)})</span>`:""}</div>
         <div style="color:${urgColor};font-weight:600;font-size:12px">${urg}</div>
       </div>
-      <div class="pers-card-row">👤 ${esc(o.customer_name||"—")} · 📱 ${esc(o.customer_phone||"—")}</div>
-      <div class="pers-card-row">📅 Entrega: <b>${o.delivery_date||"—"}</b> · 💵 ${money(o.price)}</div>
+      <div class="pers-card-row"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">person</span> ${esc(o.customer_name||"—")} · <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">phone_iphone</span> ${esc(o.customer_phone||"—")}</div>
+      <div class="pers-card-row"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">calendar_month</span> Entrega: <b>${o.delivery_date||"—"}</b> · <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">payments</span> ${money(o.price)}</div>
       <div style="margin:8px 0 4px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;color:var(--text-dim)">Detalle personalización:</span>
-        <button class="tag-add" style="font-size:12px" onclick="togglePersEdit('${o.id}')">✏️ Editar</button>
+        <button class="tag-add" style="font-size:12px" onclick="togglePersEdit('${o.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">edit</span> Editar</button>
       </div>
       <div id="persNoteText-${o.id}" style="font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px;min-height:36px;white-space:pre-wrap;word-break:break-word">${esc(o.notes||"Sin detalle")}</div>
       <div id="persNoteEdit-${o.id}" style="display:none">
@@ -2638,14 +2638,14 @@ async function loadReport(range){
   const cards=$("#statsCards");
   if(cards){
     cards.innerHTML=`
-      <div class="rep-card"><div class="nm">💵 Total vendido</div><div class="big">${money(totalVentas)}</div></div>
-      <div class="rep-card"><div class="nm">🧾 N° de ventas</div><div class="big">${numVentas}</div></div>
-      <div class="rep-card"><div class="nm">📈 Ticket promedio</div><div class="big">${money(promedio)}</div></div>
-      <div class="rep-card"><div class="nm">🛍 Ítem promedio</div><div class="big">${itemProm}</div></div>`;
+      <div class="rep-card"><div class="nm"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">payments</span> Total vendido</div><div class="big">${money(totalVentas)}</div></div>
+      <div class="rep-card"><div class="nm"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">receipt_long</span> N° de ventas</div><div class="big">${numVentas}</div></div>
+      <div class="rep-card"><div class="nm"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">trending_up</span> Ticket promedio</div><div class="big">${money(promedio)}</div></div>
+      <div class="rep-card"><div class="nm"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">shopping_basket</span> Ítem promedio</div><div class="big">${itemProm}</div></div>`;
   }
 
   // --- Ventas por canal ---
-  const canales = { tienda: { label: "<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda", total: 0, count: 0 }, envios: { label: "💬 WhatsApp", total: 0, count: 0 }, shopify: { label: "🛒 Shopify", total: 0, count: 0 } };
+  const canales = { tienda: { label: "<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda", total: 0, count: 0 }, envios: { label: "<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">chat</span> WhatsApp", total: 0, count: 0 }, shopify: { label: "<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">shopping_bag</span> Shopify", total: 0, count: 0 } };
   for (const s of rows) {
     const t = s.sale_type === "shopify" ? "shopify" : (s.sale_type === "tienda" ? "tienda" : "envios");
     canales[t].total += Number(s.total || 0);
