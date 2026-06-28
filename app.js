@@ -2289,7 +2289,7 @@ async function renderUsersList(){
     const row=el("div","cfg-row");
     const ini = u.name.trim().split(/\s+/).map(w=>w[0]).join("").substring(0,2).toUpperCase();
     const roles = [
-      u.is_seller?'<span class="role-chip seller">Vendedor</span>':'',
+      '<span class="role-chip seller">Vendedor</span>',
       u.is_cashier?'<span class="role-chip cashier">Cajero</span>':'',
       u.is_master?'<span class="role-chip master">Master</span>':'',
     ].join("");
