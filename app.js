@@ -1383,7 +1383,7 @@ function renderSellerSelect(){
 function renderPayGrid(){
   // Botones para AÑADIR un medio de pago al split
   const grid=$("#payGrid"); grid.innerHTML="";
-  for(const p of pos.payments){
+  for(const p of pos.payments.filter(p=>/shopify/i.test(p.name)===false)){
     const yaEsta = pos.splitPayments.find(sp=>sp.method===p.name);
     const b=el("div","pay-opt"+(yaEsta?" on":""));
     b.innerHTML = p.icon_url

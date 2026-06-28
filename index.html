@@ -786,10 +786,16 @@
         <div class="rep-filter" style="margin-top:-8px">
           <button onclick="setReportRange('custom',this)"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">calendar_month</span> Personalizado</button>
         </div>
-        <div id="customRangeWrap" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center">
-          <input type="date" id="customFrom">
-          <input type="date" id="customTo">
-          <button onclick="loadReport('custom')" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;cursor:pointer">Aplicar</button>
+        <div id="customRangeWrap" style="display:none;flex-direction:column;gap:6px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;color:var(--text-dim);min-width:38px">Desde</span>
+            <input type="date" id="customFrom" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;background:var(--surface);color:var(--text)">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;color:var(--text-dim);min-width:38px">Hasta</span>
+            <input type="date" id="customTo" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;background:var(--surface);color:var(--text)">
+          </div>
+          <button onclick="loadReport('custom')" style="padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer">Aplicar</button>
         </div>
         <div class="report-grid" id="reportGrid"></div>
       </div>
