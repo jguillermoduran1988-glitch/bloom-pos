@@ -2205,15 +2205,24 @@ let _loginPending = null;
 
 function showLoginModal(){
   const loginables = (pos.users||[]).filter(u=>u.is_cashier||u.is_master);
-  if(!loginables.length) return; // sin cajeros configurados, no mostrar
+  if(!loginables.length) return;
   const grid = $("#loginGrid");
   grid.style.gridTemplateColumns = loginables.length <= 2 ? "1fr 1fr" : "repeat(3,1fr)";
   grid.innerHTML = "";
   for(const u of loginables){
     const ini = u.name.trim().split(/\s+/).map(w=>w[0]).join("").substring(0,2).toUpperCase();
     const badge = [u.is_master?"Master":null, u.is_cashier?"Cajero":null].filter(Boolean).join(" · ");
+    const avatarInner = u.photo_url
+      ? `<img src="${esc(u.photo_url)}" alt="${esc(u.name)}">`
+      : ini;
     const card = el("div","login-card");
-    card.innerHTML = `<div class="login-avatar">${ini}</div><div class="login-name">${esc(u.name)}</div><div class="login-badge">${badge}</div>`;
+    card.innerHTML = `
+      <div class="login-avatar">${avatarInner}</div>
+      <div class="login-name">${esc(u.name)}</div>
+      <div class="login-badge">${badge}</div>
+      <button class="login-photo-btn" title="Cambiar foto" onclick="event.stopPropagation();setLoginPhoto('${u.id}')">
+        <span class="material-symbols-outlined" style="font-size:14px">photo_camera</span>
+      </button>`;
     card.onclick = ()=>selectLoginUser(u);
     grid.appendChild(card);
   }
@@ -2221,6 +2230,16 @@ function showLoginModal(){
   $("#loginModal").style.display = "flex";
 }
 
+async function setUserPhoto(id){
+  const dataUrl = await pickImage(200); if(!dataUrl) return;
+  await sbPatch(`sellers?id=eq.${id}`,{photo_url:dataUrl});
+  await loadUsers(); await renderUsersList();
+}
+async function setLoginPhoto(id){
+  const dataUrl = await pickImage(200); if(!dataUrl) return;
+  await sbPatch(`sellers?id=eq.${id}`,{photo_url:dataUrl});
+  await loadUsers(); showLoginModal();
+}
 function selectLoginUser(u){
   _loginPending = u;
   document.querySelectorAll(".login-card").forEach(c=>c.classList.remove("sel"));
@@ -2296,9 +2315,15 @@ async function renderUsersList(){
     const pinBadge = u.pin
       ? `<span style="font-size:10px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-2px">lock</span> PIN activo</span>`
       : `<span style="font-size:10px;color:var(--text-dim)">Sin PIN</span>`;
-    row.innerHTML=`<div class="login-avatar" style="width:32px;height:32px;font-size:13px;flex-shrink:0">${ini}</div>
+    const avatarHtml = u.photo_url
+      ? `<img src="${esc(u.photo_url)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+      : `<div class="login-avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0">${ini}</div>`;
+    row.innerHTML=`${avatarHtml}
       <span class="nm" style="flex:1">${esc(u.name)}<br><span class="user-roles" id="roles-${u.id}">${roles}</span></span>
       ${pinBadge}
+      <span class="cfg-photo" onclick="setUserPhoto('${u.id}')" title="Foto">
+        <span class="material-symbols-outlined" style="font-size:16px">photo_camera</span>
+      </span>
       <span class="cfg-photo" onclick="setUserPin('${u.id}','${esc(u.name)}')" title="PIN">
         <span class="material-symbols-outlined" style="font-size:16px">key</span>
       </span>
