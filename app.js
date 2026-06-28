@@ -2668,17 +2668,25 @@ async function loadReport(range){
   }
 
   // --- Ventas por medio de pago ---
+  // Índice alias→nombre canónico usando payment_methods ya cargados
+  const pmAlias = new Map();
+  for(const pm of (pos.payments||[])){
+    pmAlias.set(pm.name.toLowerCase(), pm.name);
+    for(const a of (pm.aliases||[])) pmAlias.set(a.toLowerCase(), pm.name);
+  }
+  const resolvePM = raw => pmAlias.get((raw||"").toLowerCase()) || raw || "—";
+
   const bypay={};
   for(const s of rows){
     const detail = Array.isArray(s.payment_detail)? s.payment_detail : null;
     if(detail && detail.length){
       for(const d of detail){
-        const m=d.method||"—";
+        const m=resolvePM(d.method);
         if(!bypay[m])bypay[m]={total:0,count:0};
         bypay[m].total+=Number(d.amount||0); bypay[m].count++;
       }
     }else{
-      const m=s.payment_method||"—";
+      const m=resolvePM(s.payment_method);
       if(!bypay[m])bypay[m]={total:0,count:0};
       bypay[m].total+=Number(s.total||0); bypay[m].count++;
     }
