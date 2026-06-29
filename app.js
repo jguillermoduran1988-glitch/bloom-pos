@@ -4826,6 +4826,17 @@ function openBotStepModal(){
   $("#botStepModal").classList.add("show");
 }
 
+function urlUploadField(id, label, val, accept){
+  return `<div style="margin-bottom:10px">
+    <label style="font-size:12px;font-weight:700;color:var(--text-dim)">${label}</label>
+    <div style="display:flex;gap:6px;margin-top:4px;align-items:center">
+      <input id="${id}" value="${esc(val||"")}" placeholder="https://..." style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+      <button type="button" onclick="botUploadMedia('${id}','${accept}')" style="flex-shrink:0;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-4px">upload</span> Subir</button>
+    </div>
+    <div id="${id}_prev" style="margin-top:6px;display:${val?'block':'none'}">${val&&accept.startsWith('image')?`<img src="${esc(val)}" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:cover">`:''}</div>
+  </div>`;
+}
+
 function buildStepForm(s, steps){
   const otherSteps = steps.filter((_,i)=>i!==_botEditingIdx);
   const nextOpts = `<option value="__end__">— Fin del flujo —</option>`+otherSteps.map(st=>`<option value="${st.id}">${stepTypeLabel(st.type)}: ${esc((st.body||st.media_url||"").slice(0,28))}</option>`).join("");
@@ -4837,9 +4848,9 @@ function buildStepForm(s, steps){
   const IS = s.type;
 
   if(IS==="text")  return hint+ta("bsf_body","Mensaje",s.body,"Hola {nombre}! Bienvenida a Bloom 🌸")+selNext("bsf_next","Continuar a",s.next);
-  if(IS==="image") return fld("bsf_url","URL de la imagen",s.media_url,"https://...")+hint+ta("bsf_body","Pie de foto (opcional)",s.body)+selNext("bsf_next","Continuar a",s.next);
-  if(IS==="audio") return fld("bsf_url","URL del audio",s.media_url,"https://...")+selNext("bsf_next","Continuar a",s.next);
-  if(IS==="video") return fld("bsf_url","URL del video",s.media_url,"https://...")+hint+ta("bsf_body","Pie de video (opcional)",s.body)+selNext("bsf_next","Continuar a",s.next);
+  if(IS==="image") return urlUploadField("bsf_url","Imagen",s.media_url,"image/*")+hint+ta("bsf_body","Pie de foto (opcional)",s.body)+selNext("bsf_next","Continuar a",s.next);
+  if(IS==="audio") return urlUploadField("bsf_url","Audio",s.media_url,"audio/*")+selNext("bsf_next","Continuar a",s.next);
+  if(IS==="video") return urlUploadField("bsf_url","Video",s.media_url,"video/*")+hint+ta("bsf_body","Pie de video (opcional)",s.body)+selNext("bsf_next","Continuar a",s.next);
 
   if(IS==="buttons"){
     const btns = (s.buttons||[]).map((b,i)=>`
@@ -4993,6 +5004,29 @@ function _syncEditingDataFromForm(){
   if(s.type==="assign")  { s.seller=gv("bsf_seller"); s.seller_name=document.querySelector(`#bsf_seller option:checked`)?.textContent||""; s.next=gv("bsf_next")||"__end__"; }
   if(s.type==="note")    { s.body=gv("bsf_body"); s.next=gv("bsf_next")||"__end__"; }
   if(s.type==="action")  { s.action=gv("bsf_action")||"change_stage"; s.value=gv("bsf_value"); s.next=gv("bsf_next")||"__end__"; }
+}
+
+async function botUploadMedia(fieldId, accept){
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept=accept||"*/*";
+  inp.onchange=async()=>{
+    const file=inp.files[0]; if(!file) return;
+    const btn=document.querySelector(`button[onclick*="${fieldId}"]`);
+    if(btn) btn.textContent="Subiendo…";
+    const ext=file.name.split(".").pop()||"bin";
+    const up=await sbUpload("team-chat", file, ext);
+    if(!up){ alert("No se pudo subir el archivo."); if(btn){ btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-4px">upload</span> Subir'; } return; }
+    const input=document.getElementById(fieldId);
+    if(input) input.value=up.url;
+    const prev=document.getElementById(fieldId+"_prev");
+    if(prev){
+      prev.style.display="block";
+      if(accept.startsWith("image")) prev.innerHTML=`<img src="${esc(up.url)}" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:cover">`;
+      else prev.innerHTML=`<span style="font-size:12px;color:var(--text-dim)">✓ Subido: ${esc(up.url.split("/").pop())}</span>`;
+    }
+    if(btn) btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-4px">check</span> Listo';
+  };
+  inp.click();
 }
 
 function saveBotStepEdit(){
