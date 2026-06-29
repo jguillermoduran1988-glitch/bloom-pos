@@ -2006,7 +2006,7 @@ function addLabelItem(name,variant,price,barcode,sku,stock){
 async function generateLabelBarcode(idx){
   const item=_lblResults[idx]; if(!item) return;
   // Generar SKU único: BL + 10 dígitos basados en timestamp + random
-  const newSku = 'BL' + String(Date.now()).slice(-8) + String(Math.floor(Math.random()*100)).padStart(2,'0');
+  const newSku = String(Date.now()).slice(-8) + String(Math.floor(Math.random()*100)).padStart(2,'0');
   // Obtener variant_id: directo o desde la primera variante del producto
   const vid = item.variant_id || item._product?.variants?.[0]?.variant_id;
   if(!vid){ alert("No se encontró la variante en Shopify."); return; }
@@ -2187,7 +2187,7 @@ function loadLabelDefaults(){
 // Genera SKU único — verifica contra catálogo + lote actual para evitar colisiones
 function _genUniqueSku(usedSet){
   for(let i=0;i<20;i++){
-    const sku='BL'+String(Date.now()).slice(-8)+String(Math.floor(Math.random()*100)).padStart(2,'0');
+    const sku=String(Date.now()).slice(-8)+String(Math.floor(Math.random()*100)).padStart(2,'0');
     if(!usedSet.has(sku)){ usedSet.add(sku); return sku; }
   }
   return null; // muy improbable
