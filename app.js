@@ -1889,7 +1889,8 @@ function saveSalesGoal(){
 async function loadGoalBar(){
   const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
   if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
-  if(!goal){ const b=$("#goalBar"); if(b) b.style.display="none"; return; }
+  const bar=$("#goalBar"); if(bar) bar.style.display="block";
+  if(!goal){ renderGoalBar(0,0); return; }
   const today=new Date().toISOString().slice(0,10);
   const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00&select=total&status=eq.completada`);
   const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
@@ -1898,13 +1899,279 @@ async function loadGoalBar(){
 function renderGoalBar(goal,total){
   if(goal===undefined) goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
   const bar=$("#goalBar"); if(!bar) return;
-  if(!goal){ bar.style.display="none"; return; }
   bar.style.display="block";
   if(total===undefined) total=0;
-  const pct=Math.min(100,Math.round(total/goal*100));
+  const pct=goal>0?Math.min(100,Math.round(total/goal*100)):0;
   const prog=$("#goalProgress"); if(prog) prog.style.width=pct+"%";
-  const txt=$("#goalText"); if(txt) txt.textContent=`${money(total)} / ${money(goal)} (${pct}%)`;
-  if(prog) prog.style.background = pct>=100?"#27ae60":pct>=70?"var(--accent)":"var(--accent)";
+  const txt=$("#goalText");
+  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta — toca 📈 para planear";
+  if(prog) prog.style.background = pct>=100?"#27ae60":"var(--accent)";
+}
+
+// ====================================================================
+//  META INTELIGENTE — planificador mensual con datos históricos
+// ====================================================================
+
+// Festivos Colombia (Ley Emiliani): los marcados con * se mueven al lunes siguiente
+function _colHolidays(year){
+  // Calcula Pascua (algoritmo de Gauss)
+  function easter(y){
+    const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4;
+    const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30;
+    const i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7;
+    const m=Math.floor((a+11*h+22*l)/451);
+    const month=Math.floor((h+l-7*m+114)/31),day=((h+l-7*m+114)%31)+1;
+    return new Date(y,month-1,day);
+  }
+  function nextMon(d){ const r=new Date(d); const dw=r.getDay(); if(dw!==1) r.setDate(r.getDate()+((8-dw)%7)); return r; }
+  function fmt(d){ return d.toISOString().slice(0,10); }
+
+  const p=easter(year);
+  const fixed=[
+    {d:fmt(new Date(year,0,1)),  n:"Año Nuevo"},
+    {d:fmt(new Date(year,4,1)),  n:"Día del Trabajo"},
+    {d:fmt(new Date(year,6,20)), n:"Independencia"},
+    {d:fmt(new Date(year,7,7)),  n:"Batalla de Boyacá"},
+    {d:fmt(new Date(year,11,8)), n:"Inmaculada Concepción"},
+    {d:fmt(new Date(year,11,25)),n:"Navidad"},
+  ];
+  function addDays(base,n){ const r=new Date(base); r.setDate(r.getDate()+n); return r; }
+  const emiliani=[ // se mueven al lunes siguiente
+    {d:nextMon(new Date(year,0,6)),  n:"Reyes Magos"},
+    {d:nextMon(new Date(year,2,19)), n:"San José"},
+    {d:nextMon(addDays(p,39)),       n:"Ascensión"},
+    {d:nextMon(addDays(p,60)),       n:"Corpus Christi"},
+    {d:nextMon(addDays(p,68)),       n:"Sagrado Corazón"},
+    {d:nextMon(new Date(year,5,29)), n:"San Pedro y San Pablo"},
+    {d:nextMon(new Date(year,7,15)), n:"Asunción"},
+    {d:nextMon(new Date(year,9,12)), n:"Día de la Raza"},
+    {d:nextMon(new Date(year,10,2)),n:"Todos los Santos"},
+    {d:nextMon(new Date(year,10,11)),n:"Independencia Cartagena"},
+  ];
+  const jueves=fmt(addDays(p,-3)), viernes=fmt(addDays(p,-2));
+  const semana=[{d:jueves,n:"Jueves Santo"},{d:viernes,n:"Viernes Santo"}];
+  return [...fixed,...emiliani.map(x=>({...x,d:fmt(x.d)})),...semana]
+    .sort((a,b)=>a.d.localeCompare(b.d));
+}
+
+let _bloomSalesHistory = null;
+async function _loadSalesHistory(){
+  if(_bloomSalesHistory) return _bloomSalesHistory;
+  // 1. Intenta localStorage (subido por usuario)
+  try{
+    const s=localStorage.getItem("bloom_sales_history");
+    if(s){ _bloomSalesHistory=JSON.parse(s); return _bloomSalesHistory; }
+  }catch{}
+  // 2. Intenta el archivo incluido en el repo
+  try{
+    const r=await fetch("./sales-history.json",{cache:"no-store"});
+    if(r.ok){ _bloomSalesHistory=await r.json(); return _bloomSalesHistory; }
+  }catch{}
+  return {};
+}
+
+// Calcula pesos por día de semana (0=Dom..6=Sáb) a partir del histórico
+function _dayWeights(history){
+  const sum=[0,0,0,0,0,0,0], cnt=[0,0,0,0,0,0,0];
+  for(const [key,days] of Object.entries(history)){
+    const [yr,mo]=key.split("-").map(Number);
+    for(const [d,val] of Object.entries(days)){
+      const dt=new Date(yr,mo-1,parseInt(d));
+      const dw=dt.getDay();
+      sum[dw]+=val; cnt[dw]++;
+    }
+  }
+  const avg=sum.map((s,i)=>cnt[i]>0?s/cnt[i]:0);
+  const total=avg.reduce((a,b)=>a+b,0)||1;
+  return avg.map(v=>v/total*7); // normalizado: promedio=1
+}
+
+function openGoalPlanner(){
+  const now=new Date();
+  const modal=document.getElementById("goalPlannerModal");
+  if(!modal) return;
+  document.getElementById("gpMonth").value=now.getMonth()+1;
+  document.getElementById("gpYear").value=now.getFullYear();
+  document.getElementById("gpGoal").value="";
+  document.getElementById("gpResult").innerHTML="";
+  modal.style.display="flex";
+}
+function closeGoalPlanner(){ document.getElementById("goalPlannerModal").style.display="none"; }
+
+async function computeGoalPlan(){
+  const goal=parseInt((document.getElementById("gpGoal").value||"").replace(/\D/g,""))||0;
+  const month=parseInt(document.getElementById("gpMonth").value);
+  const year=parseInt(document.getElementById("gpYear").value);
+  if(!goal||!month||!year){ alert("Ingresa meta, mes y año"); return; }
+
+  const history=await _loadSalesHistory();
+  const weights=_dayWeights(history);
+  const holidays=_colHolidays(year);
+  const holidayDates=new Set(holidays.map(h=>h.d));
+
+  // Construir días del mes
+  const daysInMonth=new Date(year,month,0).getDate();
+  const allDays=[];
+  for(let d=1;d<=daysInMonth;d++){
+    const dt=new Date(year,month-1,d);
+    const dw=dt.getDay();
+    const iso=dt.toISOString().slice(0,10);
+    const hol=holidays.find(h=>h.d===iso);
+    allDays.push({d,iso,dw,holiday:hol||null,open:dw!==0&&!hol}); // domingos y festivos cerrado por defecto
+  }
+
+  renderGoalPlanResult(allDays, weights, goal, holidays);
+}
+
+function renderGoalPlanResult(allDays, weights, goal, allHolidays){
+  const box=document.getElementById("gpResult");
+  const month=parseInt(document.getElementById("gpMonth").value);
+  const year=parseInt(document.getElementById("gpYear").value);
+
+  // Festivos del mes
+  const monthHols=allHolidays.filter(h=>h.d.startsWith(`${year}-${String(month).padStart(2,"0")}`));
+
+  // Días abiertos con peso
+  const openDays=allDays.filter(d=>d.open);
+  const totalWeight=openDays.reduce((s,d)=>s+weights[d.dw],0)||1;
+  const basePerUnit=goal/totalWeight;
+
+  const DAYS_ES=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  const MONTHS_ES2=["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  const calRows=allDays.map(d=>{
+    const meta=d.open ? Math.round(basePerUnit*weights[d.dw]/1000)*1000 : 0;
+    const isHol=!!d.holiday;
+    const isSun=d.dw===0;
+    const closed=!d.open;
+    return `<tr class="gp-row${closed?" gp-closed":""}" data-day="${d.d}" data-open="${d.open?1:0}">
+      <td style="padding:5px 8px;font-weight:600;color:var(--text-dim);font-size:12px">${d.d}</td>
+      <td style="padding:5px 8px;font-size:12px">${DAYS_ES[d.dw]}</td>
+      <td style="padding:5px 8px;font-size:12px;color:${isHol?"#c0392b":"var(--text)"}">${isHol?`🗓 ${d.holiday.n}`:isSun?"☀️ Domingo":""}</td>
+      <td style="padding:5px 8px;text-align:right;font-weight:700;color:${closed?"var(--text-dim)":"var(--accent)"};font-size:13px">${closed?"—":money(meta)}</td>
+      <td style="padding:5px 4px;text-align:center">
+        <label style="cursor:pointer;font-size:11px;color:var(--text-dim)">
+          <input type="checkbox" ${d.open?"checked":""} onchange="toggleGpDay('${d.d}',this.checked,${JSON.stringify(goal).replace(/"/g,'&quot;')})" style="margin:0">
+          ${closed?"incluir":"abierto"}
+        </label>
+      </td>
+    </tr>`;
+  }).join("");
+
+  const holSection=monthHols.length
+    ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Festivos en ${MONTHS_ES2[month]} ${year}</div>
+        ${monthHols.map(h=>`<div style="font-size:13px;padding:3px 0;color:#c0392b">📅 ${h.d.slice(8)} — ${h.n}</div>`).join("")}
+        <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Puedes incluir festivos marcando la casilla en la tabla.</div>
+       </div>`
+    : "";
+
+  box.innerHTML=`
+    ${holSection}
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+      Días abiertos: <b>${openDays.length}</b> · Meta distribuida según histórico de ventas por día de semana.
+    </div>
+    <div style="overflow-x:auto">
+      <table id="gpTable" style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-dim)">Fecha</th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-dim)">Día</th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-dim)">Nota</th>
+          <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text-dim)">Meta sugerida</th>
+          <th style="padding:6px 8px;font-size:11px;color:var(--text-dim)"></th>
+        </tr></thead>
+        <tbody>${calRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;padding:10px;background:var(--accent-soft);border-radius:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <span>Meta mensual total: <b>${money(goal)}</b></span>
+      <button onclick="applyDailyGoal()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Aplicar meta de hoy</button>
+    </div>`;
+
+  // Guardar estado mutable de días
+  window._gpDays=allDays;
+  window._gpWeights=weights;
+}
+
+function toggleGpDay(iso, open, goal){
+  if(!window._gpDays) return;
+  const d=window._gpDays.find(x=>x.iso===iso);
+  if(d) d.open=open;
+  // Recalcular y re-renderizar solo los montos sin destruir la tabla
+  const openDays=window._gpDays.filter(x=>x.open);
+  const totalWeight=openDays.reduce((s,x)=>s+window._gpWeights[x.dw],0)||1;
+  const basePerUnit=goal/totalWeight;
+  window._gpDays.forEach(d=>{
+    const row=document.querySelector(`tr[data-day="${d.iso}"]`);
+    if(!row) return;
+    const meta=d.open ? Math.round(basePerUnit*window._gpWeights[d.dw]/1000)*1000 : 0;
+    const td=row.querySelectorAll("td")[3];
+    if(td){ td.textContent=d.open?money(meta):"—"; td.style.color=d.open?"var(--accent)":"var(--text-dim)"; }
+    row.classList.toggle("gp-closed",!d.open);
+  });
+}
+
+function applyDailyGoal(){
+  if(!window._gpDays) return;
+  const today=new Date().toISOString().slice(0,10);
+  const d=window._gpDays.find(x=>x.iso===today);
+  if(!d||!d.open){ alert("Hoy está marcado como día cerrado en el plan."); return; }
+  const openDays=window._gpDays.filter(x=>x.open);
+  const totalWeight=openDays.reduce((s,x)=>s+window._gpWeights[x.dw],0)||1;
+  const goal=parseInt((document.getElementById("gpGoal").value||"").replace(/\D/g,""))||0;
+  const basePerUnit=goal/totalWeight;
+  const todayGoal=Math.round(basePerUnit*window._gpWeights[d.dw]/1000)*1000;
+  localStorage.setItem("bloom_sales_goal", todayGoal);
+  renderGoalBar();
+  closeGoalPlanner();
+  alert(`✓ Meta del día aplicada: ${money(todayGoal)}`);
+}
+
+// Importar Excel histórico desde el navegador
+function importSalesHistoryExcel(){
+  const input=document.createElement("input");
+  input.type="file"; input.accept=".xlsx,.xls";
+  input.onchange=async e=>{
+    const file=e.target.files[0]; if(!file) return;
+    if(typeof XLSX==="undefined"){ alert("Librería de Excel no disponible"); return; }
+    const data=await file.arrayBuffer();
+    const wb=XLSX.read(data,{type:"array",cellFormula:false});
+    const MONTHS_MAP={ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
+    const result={};
+    for(const sh of wb.SheetNames){
+      const upper=sh.trim().toUpperCase();
+      let mo=0,yr=0;
+      for(const [m,n] of Object.entries(MONTHS_MAP)){
+        if(upper.startsWith(m)){
+          const rest=upper.slice(m.length).trim();
+          const match=rest.match(/\d{4}/);
+          if(match){ mo=n; yr=parseInt(match[0]); break; }
+        }
+      }
+      if(!mo||!yr) continue;
+      const ws=wb.Sheets[sh];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+      if(!rows.length) continue;
+      const headers=(rows[0]||[]).map(h=>h?String(h).trim().toUpperCase():"");
+      const totalCol=headers.findIndex(h=>h==="TOTAL");
+      if(totalCol<0) continue;
+      const days={};
+      for(let i=1;i<rows.length;i++){
+        const row=rows[i];
+        const day=row[0];
+        if(typeof day!=="number"||day<1||day>31) continue;
+        const val=row[totalCol];
+        if(typeof val==="number"&&val>0) days[String(day)]=Math.round(val);
+      }
+      if(Object.keys(days).length) result[`${yr}-${String(mo).padStart(2,"0")}`]=days;
+    }
+    const cnt=Object.keys(result).length;
+    if(!cnt){ alert("No se encontraron datos en el archivo"); return; }
+    localStorage.setItem("bloom_sales_history",JSON.stringify(result));
+    _bloomSalesHistory=result;
+    alert(`✓ ${cnt} meses importados (${Object.values(result).reduce((s,d)=>s+Object.keys(d).length,0)} días)`);
+  };
+  input.click();
 }
 
 // ====================================================================

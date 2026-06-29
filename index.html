@@ -569,8 +569,15 @@
       </div>
       <div id="goalBar" style="display:none;padding:8px 14px 6px;background:var(--surface-2);border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px">
-          <span style="font-weight:600;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">flag</span> Meta del día</span>
-          <span id="goalText" style="font-weight:700;color:var(--accent)">$0 / $0</span>
+          <span style="font-weight:600;color:var(--text-dim);display:flex;align-items:center;gap:4px">
+            <span class="material-symbols-outlined" style="font-size:13px">flag</span> Meta del día
+          </span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span id="goalText" style="font-weight:700;color:var(--accent)">$0 / $0</span>
+            <button onclick="openGoalPlanner()" title="Planear mes" style="background:none;border:none;cursor:pointer;padding:0;color:var(--text-dim);display:flex;align-items:center">
+              <span class="material-symbols-outlined" style="font-size:16px">auto_graph</span>
+            </button>
+          </span>
         </div>
         <div style="background:var(--border);border-radius:4px;height:7px;overflow:hidden">
           <div id="goalProgress" style="background:var(--accent);height:7px;border-radius:4px;width:0%;transition:width 0.6s"></div>
@@ -1354,5 +1361,57 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- ===== MODAL: PLANIFICADOR DE META MENSUAL ===== -->
+<div class="overlay center" id="goalPlannerModal" style="display:none;z-index:1100">
+  <div class="modal" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0">
+      <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:8px">
+        <span class="material-symbols-outlined" style="font-size:20px;color:var(--accent)">auto_graph</span>
+        Planificador de meta mensual
+      </h3>
+      <button onclick="closeGoalPlanner()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim);line-height:1">×</button>
+    </div>
+
+    <!-- Inputs -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;flex-shrink:0">
+      <div class="field" style="margin:0">
+        <label style="font-size:11px">Meta mensual ($)</label>
+        <input id="gpGoal" type="text" inputmode="numeric" placeholder="Ej: 90.000.000"
+          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+      </div>
+      <div class="field" style="margin:0">
+        <label style="font-size:11px">Mes</label>
+        <select id="gpMonth" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+          <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+          <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+          <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+          <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0">
+        <label style="font-size:11px">Año</label>
+        <input id="gpYear" type="number" value="2026" min="2023" max="2030"
+          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-shrink:0">
+      <button onclick="computeGoalPlan()" style="flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer">
+        Generar distribución
+      </button>
+      <button onclick="importSalesHistoryExcel()" title="Actualizar datos históricos desde Excel" style="background:none;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;cursor:pointer;color:var(--text-dim);display:flex;align-items:center;gap:6px">
+        <span class="material-symbols-outlined" style="font-size:17px">upload_file</span> Excel
+      </button>
+    </div>
+
+    <style>
+      .gp-closed td { opacity: 0.4; }
+      .gp-row:hover td { background: var(--surface-2); }
+    </style>
+    <div id="gpResult" style="overflow-y:auto;flex:1"></div>
+  </div>
+</div>
 </body>
 </html>
