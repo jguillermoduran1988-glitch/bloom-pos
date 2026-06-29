@@ -1331,7 +1331,9 @@ function _updatePayDiff(){
   const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
   const diff=total-sum;
   const diffEl=$("#payDiff");
-  if(diffEl) diffEl.textContent = diff===0?'✓ Cuadra exacto':`Faltan: ${money(Math.abs(diff))}${diff<0?' (exceso)':''}`;
+  if(diffEl) diffEl.innerHTML = diff===0
+    ? `<span style="font-size:15px;font-weight:700;color:var(--accent)">✓ Cuadra exacto</span>`
+    : `<span style="font-size:15px;font-weight:700;color:#c0392b">${diff<0?'Exceso':'Faltan'}: ${money(Math.abs(diff))}</span>`;
 }
 function addPayRow(){
   const total=cartTotal();
