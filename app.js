@@ -2006,9 +2006,10 @@ function addLabelItem(name,variant,price,barcode,sku,stock){
 
 async function generateLabelBarcode(idx){
   const item=_lblResults[idx]; if(!item) return;
-  // Generar código: SKU si tiene, si no "BL" + 10 dígitos únicos
-  const generated = item.sku ? item.sku : "BL" + Date.now().toString().slice(-8) + Math.floor(Math.random()*99).toString().padStart(2,"0");
-  if(!confirm(`¿Crear código de barras "${generated}" y guardarlo en Shopify?`)) return;
+  if(!item.sku){ alert("Este producto no tiene SKU en Shopify. Agrégalo primero en Shopify y sincroniza."); return; }
+  // El código de barras ES el SKU — solo hay que escribirlo en el campo barcode de Shopify
+  const generated = item.sku;
+  if(!confirm(`¿Asignar el SKU "${generated}" como código de barras en Shopify?`)) return;
 
   const btn = document.querySelector(`[onclick="event.stopPropagation();generateLabelBarcode(${idx})"]`);
   if(btn){ btn.textContent="Guardando…"; btn.disabled=true; }
