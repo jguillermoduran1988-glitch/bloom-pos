@@ -51,16 +51,17 @@ export default {
       return Response.json(products, { headers: cors });
     }
 
-    // -------- Actualizar código de barras de variante en Shopify --------
-    if (request.method === "POST" && url.pathname === "/update-barcode") {
-      const { variant_id, barcode } = await request.json();
+    // -------- Actualizar SKU de variante en Shopify --------
+    if (request.method === "POST" && url.pathname === "/update-sku") {
+      const { variant_id, sku } = await request.json();
       const shopHeaders = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
       const r = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/variants/${variant_id}.json`, {
         method: "PUT", headers: shopHeaders,
-        body: JSON.stringify({ variant: { id: variant_id, barcode } })
+        body: JSON.stringify({ variant: { id: variant_id, sku } })
       });
       const data = await r.json();
-      return Response.json({ ok: r.ok, barcode: data.variant?.barcode }, { headers: cors });
+      if (!r.ok) return Response.json({ ok: false, error: JSON.stringify(data.errors || data) }, { headers: cors });
+      return Response.json({ ok: true, sku: data.variant?.sku }, { headers: cors });
     }
 
     // -------- POS: crear venta -> orden en Shopify --------

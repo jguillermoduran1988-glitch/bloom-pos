@@ -886,12 +886,12 @@
             <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowBarcode" checked> Código de barras</label>
             <input type="number" id="lblBcH" value="22" min="10" max="60" title="Altura barra (px)" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowQr"> Código QR</label>
-            <input type="number" id="lblQrSz" value="36" min="20" max="80" title="Tamaño QR (px)" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
-          </div>
         </div>
       </div>
+
+      <button onclick="saveLabelDefaults()" style="width:100%;margin-bottom:12px;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;font-size:13px;cursor:pointer;color:var(--text-dim);display:flex;align-items:center;justify-content:center;gap:6px">
+        <span class="material-symbols-outlined" style="font-size:16px">bookmark</span> Guardar como predeterminado
+      </button>
 
       <!-- Búsqueda de productos -->
       <input id="lblSearch" placeholder="Buscar producto por nombre, SKU o código de barras…" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;background:var(--surface);color:var(--text)" oninput="searchLabelProducts()">

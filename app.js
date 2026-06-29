@@ -1819,6 +1819,7 @@ async function initConfig(){
   const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
   if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
   if(!pos.catalog.length) pos.catalog = await fetchProducts();
+  loadLabelDefaults();
   initConfigSections();
 }
 
@@ -1946,14 +1947,13 @@ function searchLabelProducts(){
 
       const varRows = variantItems.map((item, vi)=>{
         const idx = allIdx + 1 + vi;
-        const bcTag = item.barcode
-          ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${esc(item.barcode)}</span>`
-          : `<button onclick="event.stopPropagation();generateLabelBarcode(${idx})" style="font-size:10px;padding:1px 7px;margin-left:6px;border:1px dashed #c0392b;border-radius:4px;background:none;color:#c0392b;cursor:pointer">Generar código</button>`;
-        const skuTag = item.sku ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">SKU: ${esc(item.sku)}</span>` : '';
+        const skuTag = item.sku
+          ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${esc(item.sku)}</span>`
+          : `<button onclick="event.stopPropagation();generateLabelBarcode(${idx})" style="font-size:10px;padding:1px 7px;margin-left:6px;border:1px dashed #c0392b;border-radius:4px;background:none;color:#c0392b;cursor:pointer">+ Generar SKU</button>`;
         const stk = item.stock>0 ? `<span style="font-size:10px;color:#27ae60">${item.stock} disp.</span>` : `<span style="font-size:10px;color:#c0392b">Agotado</span>`;
         return `<div onclick="addLabelByIdx(${idx})" style="padding:7px 10px 7px 18px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;background:var(--surface)">
           <span style="display:flex;align-items:center;flex-wrap:wrap;gap:2px">
-            <span style="color:var(--text)">${esc(item.variant)}</span>${skuTag}${bcTag}
+            <span style="color:var(--text)">${esc(item.variant)}</span>${skuTag}
           </span>
           <span style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px">
             ${stk}<span style="color:var(--accent);font-weight:600;font-size:12px">${money(item.price)}</span>
@@ -1972,13 +1972,12 @@ function searchLabelProducts(){
     // Producto sin variantes
     const idx = _lblResults.length;
     _lblResults.push({name:p.name, variant:"", price:p.price, barcode:p.barcode||"", sku:p.sku||"", stock:p.stock||0, variant_id:null, _product:p});
-    const bcTag = p.barcode
-      ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${esc(p.barcode)}</span>`
-      : `<button onclick="event.stopPropagation();generateLabelBarcode(${idx})" style="font-size:10px;padding:1px 7px;margin-left:6px;border:1px dashed #c0392b;border-radius:4px;background:none;color:#c0392b;cursor:pointer">Generar código</button>`;
-    const skuTag = p.sku ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">SKU: ${esc(p.sku)}</span>` : '';
+    const skuTag = p.sku
+      ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${esc(p.sku)}</span>`
+      : `<button onclick="event.stopPropagation();generateLabelBarcode(${idx})" style="font-size:10px;padding:1px 7px;margin-left:6px;border:1px dashed #c0392b;border-radius:4px;background:none;color:#c0392b;cursor:pointer">+ Generar SKU</button>`;
     const stk = p.stock>0 ? `<span style="font-size:10px;color:#27ae60">${p.stock} disp.</span>` : `<span style="font-size:10px;color:#c0392b">Agotado</span>`;
     return `<div onclick="addLabelByIdx(${idx})" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
-      <span style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><b>${esc(p.name)}</b>${skuTag}${bcTag}</span>
+      <span style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><b>${esc(p.name)}</b>${skuTag}</span>
       <span style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px">${stk}<span style="color:var(--accent);font-weight:700">${money(p.price)}</span></span>
     </div>`;
   });
@@ -2006,37 +2005,43 @@ function addLabelItem(name,variant,price,barcode,sku,stock){
 
 async function generateLabelBarcode(idx){
   const item=_lblResults[idx]; if(!item) return;
-  if(!item.sku){ alert("Este producto no tiene SKU en Shopify. Agrégalo primero en Shopify y sincroniza."); return; }
-  // El código de barras ES el SKU — solo hay que escribirlo en el campo barcode de Shopify
-  const generated = item.sku;
-  if(!confirm(`¿Asignar el SKU "${generated}" como código de barras en Shopify?`)) return;
+  // Generar SKU único: BL + 10 dígitos basados en timestamp + random
+  const newSku = 'BL' + String(Date.now()).slice(-8) + String(Math.floor(Math.random()*100)).padStart(2,'0');
+  // Obtener variant_id: directo o desde la primera variante del producto
+  const vid = item.variant_id || item._product?.variants?.[0]?.variant_id;
+  if(!vid){ alert("No se encontró la variante en Shopify."); return; }
+  if(!confirm(`¿Generar y asignar el SKU "${newSku}" en Shopify?`)) return;
 
   const btn = document.querySelector(`[onclick="event.stopPropagation();generateLabelBarcode(${idx})"]`);
   if(btn){ btn.textContent="Guardando…"; btn.disabled=true; }
 
   try{
-    const r = await fetch(`${C.WORKER_URL}/update-barcode`, {
+    const r = await fetch(`${C.WORKER_URL}/update-sku`, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ variant_id: item.variant_id, barcode: generated })
+      body: JSON.stringify({ variant_id: vid, sku: newSku })
     });
     const data = await r.json();
     if(data.ok){
-      // Actualizar en el catálogo local
-      item.barcode = generated;
+      item.sku = newSku;
       if(item._product){
         if(item.variant_id && item._product.variants){
           const v=item._product.variants.find(v=>String(v.variant_id)===String(item.variant_id));
-          if(v) v.barcode=generated;
-        } else { item._product.barcode=generated; }
+          if(v) v.sku=newSku;
+        } else if(item._product.variants?.[0]){ item._product.variants[0].sku=newSku; }
       }
-      if(btn){ btn.replaceWith(document.createTextNode(" "+generated)); }
-      alert(`✓ Código "${generated}" guardado en Shopify`);
+      if(btn){
+        const span=document.createElement('span');
+        span.style.cssText="font-size:10px;color:var(--text-dim);margin-left:5px";
+        span.textContent=newSku;
+        btn.replaceWith(span);
+      }
+      alert(`✓ SKU "${newSku}" guardado en Shopify`);
     } else {
-      if(btn){ btn.textContent="Generar código"; btn.disabled=false; }
-      alert("Error al guardar en Shopify");
+      if(btn){ btn.textContent="+ Generar SKU"; btn.disabled=false; }
+      alert("Error al guardar en Shopify: "+(data.error||""));
     }
   }catch(e){
-    if(btn){ btn.textContent="Generar código"; btn.disabled=false; }
+    if(btn){ btn.textContent="+ Generar SKU"; btn.disabled=false; }
     alert("Error de conexión");
   }
 }
@@ -2048,13 +2053,24 @@ function renderLabelQueue(){
   const box=$("#lblQueue"); if(!box) return;
   const total=_lblQueue.reduce((s,r)=>s+r.qty,0);
   if(!_lblQueue.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:4px 0">No hay productos en cola — busca arriba para agregar.</div>'; return; }
+  const missing=_lblQueue.filter(r=>!r.sku);
+  const bulkBtn=missing.length
+    ? `<button onclick="generateAllMissingSku()" style="width:100%;margin-bottom:8px;background:none;border:1px dashed #c0392b;border-radius:8px;padding:8px;font-size:13px;cursor:pointer;color:#c0392b;display:flex;align-items:center;justify-content:center;gap:6px">
+        <span class="material-symbols-outlined" style="font-size:16px">qr_code</span> Generar SKU a todas sin código (${missing.length})
+       </button>`
+    : '';
   box.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Cola de impresión · ${total} etiqueta${total!==1?"s":""}</div>`+
+  bulkBtn+
   _lblQueue.map((item,i)=>`
     <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;background:var(--surface);font-size:13px">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.name)}</div>
-        ${item.variant?`<div style="font-size:11px;color:var(--text-dim)">${esc(item.variant)}</div>`:''}
-        <div style="font-size:12px;color:var(--accent);font-weight:700">${money(item.price)}</div>
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.name)}${item.variant?` <span style="font-weight:400;color:var(--text-dim)">${esc(item.variant)}</span>`:''}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <span style="font-size:12px;color:var(--accent);font-weight:700">${money(item.price)}</span>
+          ${item.sku
+            ? `<span style="font-size:10px;color:var(--text-dim)">${esc(item.sku)}</span>`
+            : `<span style="font-size:10px;color:#c0392b">Sin SKU</span>`}
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <span style="font-size:11px;color:var(--text-dim)">copias</span>
@@ -2078,13 +2094,11 @@ function printLabels(){
   const showVariant=_lblG("lblShowVariant")!==false;
   const showPrice=_lblG("lblShowPrice")!==false;
   const showBarcode=_lblG("lblShowBarcode")!==false;
-  const showQr=_lblG("lblShowQr")||false;
   const fsStore=parseInt(_lblG("lblFsStore"))||7;
   const fsName=parseInt(_lblG("lblFsName"))||9;
   const fsVariant=parseInt(_lblG("lblFsVariant"))||8;
   const fsPrice=parseInt(_lblG("lblFsPrice"))||14;
   const bcH=parseInt(_lblG("lblBcH"))||22;
-  const qrSz=parseInt(_lblG("lblQrSz"))||36;
   const storeName=(pos.settings?.receipt_business)||"Bloom";
 
   const sizeMap={
@@ -2106,14 +2120,12 @@ function printLabels(){
       ${showName?`<div class="f-name">${esc(item.name)}</div>`:""}
       ${showVariant&&item.variant?`<div class="f-variant">${esc(item.variant)}</div>`:""}
       ${showPrice?`<div class="f-price">${money(item.price)}</div>`:""}
-      ${showBarcode&&(item.barcode||item.sku)?`<svg id="${item._bcId}" class="f-bc"></svg>`:""}
-      ${showQr&&(item.barcode||item.sku)?`<canvas id="${item._qrId}" class="f-qr"></canvas>`:""}
+      ${showBarcode&&(item.sku||item.barcode)?`<svg id="${item._bcId}" class="f-bc"></svg>`:""}
     </div>`).join('');
 
   const win=window.open("","_blank");
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas</title>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:${font};background:#fff}
@@ -2124,7 +2136,6 @@ function printLabels(){
     .f-variant{font-size:${fsVariant}pt;color:#555;margin-bottom:.5mm}
     .f-price{font-size:${fsPrice}pt;font-weight:900;margin-bottom:1mm}
     .f-bc{max-width:100%;height:${bcH}px;margin-bottom:1mm}
-    .f-qr{width:${qrSz}px;height:${qrSz}px}
     @media print{
       body{margin:0}
       .lbl{border-color:transparent}
@@ -2138,19 +2149,85 @@ function printLabels(){
   setTimeout(()=>{
     try{
       items.forEach(item=>{
-        const code=item.barcode||item.sku||"";
+        const code=item.sku||item.barcode||"";
         if(showBarcode&&code){
           const svg=win.document.getElementById(item._bcId);
           if(svg) try{ win.JsBarcode(svg,code,{format:"CODE128",displayValue:true,fontSize:7,height:bcH-4,margin:1,width:1.2}); }catch(e){}
-        }
-        if(showQr&&code){
-          const canvas=win.document.getElementById(item._qrId);
-          if(canvas) try{ win.QRCode.toCanvas(canvas,code,{width:qrSz,margin:1},()=>{}); }catch(e){}
         }
       });
       setTimeout(()=>win.print(),400);
     }catch(e){ setTimeout(()=>win.print(),800); }
   },600);
+}
+
+const _LBL_FIELDS=["lblSize","lblFont","lblMTop","lblMBottom","lblMLeft","lblMRight","lblShowStore","lblShowName","lblShowVariant","lblShowPrice","lblShowBarcode","lblFsStore","lblFsName","lblFsVariant","lblFsPrice","lblBcH"];
+function saveLabelDefaults(){
+  const d={};
+  _LBL_FIELDS.forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    d[id]=el.type==="checkbox"?el.checked:el.value;
+  });
+  try{ localStorage.setItem("bloom_label_defaults",JSON.stringify(d)); }catch{}
+  const btn=document.querySelector('[onclick="saveLabelDefaults()"]');
+  if(btn){ const orig=btn.innerHTML; btn.textContent="✓ Guardado"; setTimeout(()=>btn.innerHTML=orig,1500); }
+}
+function loadLabelDefaults(){
+  try{
+    const d=JSON.parse(localStorage.getItem("bloom_label_defaults")||"{}");
+    _LBL_FIELDS.forEach(id=>{
+      if(!(id in d)) return;
+      const el=document.getElementById(id); if(!el) return;
+      if(el.type==="checkbox") el.checked=d[id];
+      else el.value=d[id];
+    });
+  }catch{}
+}
+
+// Genera SKU único — verifica contra catálogo + lote actual para evitar colisiones
+function _genUniqueSku(usedSet){
+  for(let i=0;i<20;i++){
+    const sku='BL'+String(Date.now()).slice(-8)+String(Math.floor(Math.random()*100)).padStart(2,'0');
+    if(!usedSet.has(sku)){ usedSet.add(sku); return sku; }
+  }
+  return null; // muy improbable
+}
+
+async function generateAllMissingSku(){
+  const targets=_lblQueue.filter(r=>!r.sku);
+  if(!targets.length) return;
+  if(!confirm(`¿Generar SKU para ${targets.length} producto${targets.length!==1?"s":""}? Solo se asignará a los que no tienen SKU.`)) return;
+
+  // Construir Set con todos los SKUs existentes en el catálogo
+  const usedSkus=new Set();
+  for(const p of pos.catalog){
+    if(p.sku) usedSkus.add(p.sku);
+    for(const v of (p.variants||[])) if(v.sku) usedSkus.add(v.sku);
+  }
+
+  let ok=0, err=0;
+  for(const item of targets){
+    const vid=item.variant_id||item._product?.variants?.[0]?.variant_id;
+    if(!vid){ err++; continue; }
+    const newSku=_genUniqueSku(usedSkus);
+    if(!newSku){ err++; continue; }
+    try{
+      const r=await fetch(`${C.WORKER_URL}/update-sku`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({variant_id:vid,sku:newSku})});
+      const data=await r.json();
+      if(data.ok){
+        item.sku=newSku;
+        if(item._product){
+          if(item.variant_id&&item._product.variants){
+            const v=item._product.variants.find(v=>String(v.variant_id)===String(item.variant_id));
+            if(v) v.sku=newSku;
+          } else if(item._product.variants?.[0]){ item._product.variants[0].sku=newSku; }
+        }
+        ok++;
+      } else { err++; }
+    }catch{ err++; }
+  }
+  renderLabelQueue();
+  alert(`✓ ${ok} SKU${ok!==1?"s":""} generado${ok!==1?"s":""}${err?` · ${err} con error`:""}`);
 }
 
 // ---- Datos / estadísticas ----
