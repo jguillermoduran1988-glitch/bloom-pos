@@ -2209,7 +2209,7 @@ async function scanExReplacement(){
   const code = (input.value || "").trim();
   if(!code) return;
 
-  if(!pos.catalog.length) await fetchProducts();
+  if(!pos.catalog.length) pos.catalog = await fetchProducts();
 
   const found = findProductByCode(code);
   if(found){
@@ -2232,7 +2232,7 @@ function searchExchangeProduct(){
     const box = document.getElementById("exProductResults");
     if(q.length < 2){ box.innerHTML=""; return; }
 
-    if(!pos.catalog.length) await fetchProducts();
+    if(!pos.catalog.length) pos.catalog = await fetchProducts();
 
     const results = [];
     for(const p of pos.catalog){
