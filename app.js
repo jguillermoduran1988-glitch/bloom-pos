@@ -3469,6 +3469,13 @@ async function init(){
   await loadQuickReplies();
   await loadChats();
   startRealtime();
-  if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+    // Cuando el SW se actualiza y toma control, mostrar banner de actualización
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      const b=document.getElementById("updateBanner");
+      if(b) b.style.display="flex";
+    });
+  }
 }
 init();
