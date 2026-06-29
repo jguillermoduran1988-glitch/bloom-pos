@@ -1885,23 +1885,34 @@ async function loadGoalBar(){
   const bar=$("#goalBar"); if(bar) bar.style.display="block";
   const today=new Date().toISOString().slice(0,10);
   const monthKey=today.slice(0,7);
-  let goal=0;
-  try{ const plans=JSON.parse(localStorage.getItem("bloom_goal_plans")||"{}"); goal=plans[monthKey]?.[today]||0; }catch{}
-  if(!goal){ renderGoalBar(0,0); return; }
-  const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00&select=total&status=eq.completada`);
-  const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
-  renderGoalBar(goal,total);
+  const mode=document.getElementById("goalViewMode")?.value||"dia";
+  let plans={};
+  try{ plans=JSON.parse(localStorage.getItem("bloom_goal_plans")||"{}"); }catch{}
+
+  if(mode==="mes"){
+    const monthPlan=plans[monthKey]||{};
+    const goal=Object.values(monthPlan).reduce((s,v)=>s+v,0);
+    if(!goal){ renderGoalBar(0,0,"mes"); return; }
+    const firstDay=`${monthKey}-01`;
+    const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${firstDay}T00:00:00&select=total&status=eq.completada`);
+    const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
+    renderGoalBar(goal,total,"mes");
+  } else {
+    const goal=plans[monthKey]?.[today]||0;
+    if(!goal){ renderGoalBar(0,0,"dia"); return; }
+    const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00&select=total&status=eq.completada`);
+    const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
+    renderGoalBar(goal,total,"dia");
+  }
 }
-function renderGoalBar(goal,total){
-  if(goal===undefined) goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
+function renderGoalBar(goal,total,mode){
   const bar=$("#goalBar"); if(!bar) return;
   bar.style.display="block";
-  if(total===undefined) total=0;
+  if(total===undefined) total=0; if(goal===undefined) goal=0;
   const pct=goal>0?Math.min(100,Math.round(total/goal*100)):0;
-  const prog=$("#goalProgress"); if(prog) prog.style.width=pct+"%";
+  const prog=$("#goalProgress"); if(prog){ prog.style.width=pct+"%"; prog.style.background=pct>=100?"#27ae60":"var(--accent)"; }
   const txt=$("#goalText");
-  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta";
-  if(prog) prog.style.background=pct>=100?"#27ae60":"var(--accent)";
+  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta — configura en Config";
 }
 
 // ====================================================================
@@ -4217,7 +4228,6 @@ async function init(){
   startRealtime();
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").catch(()=>{});
-    // Cuando el SW se actualiza y toma control, mostrar banner de actualización
     navigator.serviceWorker.addEventListener("controllerchange",()=>{
       const b=document.getElementById("updateBanner");
       if(b) b.style.display="flex";
