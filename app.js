@@ -2274,7 +2274,8 @@ async function confirmExchange(){
       ? `✓ Cambio procesado. Nuevo pedido: ${d.new_order_name}`
       : `✓ Devolución procesada. Reembolso: ${money(retTotal)}`;
     alert(msg);
-    loadSalesHistory();
+    switchScreen('datos');
+    datosTab('exchanges');
   } catch(e){
     alert("Error: "+e);
     btn.disabled=false; btn.textContent="Confirmar cambio";
