@@ -21,7 +21,8 @@
 |-----------|-----------|
 | Frontend | HTML + JavaScript vanilla (sin frameworks) |
 | Backend API | Cloudflare Worker (`worker.js`) |
-| Base de datos | Supabase (PostgreSQL) |
+| DB chat clientes | Cloudflare D1 (`bloom-wa`, binding `env.bloom_wa`) |
+| DB resto del negocio | Supabase (PostgreSQL) |
 | Hosting frontend | Cloudflare Pages (auto-deploy desde GitHub main) |
 | Almacenamiento archivos | Supabase Storage (bucket `team-chat`) |
 | Push notifications | Worker separado (`bloom-push`) |
@@ -62,17 +63,44 @@
 
 ---
 
-## Base de datos — tablas principales en Supabase
+## Cloudflare D1 — Chat de clientes (WhatsApp CRM)
+
+Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 
 | Tabla | Contenido |
 |-------|-----------|
-| `contacts` | Clientes de WhatsApp (phone, name, tags, pipeline_id, stage) |
-| `messages` | Mensajes de cada chat (contact_phone, body, direction, msg_type) |
+| `wa_conversations` | Conversaciones WhatsApp (id=phone, stage, pipeline_id, last_message, etc.) |
+| `wa_messages` | Mensajes de cada chat (id, conversation_id, direction, type, body, media_url, status, ts) |
+| `wa_contacts` | Contactos WhatsApp (phone, name, email, avatar, tags) |
+
+### Columnas clave de `wa_messages`
+- `type` → `"text"` / `"image"` / `"audio"` / `"note"` (nota interna vendedor)
+- `direction` → `"outbound"` / `"inbound"`
+- `media_url` → URL pública del archivo en Supabase Storage
+- `ts` → timestamp ISO
+
+### Endpoints del Worker para chat de clientes
+- `GET /wa/conversations` → lista conversaciones
+- `GET /wa/conversations/:id/messages` → mensajes de una conversación
+- `POST /wa/send` → enviar mensaje (texto, foto, audio, nota). Body: `{ conversation_id, phone, body, media_url, type }`
+- `POST /wa/conversations/:id/read` → marcar como leído
+- `PATCH /wa/conversations/:id` → actualizar stage, pipeline_id
+- `PATCH /wa/contacts/:phone` → actualizar tags
+
+### IMPORTANTE: Todo el chat de clientes va a D1 vía Worker
+**NO usar `sbPost("messages", ...)` para el chat de clientes.** La tabla `messages` de Supabase ya no se usa para eso. Fotos, audios, texto y notas internas del chat de clientes se guardan todos con `POST /wa/send`.
+
+---
+
+## Supabase — Resto del negocio
+
+| Tabla | Contenido |
+|-------|-----------|
 | `pipelines` | Embudos de venta (name, stages[], store) |
 | `sales` | Ventas del POS |
 | `sellers` / `users` | Vendedoras y cajeras |
 | `pos_settings` | Config del POS: `shopify_draft`, `goal_plans`, `label_presets`, recibo |
-| `team_messages` | Mensajes del chat interno de equipo |
+| `team_messages` | Mensajes del chat interno de **equipo** (sí usa Supabase) |
 | `exchanges` | Cambios y garantías |
 | `customers` | Clientes registrados en el POS |
 | `custom_orders` | Pedidos personalizados |
@@ -101,17 +129,22 @@
 4. **`pos_settings` en Supabase** guarda goal_plans y label_presets — no localStorage
 5. **Al cambiar SW cache** subir el número de versión (`bloom-v91`, `bloom-v92`, etc.)
 6. **Commitear desde** `C:\Users\Usuario\bloom-pos` y hacer push a `origin main`
+7. **Chat de clientes → D1/Worker. Chat de equipo → Supabase.** No mezclar.
+8. **Archivos (fotos/audio)** siempre se suben a Supabase Storage (`team-chat` bucket) con `sbUpload()`. La URL resultante se guarda en D1 (para chat clientes) o Supabase (para chat equipo).
+9. **Para migrar columnas en D1:** `npx wrangler d1 execute bloom-wa --remote --command "ALTER TABLE ..."`
 
 ---
 
 ## Historial de sesiones con Claude
 
 ### 2026-06-29
-- Se intentó agregar plus menu (emoji, foto, nota de voz) al chat de clientes igual que en chat de equipo
-- Se cometió error: `await` en función no-async `saveMonthPlan()` rompió todo el app.js
-- Se recuperó la versión local completa desde `C:\Users\Usuario\bloom-pos` y se hizo force push a main
-- La versión local tenía ~302 líneas más que el repo (funciones del planificador, cajero, etc.)
-- Se crearon 3 contactos de prueba en Supabase: Laura Martínez, Valentina Ríos, Carolina Gómez
-- **Pendiente:** agregar plus menu al chat de clientes (emoji, foto, nota de voz) — guiarse del chat de equipo
+- Se agregó plus menu al chat de clientes (emoji, foto, nota de voz) — igual al chat de equipo
+- Se descubrió que el chat de clientes usa D1/Worker, NO Supabase — se corrigió todo para usar `POST /wa/send`
+- `attachChatPhoto`, `toggleChatVoice` y `addNote` ahora guardan en D1 vía `/wa/send`
+- Worker `/wa/send` actualizado para aceptar `media_url` y `type` (image/audio/note/text)
+- La columna `media_url` ya existía en `wa_messages` de D1
+- Chat de equipo (pestaña Equipo) sigue en Supabase (`team_messages`) — eso está correcto
+- Archivos (fotos/audio) se suben a Supabase Storage y la URL se guarda en D1
+- SW cache en `bloom-v91`
 
 ---

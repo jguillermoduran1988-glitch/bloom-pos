@@ -409,8 +409,9 @@ async function addNote(){
   if(!text||!text.trim()) return;
   const now=new Date().toISOString();
   appendMessage({body:text.trim(),direction:"out",created_at:now,msg_type:"note"});
-  // Se guarda en la base como tipo 'note' — el Worker nunca la manda a WhatsApp
-  await sbPost("messages",{contact_phone:phone,store:C.STORE,direction:"out",body:text.trim(),msg_type:"note"});
+  const convId=state.chats.get(phone)?.id||phone;
+  await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({conversation_id:convId,phone,body:text.trim(),type:"note"})}).catch(()=>{});
 }
 
 // ----- Plus menu chat de clientes -----
