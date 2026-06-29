@@ -1300,28 +1300,39 @@ function savePaymentModal(){
   refreshConfirmState();
 }
 
+function _payRowIcon(row){
+  if(row.icon_url) return `<img src="${esc(row.icon_url)}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;flex-shrink:0">`;
+  return `<span style="font-size:22px;line-height:1;flex-shrink:0">${row.icon||'💳'}</span>`;
+}
 function renderPayRows(){
   const box=$("#payRows"); if(!box) return;
   const total=cartTotal();
   const pms=pos.payments.filter(p=>/shopify/i.test(p.name)===false);
-  const opts=pms.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  const opts=pms.map(p=>`<option value="${esc(p.name)}">${p.icon&&!p.icon_url?p.icon+' ':''}${esc(p.name)}</option>`).join('');
   box.innerHTML=pos.splitPayments.map((row,i)=>`
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span id="payIc${i}" style="display:flex;align-items:center">${_payRowIcon(row)}</span>
       <select onchange="payRowMethod(${i},this.value)"
         style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
         <option value="">— Medio de pago —</option>${opts}
       </select>
-      <input type="number" inputmode="numeric" min="0" value="${row.amount||''}"
+      <input type="text" inputmode="numeric" id="payAmt${i}"
+        value="${row.amount?money(row.amount):''}"
+        onfocus="this.value=this.value.replace(/[^0-9]/g,'');this.select()"
+        onblur="payRowAmountBlur(${i},this)"
         oninput="payRowAmount(${i},this.value)"
-        placeholder="Monto"
+        placeholder="$0"
         style="width:110px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
       <button onclick="removePayRow(${i})" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim);padding:0 4px;flex-shrink:0">×</button>
     </div>`).join('');
-  // Restore selected values (innerHTML reset loses select state)
   pos.splitPayments.forEach((row,i)=>{
     const sel=box.querySelectorAll('select')[i];
     if(sel && row.method) sel.value=row.method;
   });
+  _updatePayDiff();
+}
+function _updatePayDiff(){
+  const total=cartTotal();
   const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
   const diff=total-sum;
   const diffEl=$("#payDiff");
@@ -1330,7 +1341,7 @@ function renderPayRows(){
 function addPayRow(){
   const total=cartTotal();
   const already=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
-  pos.splitPayments.push({method:'',amount:Math.max(0,total-already)});
+  pos.splitPayments.push({method:'',icon:'💳',icon_url:null,amount:Math.max(0,total-already)});
   renderPayRows();
 }
 function removePayRow(i){
@@ -1338,19 +1349,23 @@ function removePayRow(i){
   renderPayRows();
 }
 function payRowMethod(i,v){
-  const p=pos.payments.find(p=>p.name===v)||{};
+  const p=pos.payments.find(pm=>pm.name===v)||{};
   pos.splitPayments[i].method=v;
   pos.splitPayments[i].id=p.id||null;
   pos.splitPayments[i].icon=p.icon||'💳';
   pos.splitPayments[i].icon_url=p.icon_url||null;
+  const icEl=document.getElementById(`payIc${i}`);
+  if(icEl) icEl.innerHTML=_payRowIcon(pos.splitPayments[i]);
 }
 function payRowAmount(i,v){
-  pos.splitPayments[i].amount=parseFloat(v)||0;
-  const total=cartTotal();
-  const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
-  const diff=total-sum;
-  const diffEl=$("#payDiff");
-  if(diffEl) diffEl.textContent = diff===0?'✓ Cuadra exacto':`Faltan: ${money(Math.abs(diff))}${diff<0?' (exceso)':''}`;
+  pos.splitPayments[i].amount=parseInt(String(v).replace(/\D/g,''))||0;
+  _updatePayDiff();
+}
+function payRowAmountBlur(i,input){
+  const n=parseInt(String(input.value).replace(/\D/g,''))||0;
+  pos.splitPayments[i].amount=n;
+  input.value=n?money(n):'';
+  _updatePayDiff();
 }
 
 // ====================================================================
