@@ -507,7 +507,7 @@ function cfgTab(name){
   document.getElementById("cfgTabChat").classList.toggle("on", name==="chat");
   document.getElementById("cfgPanePOS").style.display = name==="pos" ? "" : "none";
   document.getElementById("cfgPaneChat").style.display = name==="chat" ? "" : "none";
-  if(name==="chat"){ renderCfgQuickReplies(); renderCfgPipelines(); loadBotFlows(); }
+  if(name==="chat"){ renderCfgQuickReplies(); renderCfgPipelines(); loadBotFlows(); loadWaFlows(); }
 }
 
 // ---------- Config Chat: gestión de comandos ----------
@@ -5062,4 +5062,428 @@ async function deleteBotFlow(id){
   if(!confirm("¿Eliminar este flujo?")) return;
   await fetch(`${C.WORKER_URL}/wa/bot/flows/${encodeURIComponent(id)}`,{method:"DELETE"}).catch(()=>{});
   loadBotFlows();
+}
+
+// ============================================================
+//  WhatsApp Flows (Meta Flows API)
+// ============================================================
+
+let _waFlowEditor = { id:null, name:"", categories:["OTHER"], status:"DRAFT", activeScreenIdx:0, screens:[] };
+let _waFlowCompIdx = -1;
+let _waFlowCompData = null;
+let _waFlowSendId = null;
+let _waFlowSendScreenId = null;
+
+const WAF_COMP_ICONS = {
+  TextHeading:"title", TextSubheading:"text_fields", TextBody:"notes", TextCaption:"caption",
+  TextInput:"input", TextArea:"density_medium", RadioButtonsGroup:"radio_button_checked",
+  CheckboxGroup:"check_box", Dropdown:"arrow_drop_down_circle", DatePicker:"calendar_month",
+};
+const WAF_COMP_LABELS = {
+  TextHeading:"Título", TextSubheading:"Subtítulo", TextBody:"Párrafo", TextCaption:"Pie de texto",
+  TextInput:"Campo de texto", TextArea:"Área de texto", RadioButtonsGroup:"Opción única",
+  CheckboxGroup:"Varias opciones", Dropdown:"Lista desplegable", DatePicker:"Fecha",
+};
+
+// ---- Lista de flows ----
+async function loadWaFlows(){
+  const box=$("#waFlowList"); if(!box) return;
+  box.innerHTML=`<div style="color:var(--text-dim);font-size:13px">Cargando flows…</div>`;
+  const r = await fetch(`${C.WORKER_URL}/wa/waflows`).catch(()=>null);
+  if(!r||!r.ok){ box.innerHTML=`<div style="color:#e74c3c;font-size:12px">No se pudo cargar (verifica que WABA_ID esté configurado en el Worker).</div>`; return; }
+  const d = await r.json();
+  const flows = d.data || [];
+  if(!flows.length){ box.innerHTML=`<div style="color:var(--text-dim);font-size:13px">Sin flows creados.</div>`; return; }
+  box.innerHTML = flows.map(f=>`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
+        <div style="margin-top:3px;display:flex;align-items:center;gap:6px">
+          <span class="waf-badge ${f.status==='PUBLISHED'?'published':'draft'}">${f.status==='PUBLISHED'?'Publicado':'Borrador'}</span>
+          <span style="font-size:11px;color:var(--text-dim)">${(f.categories||[]).join(", ")}</span>
+        </div>
+        ${(f.validation_errors||[]).length?`<div style="font-size:11px;color:#e74c3c;margin-top:4px">⚠ ${f.validation_errors.length} error(es) en el JSON</div>`:""}
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button onclick="openWaFlowEditor('${esc(f.id)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Editar</button>
+        <button onclick="initSendWaFlow('${esc(f.id)}','SCREEN_1')" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Enviar</button>
+        <button onclick="deleteWaFlow('${esc(f.id)}')" style="background:none;border:1px solid #fca5a5;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:#e74c3c">✕</button>
+      </div>
+    </div>`).join("");
+}
+
+// ---- Abrir/cerrar editor ----
+async function openWaFlowEditor(flowId){
+  if(flowId){
+    const r = await fetch(`${C.WORKER_URL}/wa/waflows/${flowId}`).catch(()=>null);
+    const d = r ? await r.json() : null;
+    _waFlowEditor = {
+      id: flowId,
+      name: d?.name||"",
+      categories: d?.categories||["OTHER"],
+      status: d?.status||"DRAFT",
+      activeScreenIdx: 0,
+      screens: [{id:"SCREEN_1", title:"Pantalla 1", footer_label:"Enviar", components:[]}]
+    };
+  } else {
+    _waFlowEditor = {
+      id: null, name:"", categories:["OTHER"], status:"DRAFT", activeScreenIdx:0,
+      screens:[{id:"SCREEN_1", title:"Pantalla 1", footer_label:"Enviar", components:[]}]
+    };
+  }
+  $("#waFlowNameInput").value = _waFlowEditor.name;
+  $("#waFlowCategorySelect").value = _waFlowEditor.categories[0]||"OTHER";
+  _updateWaFlowStatusBadge();
+  renderWaFlowEditor();
+  const m=$("#waFlowEditorModal"); m.style.display="flex";
+}
+
+function closeWaFlowEditor(){
+  $("#waFlowEditorModal").style.display="none";
+  loadWaFlows();
+}
+
+function _updateWaFlowStatusBadge(){
+  const b=$("#waFlowStatusBadge");
+  const pub = _waFlowEditor.status==="PUBLISHED";
+  b.textContent = pub?"Publicado":"Borrador";
+  b.className = "waf-badge "+(pub?"published":"draft");
+  const pb=$("#waFlowPublishBtn");
+  if(pb) pb.style.display = pub?"none":"";
+}
+
+// ---- Renderizar editor ----
+function renderWaFlowEditor(){
+  _renderWaScreenTabs();
+  _renderWaCompList();
+}
+
+function _renderWaScreenTabs(){
+  const box=$("#waFlowScreenTabs"); if(!box) return;
+  const screens = _waFlowEditor.screens;
+  box.innerHTML = screens.map((s,i)=>`
+    <button class="waf-screen-tab${i===_waFlowEditor.activeScreenIdx?' active':''}" onclick="switchWaScreen(${i})">
+      ${esc(s.title||"Pantalla "+(i+1))}${screens.length>1?` <span onclick="event.stopPropagation();deleteWaScreen(${i})" style="margin-left:4px;opacity:.7;font-size:11px">✕</span>`:""}
+    </button>
+  `).join("")+`<button onclick="addWaScreen()" style="border:1px dashed var(--border);background:none;border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--text-dim);white-space:nowrap">+ Pantalla</button>`;
+}
+
+function _renderWaCompList(){
+  const box=$("#waFlowCompList"); if(!box) return;
+  const scr = _waFlowEditor.screens[_waFlowEditor.activeScreenIdx];
+  if(!scr){ box.innerHTML=""; return; }
+  const isLast = _waFlowEditor.activeScreenIdx === _waFlowEditor.screens.length-1;
+  let html = `
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;font-weight:700;color:var(--text-dim)">TÍTULO DE PANTALLA</label>
+      <input value="${esc(scr.title)}" oninput="_waScrTitle(this.value)" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:8px">CAMPOS (${scr.components.length})</div>
+  `;
+  if(!scr.components.length){
+    html += `<div style="text-align:center;padding:32px 0;color:var(--text-dim);font-size:13px">Usa "Agregar campo" para añadir elementos a esta pantalla.</div>`;
+  } else {
+    html += scr.components.map((c,i)=>`
+      <div class="waf-comp-card">
+        <div class="waf-comp-icon"><span class="material-symbols-outlined" style="font-size:18px;color:var(--accent)">${WAF_COMP_ICONS[c.type]||"widgets"}</span></div>
+        <div class="waf-comp-info">
+          <div class="waf-comp-type">${WAF_COMP_LABELS[c.type]||c.type}</div>
+          <div class="waf-comp-prev">${esc((c.text||c.label||"").slice(0,50))}</div>
+        </div>
+        <div class="waf-comp-acts">
+          ${i>0?`<button onclick="moveWaComp(${i},-1)" title="Subir"><span class="material-symbols-outlined" style="font-size:16px">arrow_upward</span></button>`:""}
+          ${i<scr.components.length-1?`<button onclick="moveWaComp(${i},1)" title="Bajar"><span class="material-symbols-outlined" style="font-size:16px">arrow_downward</span></button>`:""}
+          <button onclick="editWaComp(${i})" title="Editar"><span class="material-symbols-outlined" style="font-size:16px">edit</span></button>
+          <button onclick="deleteWaComp(${i})" title="Eliminar" style="color:#e74c3c"><span class="material-symbols-outlined" style="font-size:16px">delete</span></button>
+        </div>
+      </div>`).join("");
+  }
+  // Footer section
+  const nextScrLabel = isLast ? "Enviar y cerrar" : `Ir a: ${esc(_waFlowEditor.screens[_waFlowEditor.activeScreenIdx+1]?.title||"siguiente")}`;
+  html += `
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:8px">BOTÓN INFERIOR (siempre visible)</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input value="${esc(scr.footer_label||"Enviar")}" oninput="_waScrFooter(this.value)" placeholder="Texto del botón" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+        <span style="font-size:11px;color:var(--text-dim);white-space:nowrap">→ ${nextScrLabel}</span>
+      </div>
+    </div>
+  `;
+  box.innerHTML = html;
+}
+
+function _waScrTitle(v){ const s=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]; if(s) s.title=v; _renderWaScreenTabs(); }
+function _waScrFooter(v){ const s=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]; if(s) s.footer_label=v; }
+
+// ---- Pantallas ----
+function switchWaScreen(idx){
+  _waFlowEditor.activeScreenIdx=idx;
+  renderWaFlowEditor();
+}
+function addWaScreen(){
+  $("#waCompMenu").style.display="none";
+  const n = _waFlowEditor.screens.length+1;
+  _waFlowEditor.screens.push({id:"SCREEN_"+n, title:"Pantalla "+n, footer_label:"Enviar", components:[]});
+  _waFlowEditor.activeScreenIdx = _waFlowEditor.screens.length-1;
+  renderWaFlowEditor();
+}
+function deleteWaScreen(idx){
+  if(_waFlowEditor.screens.length<=1){ alert("Un flow debe tener al menos una pantalla."); return; }
+  if(!confirm("¿Eliminar esta pantalla?")) return;
+  _waFlowEditor.screens.splice(idx,1);
+  if(_waFlowEditor.activeScreenIdx>=_waFlowEditor.screens.length) _waFlowEditor.activeScreenIdx=_waFlowEditor.screens.length-1;
+  renderWaFlowEditor();
+}
+
+// ---- Componentes ----
+function toggleWaCompMenu(){ const m=$("#waCompMenu"); m.style.display=m.style.display==="none"?"":"none"; }
+
+function addWaComp(type){
+  $("#waCompMenu").style.display="none";
+  const defaults = {
+    TextHeading:{type:"TextHeading",text:""},
+    TextSubheading:{type:"TextSubheading",text:""},
+    TextBody:{type:"TextBody",text:""},
+    TextCaption:{type:"TextCaption",text:""},
+    TextInput:{type:"TextInput",label:"",name:"campo_"+Date.now(),required:true,"input-type":"text","helper-text":""},
+    TextArea:{type:"TextArea",label:"",name:"campo_"+Date.now(),required:false},
+    RadioButtonsGroup:{type:"RadioButtonsGroup",label:"",name:"campo_"+Date.now(),required:true,"data-source":[{id:"op1",title:"Opción 1"},{id:"op2",title:"Opción 2"}]},
+    CheckboxGroup:{type:"CheckboxGroup",label:"",name:"campo_"+Date.now(),required:true,"data-source":[{id:"op1",title:"Opción 1"},{id:"op2",title:"Opción 2"}]},
+    Dropdown:{type:"Dropdown",label:"",name:"campo_"+Date.now(),required:true,"data-source":[{id:"op1",title:"Opción 1"},{id:"op2",title:"Opción 2"}]},
+    DatePicker:{type:"DatePicker",label:"",name:"campo_"+Date.now(),required:true},
+  };
+  const scr=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]; if(!scr) return;
+  scr.components.push(JSON.parse(JSON.stringify(defaults[type]||{type,text:""})));
+  const idx=scr.components.length-1;
+  _renderWaCompList();
+  editWaComp(idx);
+}
+
+function moveWaComp(idx,dir){
+  const comps=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]?.components; if(!comps) return;
+  const to=idx+dir; if(to<0||to>=comps.length) return;
+  [comps[idx],comps[to]]=[comps[to],comps[idx]];
+  _renderWaCompList();
+}
+function deleteWaComp(idx){
+  const comps=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]?.components; if(!comps) return;
+  comps.splice(idx,1);
+  _renderWaCompList();
+}
+
+// ---- Modal de componente ----
+function editWaComp(idx){
+  const comps=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]?.components; if(!comps) return;
+  _waFlowCompIdx=idx;
+  _waFlowCompData=JSON.parse(JSON.stringify(comps[idx]));
+  openWaCompModal();
+}
+function openWaCompModal(){
+  const c=_waFlowCompData;
+  const icon=WAF_COMP_ICONS[c.type]||"widgets";
+  const label=WAF_COMP_LABELS[c.type]||c.type;
+  $("#waFlowCompModalTitle").innerHTML=`<span class="material-symbols-outlined" style="color:var(--accent)">${icon}</span> ${label}`;
+  $("#waFlowCompModalBody").innerHTML=buildWaCompForm(c);
+  $("#waFlowCompModal").classList.add("show");
+}
+function closeWaCompModal(){ $("#waFlowCompModal").classList.remove("show"); }
+
+function buildWaCompForm(c){
+  const fld=(id,lbl,val,ph="",type="text")=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><input id="${id}" type="${type}" value="${esc(val||"")}" placeholder="${ph}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"></div>`;
+  const ta=(id,lbl,val)=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><textarea id="${id}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:60px;font-family:inherit;box-sizing:border-box">${esc(val||"")}</textarea></div>`;
+  const chk=(id,lbl,checked)=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="${id}" ${checked?"checked":""} style="width:16px;height:16px"> ${lbl}</label>`;
+  const sel=(id,lbl,val,opts)=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><select id="${id}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px;background:var(--bg);color:var(--text)">${opts.map(o=>`<option value="${o.v}"${val===o.v?" selected":""}>${o.l}</option>`).join("")}</select></div>`;
+
+  const T=c.type;
+  // Text display components
+  if(["TextHeading","TextSubheading","TextBody","TextCaption"].includes(T))
+    return ta("waf_text","Texto",c.text);
+
+  // TextInput
+  if(T==="TextInput") return fld("waf_label","Etiqueta del campo",c.label,"Ej: Tu nombre")+
+    fld("waf_name","Nombre del campo (sin espacios)",c.name,"nombre_cliente")+
+    sel("waf_itype","Tipo de dato",c["input-type"]||"text",[
+      {v:"text",l:"Texto libre"},{v:"number",l:"Número"},{v:"email",l:"Email"},
+      {v:"phone",l:"Teléfono"},{v:"password",l:"Contraseña"},{v:"passcode",l:"Código de acceso"}
+    ])+fld("waf_helper","Texto de ayuda (opcional)",c["helper-text"]||"")+chk("waf_req","Campo obligatorio",c.required!==false);
+
+  // TextArea
+  if(T==="TextArea") return fld("waf_label","Etiqueta del campo",c.label,"Ej: Cuéntanos más")+
+    fld("waf_name","Nombre del campo",c.name)+chk("waf_req","Campo obligatorio",c.required!==false);
+
+  // DatePicker
+  if(T==="DatePicker") return fld("waf_label","Etiqueta del campo",c.label,"Ej: Fecha de cita")+
+    fld("waf_name","Nombre del campo",c.name)+chk("waf_req","Campo obligatorio",c.required!==false);
+
+  // Options (Radio, Checkbox, Dropdown)
+  if(["RadioButtonsGroup","CheckboxGroup","Dropdown"].includes(T)){
+    const opts=(c["data-source"]||[]).map((o,i)=>`
+      <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+        <input id="waf_opt_${i}" value="${esc(o.title)}" placeholder="Opción ${i+1}" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none">
+        ${(c["data-source"]||[]).length>1?`<button onclick="removeWafOpt(${i})" style="background:none;border:none;cursor:pointer;color:#e74c3c;padding:0 4px"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>`:""}
+      </div>`).join("");
+    return fld("waf_label","Etiqueta de la pregunta",c.label)+fld("waf_name","Nombre del campo",c.name)+
+      `<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">OPCIONES</div>`+
+      `<div id="waf_opts_wrap">${opts}</div>`+
+      `<button onclick="addWafOpt()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%;margin-bottom:10px">+ Agregar opción</button>`+
+      chk("waf_req","Campo obligatorio",c.required!==false);
+  }
+
+  return "<em>Tipo no soportado en el editor</em>";
+}
+
+function addWafOpt(){
+  _syncWaCompFromForm();
+  const src=_waFlowCompData["data-source"]||[];
+  src.push({id:"op"+(src.length+1)+"_"+Date.now(), title:""});
+  _waFlowCompData["data-source"]=src;
+  openWaCompModal();
+}
+function removeWafOpt(i){
+  _syncWaCompFromForm();
+  (_waFlowCompData["data-source"]||[]).splice(i,1);
+  openWaCompModal();
+}
+
+function _syncWaCompFromForm(){
+  const c=_waFlowCompData;
+  const gv=id=>{ const el=document.getElementById(id); return el?el.value:""; };
+  const gc=id=>{ const el=document.getElementById(id); return el?el.checked:false; };
+  const T=c.type;
+  if(["TextHeading","TextSubheading","TextBody","TextCaption"].includes(T)){ c.text=gv("waf_text"); return; }
+  if(["TextInput","TextArea","DatePicker"].includes(T)){
+    c.label=gv("waf_label"); c.name=gv("waf_name")||c.name; c.required=gc("waf_req");
+    if(T==="TextInput"){ c["input-type"]=gv("waf_itype")||"text"; c["helper-text"]=gv("waf_helper"); }
+  }
+  if(["RadioButtonsGroup","CheckboxGroup","Dropdown"].includes(T)){
+    c.label=gv("waf_label"); c.name=gv("waf_name")||c.name; c.required=gc("waf_req");
+    const src=c["data-source"]||[];
+    c["data-source"]=src.map((o,i)=>({...o, title:gv("waf_opt_"+i)||o.title}));
+  }
+}
+
+function saveWaComp(){
+  _syncWaCompFromForm();
+  const comps=_waFlowEditor.screens[_waFlowEditor.activeScreenIdx]?.components; if(!comps) return;
+  comps[_waFlowCompIdx]=_waFlowCompData;
+  closeWaCompModal();
+  _renderWaCompList();
+}
+
+// ---- Generar Flow JSON v6.1 ----
+function buildWaFlowJson(){
+  const screens=_waFlowEditor.screens;
+  return {
+    version:"6.1",
+    screens: screens.map((scr,idx)=>{
+      const isLast=idx===screens.length-1;
+      const inputComps=scr.components.filter(c=>["TextInput","TextArea","RadioButtonsGroup","CheckboxGroup","Dropdown","DatePicker"].includes(c.type));
+      const footerAction = isLast
+        ? {name:"complete", payload:Object.fromEntries(inputComps.filter(c=>c.name).map(c=>[c.name,`\${form.${c.name}}`]))}
+        : {name:"navigate", next:{type:"screen", name:screens[idx+1].id}, payload:{}};
+      const footer={type:"Footer", label:scr.footer_label||"Enviar", "on-click-action":footerAction};
+      const formChildren=[
+        ...scr.components.map(c=>_compToWafJson(c)),
+        footer
+      ];
+      return {
+        id:scr.id, title:scr.title, terminal:isLast, data:{},
+        layout:{type:"SingleColumnLayout", children:[{type:"Form", name:"flow_form", children:formChildren}]}
+      };
+    })
+  };
+}
+
+function _compToWafJson(c){
+  const obj={type:c.type};
+  if(c.text!==undefined) obj.text=c.text;
+  if(c.label!==undefined) obj.label=c.label;
+  if(c.name!==undefined) obj.name=c.name;
+  if(c.required!==undefined) obj.required=c.required;
+  if(c["input-type"]) obj["input-type"]=c["input-type"];
+  if(c["helper-text"]) obj["helper-text"]=c["helper-text"];
+  if(c["data-source"]) obj["data-source"]=c["data-source"];
+  return obj;
+}
+
+// ---- Guardar (crear o actualizar JSON en Meta) ----
+async function saveWaFlow(){
+  const name=$("#waFlowNameInput").value.trim();
+  if(!name){ alert("El flow necesita un nombre."); return; }
+  _waFlowEditor.name=name;
+  _waFlowEditor.categories=[$("#waFlowCategorySelect").value||"OTHER"];
+  const flowJson=buildWaFlowJson();
+  const W=C.WORKER_URL;
+
+  let flowId=_waFlowEditor.id;
+  if(!flowId){
+    // Crear nuevo
+    const r=await fetch(`${W}/wa/waflows`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name, categories:_waFlowEditor.categories})});
+    const d=await r.json();
+    if(d.error){ alert("Error al crear el flow: "+JSON.stringify(d.error)); return; }
+    flowId=d.id;
+    _waFlowEditor.id=flowId;
+  }
+  // Subir JSON
+  const r2=await fetch(`${W}/wa/waflows/${flowId}/json`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({flow_json:flowJson})});
+  const d2=await r2.json();
+  if(d2.success===false||d2.error){
+    const errs=(d2.validation_errors||[]).map(e=>`${e.error_type}: ${e.message} (${e.line_number})`).join("\n");
+    alert("Error al guardar el JSON:\n"+(errs||JSON.stringify(d2.error||d2))); return;
+  }
+  alert("Flow guardado correctamente.");
+}
+
+// ---- Publicar ----
+async function publishWaFlow(){
+  if(!_waFlowEditor.id){ alert("Primero guarda el flow."); return; }
+  if(!confirm("¿Publicar este flow? Una vez publicado no se puede editar.")) return;
+  const r=await fetch(`${C.WORKER_URL}/wa/waflows/${_waFlowEditor.id}/publish`,{method:"POST"});
+  const d=await r.json();
+  if(d.success){
+    _waFlowEditor.status="PUBLISHED";
+    _updateWaFlowStatusBadge();
+    alert("Flow publicado correctamente.");
+  } else {
+    alert("Error al publicar: "+JSON.stringify(d.error||d));
+  }
+}
+
+// ---- Preview JSON ----
+function previewWaFlow(){
+  const json=buildWaFlowJson();
+  $("#waFlowJsonPre").textContent=JSON.stringify(json,null,2);
+  $("#waFlowJsonModal").classList.add("show");
+}
+function copyWaFlowJson(){
+  navigator.clipboard.writeText($("#waFlowJsonPre").textContent).then(()=>alert("Copiado al portapapeles.")).catch(()=>{});
+}
+
+// ---- Eliminar ----
+async function deleteWaFlow(id){
+  if(!confirm("¿Eliminar este flow? Solo se puede eliminar en estado Borrador.")) return;
+  const r=await fetch(`${C.WORKER_URL}/wa/waflows/${id}`,{method:"DELETE"});
+  const d=await r.json();
+  if(d.error) alert("Error: "+JSON.stringify(d.error));
+  loadWaFlows();
+}
+
+// ---- Enviar flow desde el chat ----
+function initSendWaFlow(flowId, screenId){
+  if(!state.active){ alert("Selecciona un chat primero."); return; }
+  _waFlowSendId=flowId; _waFlowSendScreenId=screenId||"SCREEN_1";
+  $("#waFlowSendModal").classList.add("show");
+}
+function closeWaFlowSendModal(){ $("#waFlowSendModal").classList.remove("show"); }
+async function confirmSendWaFlow(){
+  const cta=$("#waFlowSendCta").value.trim()||"Abrir formulario";
+  const header=$("#waFlowSendHeader").value.trim();
+  const body=$("#waFlowSendBody").value.trim()||"Por favor completa el formulario.";
+  const r=await fetch(`${C.WORKER_URL}/wa/waflows/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({phone:state.active, flow_id:_waFlowSendId, flow_cta:cta, header_text:header, body_text:body, screen_id:_waFlowSendScreenId})});
+  const d=await r.json();
+  if(d.messages||d.contacts) { closeWaFlowSendModal(); alert("Flow enviado."); }
+  else alert("Error al enviar: "+JSON.stringify(d.error||d));
 }

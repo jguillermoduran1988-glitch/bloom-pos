@@ -111,6 +111,24 @@
   .bot-add-opt{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;padding:8px 12px;cursor:pointer;border-radius:8px;font-size:13px;color:var(--text);text-align:left}
   .bot-add-opt:hover{background:var(--border)}
   .bot-add-opt .material-symbols-outlined{font-size:18px;color:var(--accent)}
+  /* ---------- WA Flows builder ---------- */
+  .waf-screen-tab{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--bg);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;color:var(--text-dim);transition:all .15s}
+  .waf-screen-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .waf-comp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+  .waf-comp-icon{width:32px;height:32px;border-radius:8px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .waf-comp-info{flex:1;min-width:0}
+  .waf-comp-type{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px}
+  .waf-comp-prev{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .waf-comp-acts button{background:none;border:none;cursor:pointer;color:var(--text-dim);padding:4px;border-radius:6px}
+  .waf-comp-acts button:hover{background:var(--border)}
+  .waf-add-menu{position:absolute;bottom:58px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:10;min-width:240px;max-height:60vh;overflow-y:auto}
+  .waf-add-opt{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;padding:8px 12px;cursor:pointer;border-radius:8px;font-size:13px;color:var(--text);text-align:left}
+  .waf-add-opt:hover{background:var(--border)}
+  .waf-add-opt .material-symbols-outlined{font-size:18px;color:var(--accent)}
+  .waf-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .waf-badge.draft{background:#fef3c7;color:#92400e}
+  .waf-badge.published{background:#d1fae5;color:#065f46}
+  .waf-price-box{border-radius:10px;padding:12px;font-size:12px;line-height:1.8;margin-bottom:10px}
   /* ---------- Sidebar ---------- */
   .sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--surface)}
   .side-head{padding:15px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
@@ -910,6 +928,25 @@
         </button>
       </div>
 
+      <div class="cfg-sec" style="margin-top:16px">
+        <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">dynamic_form</span> WhatsApp Flows</h3>
+        <div class="desc">Formularios interactivos que el cliente completa sin salir de WhatsApp. Ideal para registros, encuestas, citas y recolección de datos.</div>
+        <div class="waf-price-box" style="background:#f0fdf4;border:1px solid #bbf7d0;margin-top:10px">
+          <div style="font-weight:700;color:#166534;margin-bottom:4px">¿Qué es gratis?</div>
+          <div>✅ Crear, editar y publicar flows — <b>gratis</b></div>
+          <div>✅ Enviar flow respondiendo a un cliente — <b>gratis</b> (ventana de 24 h)</div>
+          <div>💰 Enviar flow de forma proactiva — <b>conversación de marketing</b> (~$0.05 USD c/u)</div>
+          <div>⚙️ Flows con datos dinámicos (data_exchange) — requiere servidor propio, <b>no disponible aquí</b></div>
+        </div>
+        <div class="waf-price-box" style="background:#fefce8;border:1px solid #fde68a">
+          ⚠️ Necesitas configurar la variable <b>WABA_ID</b> en el Worker (es el ID de tu cuenta de WhatsApp Business — diferente al Phone ID). Encuéntrala en Meta Business Suite → Configuración → Cuentas de WhatsApp.
+        </div>
+        <div id="waFlowList" style="margin:12px 0"></div>
+        <button onclick="openWaFlowEditor(null)" style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">
+          <span class="material-symbols-outlined" style="font-size:16px">add</span> Nuevo flow
+        </button>
+      </div>
+
     </div><!-- /cfgPaneChat -->
   </div>
 </div>
@@ -1589,6 +1626,104 @@
       <button class="save" onclick="saveBotStepEdit()">Guardar paso</button>
       <button class="cancel" onclick="closeBotStepModal()">Cancelar</button>
     </div>
+  </div>
+</div>
+<!-- ============ WA FLOWS: EDITOR PANTALLA COMPLETA ============ -->
+<div id="waFlowEditorModal" style="display:none;position:fixed;inset:0;z-index:100;background:var(--bg);flex-direction:column;overflow:hidden">
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;background:var(--surface)">
+    <button onclick="closeWaFlowEditor()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text-dim);display:flex;align-items:center">
+      <span class="material-symbols-outlined" style="font-size:20px">arrow_back</span>
+    </button>
+    <input id="waFlowNameInput" placeholder="Nombre del flow (ej: Registro cliente)" style="flex:1;min-width:140px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:15px;font-weight:600;background:var(--bg);color:var(--text);outline:none">
+    <select id="waFlowCategorySelect" style="border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;background:var(--bg);color:var(--text);cursor:pointer">
+      <option value="OTHER">Otro</option>
+      <option value="SIGN_UP">Registro</option>
+      <option value="SIGN_IN">Inicio de sesión</option>
+      <option value="APPOINTMENT_BOOKING">Citas</option>
+      <option value="LEAD_GENERATION">Captación</option>
+      <option value="CONTACT_US">Contáctanos</option>
+      <option value="CUSTOMER_SUPPORT">Soporte</option>
+      <option value="SURVEY">Encuesta</option>
+    </select>
+    <span id="waFlowStatusBadge" class="waf-badge draft">Borrador</span>
+    <button onclick="saveWaFlow()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">Guardar</button>
+    <button id="waFlowPublishBtn" onclick="publishWaFlow()" style="background:#166534;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">Publicar</button>
+    <button onclick="previewWaFlow()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">preview</span> JSON</button>
+  </div>
+  <!-- Screen tabs -->
+  <div id="waFlowScreenTabs" style="display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;background:var(--surface);align-items:center"></div>
+  <!-- Component list -->
+  <div id="waFlowCompList" style="flex:1;overflow-y:auto;padding:16px;max-width:640px;width:100%;margin:0 auto"></div>
+  <!-- Add field toolbar -->
+  <div style="padding:10px 14px;border-top:1px solid var(--border);flex-shrink:0;background:var(--surface);display:flex;justify-content:center;position:relative">
+    <button onclick="toggleWaCompMenu()" style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:none;border-radius:9px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer">
+      <span class="material-symbols-outlined" style="font-size:16px">add</span> Agregar campo
+    </button>
+    <div id="waCompMenu" class="waf-add-menu" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;padding:4px 12px 2px">Texto (solo lectura)</div>
+      <button class="waf-add-opt" onclick="addWaComp('TextHeading')"><span class="material-symbols-outlined">title</span> Título</button>
+      <button class="waf-add-opt" onclick="addWaComp('TextSubheading')"><span class="material-symbols-outlined">text_fields</span> Subtítulo</button>
+      <button class="waf-add-opt" onclick="addWaComp('TextBody')"><span class="material-symbols-outlined">notes</span> Párrafo</button>
+      <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;padding:6px 12px 2px">Campos de formulario ✅ gratis</div>
+      <button class="waf-add-opt" onclick="addWaComp('TextInput')"><span class="material-symbols-outlined">input</span> Campo de texto</button>
+      <button class="waf-add-opt" onclick="addWaComp('TextArea')"><span class="material-symbols-outlined">density_medium</span> Área de texto</button>
+      <button class="waf-add-opt" onclick="addWaComp('RadioButtonsGroup')"><span class="material-symbols-outlined">radio_button_checked</span> Opción única (radio)</button>
+      <button class="waf-add-opt" onclick="addWaComp('CheckboxGroup')"><span class="material-symbols-outlined">check_box</span> Varias opciones (checkbox)</button>
+      <button class="waf-add-opt" onclick="addWaComp('Dropdown')"><span class="material-symbols-outlined">arrow_drop_down_circle</span> Lista desplegable</button>
+      <button class="waf-add-opt" onclick="addWaComp('DatePicker')"><span class="material-symbols-outlined">calendar_month</span> Selector de fecha</button>
+      <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;padding:6px 12px 2px">Pantalla</div>
+      <button class="waf-add-opt" onclick="addWaScreen()"><span class="material-symbols-outlined">add_box</span> Nueva pantalla</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ WA FLOWS: MODAL EDICIÓN DE COMPONENTE ============ -->
+<div id="waFlowCompModal" class="modal-bg" style="z-index:1100" onclick="if(event.target===this)closeWaCompModal()">
+  <div class="modal-box" style="max-width:520px;padding:20px;overflow-y:auto;max-height:90vh">
+    <div style="font-weight:700;font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px" id="waFlowCompModalTitle"></div>
+    <div id="waFlowCompModalBody"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="save" onclick="saveWaComp()">Guardar</button>
+      <button class="cancel" onclick="closeWaCompModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ WA FLOWS: MODAL ENVIAR FLOW ============ -->
+<div id="waFlowSendModal" class="modal-bg" style="z-index:1100" onclick="if(event.target===this)closeWaFlowSendModal()">
+  <div class="modal-box" style="max-width:420px;padding:20px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:14px">Enviar flow al cliente</div>
+    <div style="font-size:12px;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px;margin-bottom:14px">
+      💰 Si el cliente no te escribió en las últimas 24 horas, este envío cuenta como <b>conversación de marketing</b> y tiene costo.
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:700;color:var(--text-dim)">Texto del botón (máx 30 chars)</label>
+      <input id="waFlowSendCta" maxlength="30" value="Abrir formulario" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:700;color:var(--text-dim)">Encabezado del mensaje (opcional)</label>
+      <input id="waFlowSendHeader" placeholder="Bloom — Formulario de registro" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:700;color:var(--text-dim)">Cuerpo del mensaje</label>
+      <textarea id="waFlowSendBody" placeholder="Por favor completa el siguiente formulario 😊" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;resize:none;min-height:70px;font-family:inherit;box-sizing:border-box"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="save" onclick="confirmSendWaFlow()">Enviar flow</button>
+      <button class="cancel" onclick="closeWaFlowSendModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ WA FLOWS: MODAL PREVIEW JSON ============ -->
+<div id="waFlowJsonModal" class="modal-bg" style="z-index:1100" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="modal-box" style="max-width:640px;padding:0;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-weight:700;font-size:14px">Flow JSON generado</span>
+      <button onclick="copyWaFlowJson()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer">Copiar</button>
+    </div>
+    <pre id="waFlowJsonPre" style="margin:0;padding:16px;font-size:11px;overflow:auto;max-height:70vh;background:var(--surface);color:var(--text);white-space:pre-wrap;word-break:break-all"></pre>
   </div>
 </div>
 </body>

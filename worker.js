@@ -436,6 +436,75 @@ export default {
       return Response.json({ ok:true }, { headers: cors });
     }
 
+    // -------- WhatsApp Flows (proxy a Meta Graph API) --------
+    const GV = "https://graph.facebook.com/v19.0";
+    const noWaba = () => Response.json({error:"WABA_ID no configurado en el Worker"},{status:400,headers:cors});
+
+    if (url.pathname === "/wa/waflows") {
+      if (!env.WABA_ID) return noWaba();
+      if (request.method === "GET") {
+        const r = await fetch(`${GV}/${env.WABA_ID}/flows?fields=id,name,status,categories,validation_errors&access_token=${env.WA_TOKEN}`);
+        return Response.json(await r.json(), {headers:cors});
+      }
+      if (request.method === "POST") {
+        const {name, categories} = await request.json();
+        const p = new URLSearchParams({name, categories:JSON.stringify(categories||["OTHER"]), access_token:env.WA_TOKEN});
+        const r = await fetch(`${GV}/${env.WABA_ID}/flows`, {method:"POST", body:p});
+        return Response.json(await r.json(), {headers:cors});
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/wa/waflows/send") {
+      const {phone, flow_id, flow_cta, header_text, body_text, screen_id} = await request.json();
+      const payload = {
+        messaging_product:"whatsapp", recipient_type:"individual", to:phone, type:"interactive",
+        interactive:{
+          type:"flow",
+          header:{type:"text", text:header_text||""},
+          body:{text:body_text||"Completa el formulario"},
+          action:{name:"flow", parameters:{
+            flow_message_version:"3", flow_id,
+            flow_cta:(flow_cta||"Abrir").slice(0,30),
+            flow_action:"navigate",
+            flow_action_payload:{screen:screen_id||"SCREEN_1"}
+          }}
+        }
+      };
+      const r = await fetch(`${GV}/${env.WA_PHONE_ID}/messages`,{
+        method:"POST", headers:{Authorization:`Bearer ${env.WA_TOKEN}`,"Content-Type":"application/json"},
+        body:JSON.stringify(payload)
+      });
+      return Response.json(await r.json(), {headers:cors});
+    }
+
+    if (url.pathname.match(/^\/wa\/waflows\/[^/]+\/json$/) && request.method === "POST") {
+      const flowId = url.pathname.split("/")[3];
+      const {flow_json} = await request.json();
+      const fd = new FormData();
+      fd.append("file", new Blob([JSON.stringify(flow_json)],{type:"application/json"}), "flow.json");
+      fd.append("name","flow.json"); fd.append("asset_type","FLOW_JSON"); fd.append("access_token",env.WA_TOKEN);
+      const r = await fetch(`${GV}/${flowId}/assets`, {method:"POST", body:fd});
+      return Response.json(await r.json(), {headers:cors});
+    }
+
+    if (url.pathname.match(/^\/wa\/waflows\/[^/]+\/publish$/) && request.method === "POST") {
+      const flowId = url.pathname.split("/")[3];
+      const r = await fetch(`${GV}/${flowId}/publish`,{method:"POST",body:new URLSearchParams({access_token:env.WA_TOKEN})});
+      return Response.json(await r.json(), {headers:cors});
+    }
+
+    if (url.pathname.match(/^\/wa\/waflows\/[^/]+$/) && !url.pathname.includes("/send")) {
+      const flowId = url.pathname.split("/")[3];
+      if (request.method === "DELETE") {
+        const r = await fetch(`${GV}/${flowId}?access_token=${env.WA_TOKEN}`,{method:"DELETE"});
+        return Response.json(await r.json(), {headers:cors});
+      }
+      if (request.method === "GET") {
+        const r = await fetch(`${GV}/${flowId}?fields=id,name,status,categories,validation_errors,preview.invalidate(false)&access_token=${env.WA_TOKEN}`);
+        return Response.json(await r.json(), {headers:cors});
+      }
+    }
+
     return new Response("Not found", { status: 404 });
   },
 };
