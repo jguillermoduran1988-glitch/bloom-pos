@@ -2090,15 +2090,18 @@ function renderGoalPlanResult(allDays, weights, goal, allHolidays){
 
   const holSection=monthHols.length
     ? `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:600;color:#991b1b;text-transform:uppercase;margin-bottom:8px">Festivos en ${MONTHS_ES2[month]} ${year} — ¿abres?</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:11px;font-weight:600;color:#991b1b;text-transform:uppercase;margin-bottom:8px">Festivos — ¿cuáles abres?</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
         ${monthHols.map(h=>`
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
-            <input type="checkbox" onchange="toggleGpDay('${h.d}',this.checked,${goal})" style="width:16px;height:16px;accent-color:var(--accent)">
+            <input type="checkbox" id="gpHol_${h.d}" style="width:16px;height:16px;accent-color:var(--accent)">
             <span style="color:#991b1b;font-weight:600">${h.d.slice(8)}</span>
             <span style="color:var(--text)">${h.n}</span>
           </label>`).join("")}
         </div>
+        <button onclick="redistribuirConFestivos(${goal})" style="width:100%;background:#991b1b;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer">
+          Redistribuir días
+        </button>
        </div>`
     : "";
 
@@ -2151,6 +2154,30 @@ function toggleGpDay(iso, open, goal){
   });
   const cnt=document.getElementById("gpOpenCount");
   if(cnt) cnt.textContent=openDays.length;
+}
+
+function redistribuirConFestivos(goal){
+  if(!window._gpDays||!window._gpWeights) return;
+  // Leer qué festivos están marcados como abiertos
+  window._gpDays.forEach(d=>{
+    if(!d.holiday) return; // solo festivos
+    const cb=document.getElementById(`gpHol_${d.iso}`);
+    if(cb) d.open=cb.checked;
+  });
+  // Recalcular y actualizar tabla
+  const openDays=window._gpDays.filter(x=>x.open);
+  const totalWeight=openDays.reduce((s,x)=>s+window._gpWeights[x.dw],0)||1;
+  const basePerUnit=goal/totalWeight;
+  window._gpDays.forEach(d=>{
+    const row=document.querySelector(`tr[data-day="${d.iso}"]`);
+    if(!row) return;
+    const meta=d.open?Math.round(basePerUnit*window._gpWeights[d.dw]/1000)*1000:0;
+    const tds=row.querySelectorAll("td");
+    if(tds[3]){ tds[3].textContent=d.open?money(meta):"—"; tds[3].style.color=d.open?"var(--accent)":"var(--text-dim)"; }
+    const cb=row.querySelector("input[type=checkbox]"); if(cb) cb.checked=d.open;
+    row.classList.toggle("gp-closed",!d.open);
+  });
+  const cnt=document.getElementById("gpOpenCount"); if(cnt) cnt.textContent=openDays.length;
 }
 
 function saveMonthPlan(){
