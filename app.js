@@ -738,8 +738,9 @@ function renderHoldsPanel(){
   for(let i=0;i<holds.length;i++){
     const h=holds[i];
     const total=h.cart.reduce((s,it)=>s+(it.price||0)*(it.qty||1),0);
-    const items=h.cart.reduce((s,it)=>s+(it.qty||1),0);
     const hora=new Date(h.ts).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+    const nombres=h.cart.map(it=>(it.qty>1?`${it.qty}× `:"")+it.name);
+    const preview=nombres.slice(0,2).join(", ")+(nombres.length>2?` +${nombres.length-2} más`:"");
     const row=el("div","cfg-row");
     row.style.cssText="flex-direction:column;align-items:flex-start;gap:4px;padding:12px;cursor:default";
     row.innerHTML=`
@@ -747,7 +748,8 @@ function renderHoldsPanel(){
         <b style="font-size:14px">${esc(h.label)}</b>
         <span style="font-size:12px;color:var(--text-dim)">${hora}</span>
       </div>
-      <div style="font-size:13px;color:var(--text-dim)">${items} producto${items!==1?"s":""} · <b>${money(total)}</b></div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:1px">${esc(preview)}</div>
+      <div style="font-size:13px;color:var(--text-dim)"><b>${money(total)}</b></div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button onclick="restoreHold(${i})" style="padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer">Recuperar</button>
         <button onclick="deleteHold(${i})" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;cursor:pointer;color:var(--text-dim)">Eliminar</button>
