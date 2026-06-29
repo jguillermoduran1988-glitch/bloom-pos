@@ -4816,14 +4816,14 @@ function editBotStep(idx){
   _botEditingData=JSON.parse(JSON.stringify(_botEditor.steps[idx])); // deep copy
   openBotStepModal();
 }
-function closeBotStepModal(){ $("#botStepModal").style.display="none"; }
+function closeBotStepModal(){ $("#botStepModal").classList.remove("show"); }
 
 function openBotStepModal(){
   const s=_botEditingData; const steps=_botEditor.steps;
   const icons={text:"chat_bubble",image:"image",audio:"mic",video:"videocam",buttons:"radio_button_checked",list:"format_list_bulleted",condition:"alt_route",validate:"rule",delay:"schedule",webhook:"webhook",assign:"person_pin",note:"sticky_note_2",action:"bolt"};
   $("#botStepModalTitle").innerHTML=`<span class="material-symbols-outlined" style="color:var(--accent)">${icons[s.type]||"help"}</span> ${stepTypeLabel(s.type)}`;
   $("#botStepModalBody").innerHTML = buildStepForm(s, steps);
-  $("#botStepModal").style.display="flex";
+  $("#botStepModal").classList.add("show");
 }
 
 function buildStepForm(s, steps){
