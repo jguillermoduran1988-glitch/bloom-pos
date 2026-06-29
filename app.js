@@ -2274,7 +2274,10 @@ async function confirmExchange(){
       ? `✓ Cambio procesado. Nuevo pedido: ${d.new_order_name}`
       : `✓ Devolución procesada. Reembolso: ${money(retTotal)}`;
     alert(msg);
-    switchScreen('datos');
+    // Abrir la pestaña Cambios (el tab puede estar en el menú "más")
+    const extra = document.getElementById("datTabsExtra");
+    const moreBtn = document.getElementById("datMoreBtn");
+    if(extra && !extra.classList.contains("show")){ extra.classList.add("show"); if(moreBtn) moreBtn.classList.add("on"); }
     datosTab('exchanges');
   } catch(e){
     alert("Error: "+e);
