@@ -507,7 +507,7 @@ function cfgTab(name){
   document.getElementById("cfgTabChat").classList.toggle("on", name==="chat");
   document.getElementById("cfgPanePOS").style.display = name==="pos" ? "" : "none";
   document.getElementById("cfgPaneChat").style.display = name==="chat" ? "" : "none";
-  if(name==="chat"){ renderCfgQuickReplies(); renderCfgPipelines(); }
+  if(name==="chat"){ renderCfgQuickReplies(); renderCfgPipelines(); loadBotFlows(); }
 }
 
 // ---------- Config Chat: gestión de comandos ----------
@@ -4655,3 +4655,320 @@ async function init(){
   }
 }
 init();
+
+// ============================================================
+// BOT DE RESPUESTAS AUTOMÁTICAS
+// ============================================================
+let _botEditor = { flowId:null, name:"", triggerType:"new_conversation", triggerValue:"", active:false, steps:[] };
+let _botEditingIdx = -1;
+let _botEditingData = null; // copia mutable del paso en edición
+
+// ---- Cargar y renderizar lista de flujos ----
+async function loadBotFlows(){
+  const flows = await fetch(`${C.WORKER_URL}/wa/bot/flows`).then(r=>r.json()).catch(()=>[]);
+  renderBotFlowList(flows);
+}
+
+function renderBotFlowList(flows){
+  const box = $("#botFlowList"); if(!box) return;
+  if(!flows.length){ box.innerHTML=`<div style="font-size:13px;color:var(--text-dim)">Sin flujos creados.</div>`; return; }
+  box.innerHTML = flows.map(f=>`
+    <div class="bot-flow-card">
+      <div class="bot-flow-info">
+        <div class="bot-flow-name">${esc(f.name)}</div>
+        <div class="bot-flow-meta">${f.trigger_type==="new_conversation"?"Nueva conversación":"Palabra clave: "+esc(f.trigger_value||"")} · ${JSON.parse(f.steps||"[]").length} pasos</div>
+      </div>
+      <span class="bot-badge ${f.active?"on":"off"}">${f.active?"Activo":"Inactivo"}</span>
+      <button onclick="openBotEditor('${f.id}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:var(--text-dim)">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">edit</span>
+      </button>
+      <button onclick="deleteBotFlow('${f.id}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:var(--text-dim)">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">delete</span>
+      </button>
+    </div>`).join("");
+}
+
+// ---- Abrir / cerrar editor ----
+async function openBotEditor(flowId){
+  if(flowId){
+    const flows = await fetch(`${C.WORKER_URL}/wa/bot/flows`).then(r=>r.json()).catch(()=>[]);
+    const f = flows.find(x=>x.id===flowId);
+    if(!f) return;
+    _botEditor = { flowId:f.id, name:f.name, triggerType:f.trigger_type, triggerValue:f.trigger_value||"", active:!!f.active, steps:JSON.parse(f.steps||"[]") };
+  } else {
+    _botEditor = { flowId:null, name:"", triggerType:"new_conversation", triggerValue:"", active:false, steps:[] };
+  }
+  $("#botFlowNameInput").value = _botEditor.name;
+  $("#botFlowActiveChk").checked = _botEditor.active;
+  $("#botTriggerTypeSelect").value = _botEditor.triggerType;
+  $("#botTriggerValueInput").value = _botEditor.triggerValue;
+  onBotTriggerChange();
+  renderBotEditor();
+  const m = $("#botEditorModal"); m.style.display="flex";
+}
+
+function closeBotEditor(){ $("#botEditorModal").style.display="none"; loadBotFlows(); }
+
+function onBotTriggerChange(){
+  const t = $("#botTriggerTypeSelect").value;
+  const vi = $("#botTriggerValueInput");
+  vi.style.display = t==="keyword" ? "" : "none";
+}
+
+// ---- Renderizar lista de pasos en el editor ----
+function renderBotEditor(){
+  const box = $("#botStepList"); if(!box) return;
+  const steps = _botEditor.steps;
+  if(!steps.length){ box.innerHTML=`<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:40px 0">Sin pasos — agrega el primero con el botón de abajo.</div>`; return; }
+  const html = steps.map((s,i)=>`
+    <div class="bot-step-card" id="bsc-${i}">
+      <div class="bot-step-head">
+        <div class="bot-step-type-tag"><span class="material-symbols-outlined">${stepTypeIcon(s.type)}</span>${stepTypeLabel(s.type)}</div>
+        <div class="bot-step-acts">
+          ${i>0?`<button onclick="moveBotStep(${i},-1)" title="Subir"><span class="material-symbols-outlined" style="font-size:14px">arrow_upward</span></button>`:""}
+          ${i<steps.length-1?`<button onclick="moveBotStep(${i},1)" title="Bajar"><span class="material-symbols-outlined" style="font-size:14px">arrow_downward</span></button>`:""}
+          <button onclick="editBotStep(${i})" title="Editar"><span class="material-symbols-outlined" style="font-size:14px">edit</span></button>
+          <button onclick="deleteBotStep(${i})" title="Eliminar" style="color:#e74c3c"><span class="material-symbols-outlined" style="font-size:14px">delete</span></button>
+        </div>
+      </div>
+      <div class="bot-step-preview">${stepPreview(s, steps)}</div>
+    </div>
+    ${i<steps.length-1?`<div class="bot-connector"></div>`:""}
+  `).join("");
+  box.innerHTML = html;
+}
+
+function stepTypeIcon(type){
+  return {text:"chat_bubble",image:"image",audio:"mic",buttons:"radio_button_checked",list:"format_list_bulleted",condition:"alt_route",action:"bolt"}[type]||"help";
+}
+function stepTypeLabel(type){
+  return {text:"Texto",image:"Imagen",audio:"Audio",buttons:"Botones",list:"Lista",condition:"Condición",action:"Acción"}[type]||type;
+}
+function stepPreview(s, steps){
+  if(s.type==="text") return esc(s.body||"").slice(0,80);
+  if(s.type==="image") return `🖼 ${esc(s.body||s.media_url||"").slice(0,60)}`;
+  if(s.type==="audio") return `🎤 ${esc(s.media_url||"").slice(0,60)}`;
+  if(s.type==="buttons") return `${esc(s.body||"").slice(0,40)} · ${(s.buttons||[]).map(b=>`[${esc(b.title)}]`).join(" ")}`;
+  if(s.type==="list") return `${esc(s.body||"").slice(0,40)} · ${(s.sections||[]).reduce((a,sec)=>a+(sec.rows||[]).length,0)} opciones`;
+  if(s.type==="condition") return `${(s.conditions||[]).length} condición(es) · default → ${nextLabel(s.default_next, steps)}`;
+  if(s.type==="action") return `${s.action||""} ${s.value?"→ "+esc(s.value):""}`;
+  return "";
+}
+function nextLabel(nxt, steps){
+  if(!nxt||nxt==="__end__") return "Fin";
+  const idx = steps.findIndex(s=>s.id===nxt);
+  return idx>=0 ? `Paso ${idx+1}` : "Fin";
+}
+
+// ---- Agregar paso ----
+function toggleBotAddMenu(){
+  const m=$("#botAddMenu"); m.style.display=m.style.display==="none"?"":"none";
+}
+function addBotStep(type){
+  $("#botAddMenu").style.display="none";
+  const id="s"+Date.now();
+  const defaults = {
+    text:{id,type:"text",body:"",next:null},
+    image:{id,type:"image",media_url:"",body:"",next:null},
+    audio:{id,type:"audio",media_url:"",next:null},
+    buttons:{id,type:"buttons",body:"",buttons:[{id:"b"+Date.now(),title:"Opción 1",next:"__end__"}],next:null},
+    list:{id,type:"list",body:"",button_label:"Ver opciones",sections:[{title:"",rows:[{id:"r"+Date.now(),title:"Opción 1",description:"",next:"__end__"}]}],next:null},
+    condition:{id,type:"condition",conditions:[{keywords:"",next:"__end__"}],default_next:"__end__",next:null},
+    action:{id,type:"action",action:"change_stage",value:"",next:null},
+  };
+  const step = defaults[type]||defaults.text;
+  _botEditor.steps.push(step);
+  renderBotEditor();
+  editBotStep(_botEditor.steps.length-1);
+}
+
+// ---- Reordenar y eliminar pasos ----
+function moveBotStep(idx,dir){
+  const s=_botEditor.steps; const to=idx+dir;
+  if(to<0||to>=s.length) return;
+  [s[idx],s[to]]=[s[to],s[idx]];
+  renderBotEditor();
+}
+function deleteBotStep(idx){
+  if(!confirm("¿Eliminar este paso?")) return;
+  _botEditor.steps.splice(idx,1);
+  renderBotEditor();
+}
+
+// ---- Editar paso (modal) ----
+function editBotStep(idx){
+  _botEditingIdx=idx;
+  _botEditingData=JSON.parse(JSON.stringify(_botEditor.steps[idx])); // deep copy
+  openBotStepModal();
+}
+function closeBotStepModal(){ $("#botStepModal").style.display="none"; }
+
+function openBotStepModal(){
+  const s=_botEditingData; const steps=_botEditor.steps;
+  const icons={text:"chat_bubble",image:"image",audio:"mic",buttons:"radio_button_checked",list:"format_list_bulleted",condition:"alt_route",action:"bolt"};
+  $("#botStepModalTitle").innerHTML=`<span class="material-symbols-outlined" style="color:var(--accent)">${icons[s.type]||"help"}</span> ${stepTypeLabel(s.type)}`;
+  $("#botStepModalBody").innerHTML = buildStepForm(s, steps);
+  $("#botStepModal").style.display="flex";
+}
+
+function buildStepForm(s, steps){
+  const nextOpts = `<option value="__end__">Fin del flujo</option>`+steps.filter((_,i)=>i!==_botEditingIdx).map(st=>`<option value="${st.id}">${stepTypeLabel(st.type)}: ${esc((st.body||st.media_url||"").slice(0,30))}</option>`).join("");
+  const fld=(id,lbl,val,ph="")=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><input id="${id}" value="${esc(val||"")}" placeholder="${ph}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"></div>`;
+  const ta=(id,lbl,val,ph="")=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><textarea id="${id}" placeholder="${ph}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:70px;font-family:inherit;box-sizing:border-box">${esc(val||"")}</textarea></div>`;
+  const sel=(id,lbl,val,opts)=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><select id="${id}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px;background:var(--bg);color:var(--text)">${opts.map(o=>`<option value="${o.v}"${val===o.v?" selected":""}>${o.l}</option>`).join("")}</select></div>`;
+  const hint=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">Usa <b>{nombre}</b> para el nombre del cliente.</div>`;
+
+  if(s.type==="text") return hint+ta("bsf_body","Mensaje",s.body,"Hola {nombre}! Bienvenida a Bloom 🌸")+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+
+  if(s.type==="image") return fld("bsf_url","URL de la imagen",s.media_url,"https://...")+ta("bsf_body","Pie de foto (opcional)",s.body)+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+
+  if(s.type==="audio") return fld("bsf_url","URL del audio",s.media_url,"https://...")+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+
+  if(s.type==="buttons"){
+    const btns = (s.buttons||[]).map((b,i)=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <input id="bsf_btn_${i}_title" value="${esc(b.title)}" maxlength="20" placeholder="Botón ${i+1}" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
+          ${s.buttons.length>1?`<button onclick="removeBotBtn(${i})" style="background:none;border:none;cursor:pointer;color:#e74c3c"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>`:""}
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Lleva a:</div>
+        <select id="bsf_btn_${i}_next" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;background:var(--bg);color:var(--text)">${nextOpts}</select>
+      </div>`).join("");
+    const addBtn = s.buttons.length<3 ? `<button onclick="addBotBtn()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%;margin-bottom:10px">+ Agregar botón</button>` : "";
+    return hint+ta("bsf_body","Mensaje del menú",s.body,"¿En qué te puedo ayudar?")+`<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">BOTONES (máx 3, texto hasta 20 caracteres)</div>`+btns+addBtn;
+  }
+
+  if(s.type==="list"){
+    let secHtml = (s.sections||[]).map((sec,si)=>{
+      const rows = (sec.rows||[]).map((r,ri)=>`
+        <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
+          <div style="flex:1">
+            <input id="bsf_sec_${si}_row_${ri}_title" value="${esc(r.title)}" maxlength="24" placeholder="Opción" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;margin-bottom:3px">
+            <input id="bsf_sec_${si}_row_${ri}_desc" value="${esc(r.description||"")}" placeholder="Descripción (opcional, max 72 chars)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+          </div>
+          <select id="bsf_sec_${si}_row_${ri}_next" style="width:110px;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:11px;background:var(--bg);color:var(--text)">${nextOpts.replace(`value="${r.next}"`,`value="${r.next||"__end__"}" selected`)}</select>
+          ${(sec.rows||[]).length>1?`<button onclick="removeBotRow(${si},${ri})" style="background:none;border:none;cursor:pointer;color:#e74c3c;padding:0"><span class="material-symbols-outlined" style="font-size:14px">close</span></button>`:""}
+        </div>`).join("");
+      return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <input id="bsf_sec_${si}_title" value="${esc(sec.title||"")}" placeholder="Título de sección" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;margin-bottom:8px">
+        ${rows}
+        <button onclick="addBotRow(${si})" style="font-size:11px;background:none;border:1px dashed var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-dim)">+ Fila</button>
+      </div>`;
+    }).join("");
+    return hint+ta("bsf_body","Mensaje del menú",s.body,"Selecciona una opción:")+fld("bsf_btn_label","Texto del botón para abrir lista",s.button_label,"Ver opciones")+`<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">SECCIONES</div>`+secHtml+`<button onclick="addBotSection()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%">+ Agregar sección</button>`;
+  }
+
+  if(s.type==="condition"){
+    const conds = (s.conditions||[]).map((c,i)=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;display:flex;gap:8px;align-items:center">
+        <input id="bsf_cond_${i}_kw" value="${esc(c.keywords||"")}" placeholder="si, sí, claro, ok" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none">
+        <span style="font-size:11px;color:var(--text-dim);white-space:nowrap">→ ir a</span>
+        <select id="bsf_cond_${i}_next" style="width:120px;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:11px;background:var(--bg);color:var(--text)">${nextOpts}</select>
+        ${s.conditions.length>1?`<button onclick="removeBotCond(${i})" style="background:none;border:none;cursor:pointer;color:#e74c3c"><span class="material-symbols-outlined" style="font-size:14px">close</span></button>`:""}
+      </div>`).join("");
+    return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Evalúa el texto que el cliente acaba de escribir y ramifica según palabras clave (separadas por comas).</div>`+conds+`<button onclick="addBotCond()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%;margin-bottom:10px">+ Agregar condición</button>`+sel("bsf_default_next","Si ninguna coincide, ir a",s.default_next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+  }
+
+  if(s.type==="action"){
+    return sel("bsf_action","Acción",s.action,[{v:"change_stage",l:"Cambiar etapa de la conversación"},{v:"add_tag",l:"Agregar etiqueta al contacto"},{v:"pause_bot",l:"Pausar bot (agente humano)"},{v:"end",l:"Finalizar flujo"}])+fld("bsf_value","Valor (etapa o etiqueta)",s.value||"","Interesado / lead_caliente")+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+  }
+  return "<em>Tipo desconocido</em>";
+}
+
+// Helpers para agregar/quitar items dinámicos en forms (re-abren modal)
+function addBotBtn(){
+  _syncEditingDataFromForm(); // sync antes de mutar
+  if((_botEditingData.buttons||[]).length>=3) return;
+  _botEditingData.buttons.push({id:"b"+Date.now(),title:"Opción "+( (_botEditingData.buttons.length)+1),next:"__end__"});
+  openBotStepModal();
+}
+function removeBotBtn(i){
+  _syncEditingDataFromForm();
+  _botEditingData.buttons.splice(i,1);
+  openBotStepModal();
+}
+function addBotSection(){
+  _syncEditingDataFromForm();
+  _botEditingData.sections=_botEditingData.sections||[];
+  _botEditingData.sections.push({title:"",rows:[{id:"r"+Date.now(),title:"",description:"",next:"__end__"}]});
+  openBotStepModal();
+}
+function addBotRow(si){
+  _syncEditingDataFromForm();
+  _botEditingData.sections[si].rows.push({id:"r"+Date.now(),title:"",description:"",next:"__end__"});
+  openBotStepModal();
+}
+function removeBotRow(si,ri){
+  _syncEditingDataFromForm();
+  _botEditingData.sections[si].rows.splice(ri,1);
+  openBotStepModal();
+}
+function addBotCond(){
+  _syncEditingDataFromForm();
+  _botEditingData.conditions=_botEditingData.conditions||[];
+  _botEditingData.conditions.push({keywords:"",next:"__end__"});
+  openBotStepModal();
+}
+function removeBotCond(i){
+  _syncEditingDataFromForm();
+  _botEditingData.conditions.splice(i,1);
+  openBotStepModal();
+}
+
+function _syncEditingDataFromForm(){
+  const s=_botEditingData;
+  if(s.type==="text"){ s.body=$("#bsf_body")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
+  if(s.type==="image"){ s.media_url=$("#bsf_url")?.value||""; s.body=$("#bsf_body")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
+  if(s.type==="audio"){ s.media_url=$("#bsf_url")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
+  if(s.type==="buttons"){
+    s.body=$("#bsf_body")?.value||"";
+    (s.buttons||[]).forEach((b,i)=>{ b.title=($(`#bsf_btn_${i}_title`)?.value||b.title).slice(0,20); b.next=$(`#bsf_btn_${i}_next`)?.value||"__end__"; });
+  }
+  if(s.type==="list"){
+    s.body=$("#bsf_body")?.value||""; s.button_label=$("#bsf_btn_label")?.value||"Ver opciones";
+    (s.sections||[]).forEach((sec,si)=>{
+      sec.title=$(`#bsf_sec_${si}_title`)?.value||"";
+      (sec.rows||[]).forEach((r,ri)=>{ r.title=$(`#bsf_sec_${si}_row_${ri}_title`)?.value||""; r.description=$(`#bsf_sec_${si}_row_${ri}_desc`)?.value||""; r.next=$(`#bsf_sec_${si}_row_${ri}_next`)?.value||"__end__"; });
+    });
+  }
+  if(s.type==="condition"){
+    (s.conditions||[]).forEach((c,i)=>{ c.keywords=$(`#bsf_cond_${i}_kw`)?.value||""; c.next=$(`#bsf_cond_${i}_next`)?.value||"__end__"; });
+    s.default_next=$("#bsf_default_next")?.value||"__end__";
+  }
+  if(s.type==="action"){ s.action=$("#bsf_action")?.value||"change_stage"; s.value=$("#bsf_value")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
+}
+
+function saveBotStepEdit(){
+  _syncEditingDataFromForm();
+  _botEditor.steps[_botEditingIdx]=_botEditingData;
+  closeBotStepModal();
+  renderBotEditor();
+}
+
+// ---- Guardar flujo ----
+async function saveBotFlow(){
+  const name=$("#botFlowNameInput").value.trim();
+  if(!name){ alert("El flujo necesita un nombre."); return; }
+  const flow={
+    name,
+    trigger_type:$("#botTriggerTypeSelect").value,
+    trigger_value:$("#botTriggerValueInput").value.trim()||null,
+    active:$("#botFlowActiveChk").checked,
+    steps:_botEditor.steps,
+  };
+  const url=_botEditor.flowId
+    ? `${C.WORKER_URL}/wa/bot/flows/${encodeURIComponent(_botEditor.flowId)}`
+    : `${C.WORKER_URL}/wa/bot/flows`;
+  const method=_botEditor.flowId?"PUT":"POST";
+  const r=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(flow)}).then(r=>r.json()).catch(()=>({ok:false}));
+  if(!r.ok){ alert("Error al guardar el flujo."); return; }
+  if(!_botEditor.flowId && r.id) _botEditor.flowId=r.id;
+  closeBotEditor();
+}
+
+// ---- Eliminar flujo ----
+async function deleteBotFlow(id){
+  if(!confirm("¿Eliminar este flujo?")) return;
+  await fetch(`${C.WORKER_URL}/wa/bot/flows/${encodeURIComponent(id)}`,{method:"DELETE"}).catch(()=>{});
+  loadBotFlows();
+}

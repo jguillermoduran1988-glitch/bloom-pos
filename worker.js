@@ -10,7 +10,7 @@ export default {
     const url = new URL(request.url);
     const cors = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -376,6 +376,51 @@ export default {
       fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(phone);
       await env.bloom_wa.prepare(`UPDATE wa_contacts SET ${fields.join(", ")} WHERE phone = ?`).bind(...values).run();
       return Response.json({ ok: true }, { headers: cors });
+    }
+
+    // -------- Bot: CRUD de flujos --------
+    if (url.pathname === "/wa/bot/flows") {
+      if (request.method === "GET") {
+        const rows = await env.bloom_wa.prepare(
+          `SELECT * FROM wa_bot_flows WHERE store = 'bloom' ORDER BY created_at ASC`
+        ).all();
+        return Response.json(rows.results || [], { headers: cors });
+      }
+      if (request.method === "POST") {
+        const d = await request.json();
+        const id = "flow-" + Date.now();
+        const now = new Date().toISOString();
+        await env.bloom_wa.prepare(
+          `INSERT INTO wa_bot_flows (id,name,trigger_type,trigger_value,active,steps,store,created_at) VALUES (?,?,?,?,?,?,'bloom',?)`
+        ).bind(id, d.name, d.trigger_type, d.trigger_value||null, d.active?1:0, JSON.stringify(d.steps||[]), now).run();
+        return Response.json({ ok:true, id }, { headers: cors });
+      }
+    }
+    if (url.pathname.startsWith("/wa/bot/flows/")) {
+      const flowId = decodeURIComponent(url.pathname.split("/")[4]);
+      if (request.method === "PUT") {
+        const d = await request.json();
+        await env.bloom_wa.prepare(
+          `UPDATE wa_bot_flows SET name=?,trigger_type=?,trigger_value=?,active=?,steps=? WHERE id=? AND store='bloom'`
+        ).bind(d.name, d.trigger_type, d.trigger_value||null, d.active?1:0, JSON.stringify(d.steps||[]), flowId).run();
+        return Response.json({ ok:true }, { headers: cors });
+      }
+      if (request.method === "DELETE") {
+        await env.bloom_wa.prepare(`DELETE FROM wa_bot_flows WHERE id=?`).bind(flowId).run();
+        return Response.json({ ok:true }, { headers: cors });
+      }
+    }
+
+    // -------- Bot: estado por conversación (pausa / reinicio) --------
+    if (request.method === "POST" && url.pathname.startsWith("/wa/bot/state/") && url.pathname.endsWith("/pause")) {
+      const convId = decodeURIComponent(url.pathname.split("/")[4]);
+      await setBotState(env, convId, null, null, 1);
+      return Response.json({ ok:true }, { headers: cors });
+    }
+    if (request.method === "DELETE" && url.pathname.startsWith("/wa/bot/state/")) {
+      const convId = decodeURIComponent(url.pathname.split("/")[4]);
+      await clearBotState(env, convId);
+      return Response.json({ ok:true }, { headers: cors });
     }
 
     return new Response("Not found", { status: 404 });
@@ -766,9 +811,13 @@ async function createShopifyOrder(env, o) {
 async function handleIncoming(env, msg, contact) {
   const phone = msg.from;
   const name = contact?.profile?.name || phone;
-  const text = msg.text?.body || msg.button?.text || "";
+  const interactive = msg.interactive;
+  const interactiveReplyId = interactive?.button_reply?.id || interactive?.list_reply?.id || null;
+  const interactiveTitle = interactive?.button_reply?.title || interactive?.list_reply?.title || "";
+  const text = msg.text?.body || msg.button?.text || interactiveTitle || "";
   const waId = msg.id;
   const now = new Date().toISOString();
+  const msgType = interactive ? "interactive" : "text";
 
   // Upsert contacto en D1
   await d1UpsertContact(env, phone, name);
@@ -800,8 +849,144 @@ async function handleIncoming(env, msg, contact) {
   // Guardar mensaje
   const msgId = "in-" + (waId || Date.now()) + "-" + Math.random().toString(36).slice(2, 6);
   await env.bloom_wa.prepare(
-    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, status, ts) VALUES (?, ?, ?, 'inbound', 'text', ?, 'delivered', ?)`
-  ).bind(msgId, convId, waId || null, text, now).run();
+    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, status, ts) VALUES (?, ?, ?, 'inbound', ?, ?, 'delivered', ?)`
+  ).bind(msgId, convId, waId || null, msgType, text, now).run();
+
+  // Bot: procesar respuesta
+  await handleBotInput(env, convId, phone, text, interactiveReplyId, !existing, contact);
+}
+
+// ============ Ejecución del bot ============
+async function handleBotInput(env, convId, phone, text, inputId, isNew, contact) {
+  const state = await env.bloom_wa.prepare(
+    `SELECT * FROM wa_bot_state WHERE conversation_id = ?`
+  ).bind(convId).first();
+
+  if (state?.paused) return;
+
+  const vars = { nombre: contact?.profile?.name || phone, telefono: phone };
+
+  if (state?.step_id && state?.flow_id) {
+    const flow = await env.bloom_wa.prepare(`SELECT * FROM wa_bot_flows WHERE id = ?`).bind(state.flow_id).first();
+    if (!flow) { await clearBotState(env, convId); return; }
+    const steps = JSON.parse(flow.steps || "[]");
+    const cur = steps.find(s => s.id === state.step_id);
+    if (!cur) { await clearBotState(env, convId); return; }
+
+    let nextId = null;
+    if (cur.type === "buttons") {
+      const btn = (cur.buttons||[]).find(b => b.id === inputId || b.title.toLowerCase() === text.toLowerCase());
+      nextId = btn?.next ?? null;
+    } else if (cur.type === "list") {
+      for (const sec of (cur.sections||[])) {
+        const row = (sec.rows||[]).find(r => r.id === inputId || r.title.toLowerCase() === text.toLowerCase());
+        if (row) { nextId = row.next ?? null; break; }
+      }
+    } else if (cur.type === "condition") {
+      for (const cond of (cur.conditions||[])) {
+        const kws = (cond.keywords||"").toLowerCase().split(",").map(k=>k.trim()).filter(Boolean);
+        if (kws.some(k => text.toLowerCase().includes(k))) { nextId = cond.next ?? null; break; }
+      }
+      if (nextId === null) nextId = cur.default_next ?? null;
+    }
+
+    if (nextId === "__end__" || nextId === null) { await clearBotState(env, convId); return; }
+    await executeFlowFrom(env, convId, phone, steps, nextId, flow.id, vars);
+    return;
+  }
+
+  // Sin estado activo: verificar triggers
+  const flows = await env.bloom_wa.prepare(
+    `SELECT * FROM wa_bot_flows WHERE store='bloom' AND active=1`
+  ).all();
+  for (const flow of (flows.results||[])) {
+    const steps = JSON.parse(flow.steps||"[]");
+    if (!steps.length) continue;
+    let triggered = false;
+    if (flow.trigger_type === "new_conversation" && isNew) triggered = true;
+    if (flow.trigger_type === "keyword" && flow.trigger_value) {
+      const kws = flow.trigger_value.toLowerCase().split(",").map(k=>k.trim()).filter(Boolean);
+      if (kws.some(k => text.toLowerCase().includes(k))) triggered = true;
+    }
+    if (triggered) {
+      await executeFlowFrom(env, convId, phone, steps, steps[0].id, flow.id, vars);
+      break;
+    }
+  }
+}
+
+async function executeFlowFrom(env, convId, phone, steps, startId, flowId, vars) {
+  let stepId = startId;
+  let guard = 20;
+  while (stepId && stepId !== "__end__" && guard-- > 0) {
+    const step = steps.find(s => s.id === stepId);
+    if (!step || step.type === "end") { await clearBotState(env, convId); return; }
+    await executeBotStep(env, phone, step, vars, convId);
+    if (["buttons","list","condition"].includes(step.type)) {
+      await setBotState(env, convId, flowId, step.id, 0);
+      return;
+    }
+    if (step.type === "action" && step.action === "pause_bot") { await setBotState(env, convId, flowId, null, 1); return; }
+    if (step.type === "action" && step.action === "end")       { await clearBotState(env, convId); return; }
+    stepId = step.next ?? "__end__";
+  }
+  await clearBotState(env, convId);
+}
+
+async function executeBotStep(env, phone, step, vars, convId) {
+  const rv = s => (s||"").replace(/\{nombre\}/gi, vars.nombre).replace(/\{telefono\}/gi, vars.telefono);
+  if (step.type === "text") {
+    await sendWhatsApp(env, phone, rv(step.body));
+  } else if (step.type === "image") {
+    await sendWhatsAppPayload(env, phone, { type:"image", image:{ link:step.media_url, caption:rv(step.body||"") } });
+  } else if (step.type === "audio") {
+    await sendWhatsAppPayload(env, phone, { type:"audio", audio:{ link:step.media_url } });
+  } else if (step.type === "buttons") {
+    await sendWhatsAppPayload(env, phone, { type:"interactive", interactive:{
+      type:"button", body:{ text:rv(step.body) },
+      action:{ buttons:(step.buttons||[]).slice(0,3).map(b=>({ type:"reply", reply:{ id:b.id, title:b.title.slice(0,20) } })) }
+    }});
+  } else if (step.type === "list") {
+    await sendWhatsAppPayload(env, phone, { type:"interactive", interactive:{
+      type:"list", body:{ text:rv(step.body) },
+      action:{ button:(step.button_label||"Ver opciones").slice(0,20),
+        sections:(step.sections||[]).map(sec=>({ title:sec.title||"", rows:(sec.rows||[]).slice(0,10).map(r=>({ id:r.id, title:r.title.slice(0,24), description:(r.description||"").slice(0,72) })) }))
+      }
+    }});
+  } else if (step.type === "condition") {
+    // No envía mensaje, solo ramifica — se maneja en handleBotInput
+  } else if (step.type === "action") {
+    const now = new Date().toISOString();
+    if (step.action === "change_stage") {
+      await env.bloom_wa.prepare(`UPDATE wa_conversations SET stage=?,updated_at=? WHERE id=?`).bind(step.value||null, now, convId).run();
+    } else if (step.action === "add_tag") {
+      const ct = await env.bloom_wa.prepare(`SELECT tags FROM wa_contacts WHERE phone=?`).bind(phone).first();
+      const tags = JSON.parse(ct?.tags||"[]");
+      if (step.value && !tags.includes(step.value)) tags.push(step.value);
+      await env.bloom_wa.prepare(`UPDATE wa_contacts SET tags=?,updated_at=? WHERE phone=?`).bind(JSON.stringify(tags), now, phone).run();
+    }
+  }
+}
+
+async function sendWhatsAppPayload(env, phone, payload) {
+  if (!env.WA_TOKEN || !env.WA_PHONE_ID) return;
+  await fetch(`https://graph.facebook.com/v19.0/${env.WA_PHONE_ID}/messages`, {
+    method:"POST",
+    headers:{ Authorization:`Bearer ${env.WA_TOKEN}`, "Content-Type":"application/json" },
+    body:JSON.stringify({ messaging_product:"whatsapp", to:phone, ...payload }),
+  });
+}
+
+async function setBotState(env, convId, flowId, stepId, paused) {
+  const now = new Date().toISOString();
+  await env.bloom_wa.prepare(
+    `INSERT INTO wa_bot_state (conversation_id,flow_id,step_id,paused,updated_at) VALUES (?,?,?,?,?)
+     ON CONFLICT(conversation_id) DO UPDATE SET flow_id=excluded.flow_id,step_id=excluded.step_id,paused=excluded.paused,updated_at=excluded.updated_at`
+  ).bind(convId, flowId, stepId, paused?1:0, now).run();
+}
+
+async function clearBotState(env, convId) {
+  await env.bloom_wa.prepare(`DELETE FROM wa_bot_state WHERE conversation_id=?`).bind(convId).run();
 }
 
 async function d1UpsertContact(env, phone, name) {
