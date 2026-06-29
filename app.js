@@ -2082,7 +2082,6 @@ async function loadSalesHistory(){
         ${esEnvio?`<button onclick="printLabel('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">label</span> Imprimir etiqueta</button>`:""}
         <button onclick="invoiceAlegra('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">description</span> Crear factura Alegra</button>
         <button onclick="invoiceSiigo('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">receipt</span> Crear factura Siigo</button>
-        ${!cancelada&&s.shopify_order_id?`<button onclick="openExchangeModal('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">swap_horiz</span> Cambio / Garantía</button>`:''}
         ${!cancelada?`<button onclick="cancelSale('${s.id}','${s.shopify_order_id||''}','${esc(s.shopify_order_name||'')}')" style="color:#b91c1c"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">cancel</span> Cancelar venta</button>`:''}
         ${!cancelada&&s.shopify_order_id?`<button onclick="openRefundModal('${s.id}','${s.shopify_order_id}',${s.total})" style="color:#d97706"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">currency_exchange</span> Reembolso parcial</button>`:''}
       </div>`;
@@ -2099,31 +2098,66 @@ function toggleSaleMenu(id){
 let _exCtx = {};
 const _exSaleCache = new Map();
 
-function openExchangeModal(saleId){
-  const s = _exSaleCache.get(saleId);
-  if(!s){ alert("Recarga la página e intenta de nuevo."); return; }
-  _exCtx = {
-    saleId,
-    shopifyOrderId: s.shopify_order_id,
-    orderName: s.shopify_order_name || saleId,
-    items: s.items || [],
-    customer: { name: s.customer_name, phone: s.customer_phone, email: s.customer_email, doc: s.customer_doc },
-    reason: 'cambio',
-    replacement: [],
-    returnSel: {},
-  };
-  // Reset UI
-  $("#exNotes").value = "";
-  $("#exProductSearch").value = "";
-  $("#exProductResults").innerHTML = "";
-  $("#exSelectedReplacement").innerHTML = "";
-  setExReason('cambio');
+function toggleExCreate(open){
+  const panel = document.getElementById("exCreatePanel");
+  const btn = document.getElementById("exNewBtn");
+  const show = open !== undefined ? open : panel.style.display === "none";
+  panel.style.display = show ? "block" : "none";
+  btn.style.background = show ? "var(--accent-dark,#a07d32)" : "var(--accent)";
+  if(show) _resetExForm();
+}
+
+function _resetExForm(){
+  _exCtx = { saleId:null, shopifyOrderId:null, orderName:null, items:[], customer:{}, reason:'cambio', replacement:[], returnSel:{} };
+  const ids = ["exOrderSearch","exNotes","exProductSearch"];
+  ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+  ["exOrderResults","exOrderSelected","exReturnItems","exProductResults","exSelectedReplacement","exPriceSummary"].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=""; });
+  document.getElementById("exReturnSection").style.display = "none";
+  document.querySelectorAll(".ex-reason-btn").forEach(b=>b.classList.remove("active"));
+  document.getElementById("exReason-cambio")?.classList.add("active");
+  document.getElementById("exReplacementSection").style.display = "";
+  const btn = document.getElementById("exConfirmBtn"); if(btn){ btn.disabled=false; btn.textContent="Confirmar"; }
+}
+
+let _exOrderTimer = null;
+function searchExOrder(){
+  clearTimeout(_exOrderTimer);
+  _exOrderTimer = setTimeout(async () => {
+    const q = document.getElementById("exOrderSearch").value.trim();
+    const box = document.getElementById("exOrderResults");
+    if(q.length < 2){ box.innerHTML = ""; return; }
+    const enc = encodeURIComponent(q);
+    const rows = await sbGet(`sales?store=eq.${C.STORE}&or=(shopify_order_name.ilike.*${enc}*,customer_name.ilike.*${enc}*)&select=id,shopify_order_name,shopify_order_id,customer_name,items,total,customer_phone,customer_email,customer_doc&limit=8&order=created_at.desc`);
+    box.innerHTML = "";
+    if(!rows.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:6px">Sin resultados</div>'; return; }
+    for(const s of rows){
+      const d = document.createElement("div");
+      d.className = "ex-product-result";
+      d.innerHTML = `<span><b>${esc(s.shopify_order_name||'—')}</b> <span style="color:var(--text-dim)">${esc(s.customer_name||'')}</span></span><b>${money(s.total)}</b>`;
+      d.onclick = () => selectExOrder(s);
+      box.appendChild(d);
+    }
+  }, 300);
+}
+
+function selectExOrder(s){
+  document.getElementById("exOrderResults").innerHTML = "";
+  document.getElementById("exOrderSearch").value = s.shopify_order_name || "";
+  document.getElementById("exOrderSelected").innerHTML = `
+    <div style="background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <span><b>${esc(s.shopify_order_name||'—')}</b> · ${esc(s.customer_name||'—')}</span>
+      <span style="font-weight:600">${money(s.total)}</span>
+    </div>`;
+  _exCtx.saleId = s.id;
+  _exCtx.shopifyOrderId = s.shopify_order_id;
+  _exCtx.orderName = s.shopify_order_name;
+  _exCtx.items = s.items || [];
+  _exCtx.customer = { name: s.customer_name, phone: s.customer_phone, email: s.customer_email, doc: s.customer_doc };
+  _exCtx.returnSel = {};
+  document.getElementById("exReturnSection").style.display = "";
   renderExReturnItems();
   updateExSummary();
-  toggleSaleMenu(saleId);
-  $("#exchangeModal").style.display = "flex";
 }
-function closeExchangeModal(){ $("#exchangeModal").style.display = "none"; }
 
 function setExReason(r){
   _exCtx.reason = r;
@@ -2269,16 +2303,12 @@ async function confirmExchange(){
       notes: $("#exNotes").value.trim(),
     });
 
-    closeExchangeModal();
+    toggleExCreate(false);
     const msg = d.new_order_name
       ? `✓ Cambio procesado. Nuevo pedido: ${d.new_order_name}`
       : `✓ Devolución procesada. Reembolso: ${money(retTotal)}`;
     alert(msg);
-    // Abrir la pestaña Cambios (el tab puede estar en el menú "más")
-    const extra = document.getElementById("datTabsExtra");
-    const moreBtn = document.getElementById("datMoreBtn");
-    if(extra && !extra.classList.contains("show")){ extra.classList.add("show"); if(moreBtn) moreBtn.classList.add("on"); }
-    datosTab('exchanges');
+    loadExchangesTab();
   } catch(e){
     alert("Error: "+e);
     btn.disabled=false; btn.textContent="Confirmar cambio";

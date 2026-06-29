@@ -350,7 +350,6 @@
   .cart-btn.done{border-color:var(--accent);background:var(--accent-soft)}
   .cart-btn .chk{color:var(--accent);font-weight:700}
   /* ===== modales ===== */
-  .modal-overlay{position:fixed;top:80px;left:0;right:0;bottom:56px;background:rgba(0,0,0,.5);z-index:800;display:flex;overflow-y:auto}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
   .modal-bg.show{display:flex}
   .modal-box{background:var(--surface);width:100%;max-width:560px;max-height:88vh;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;animation:pop .2s ease}
@@ -881,45 +880,6 @@
       </div>
     </div>
 
-    <!-- Modal cambio / garantía -->
-    <div id="exchangeModal" class="modal-overlay" style="display:none;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
-      <div class="modal-box" style="max-width:560px;width:100%;padding:24px;margin-bottom:40px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h3 style="margin:0">Cambio / Garantía</h3>
-          <button onclick="closeExchangeModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim)">×</button>
-        </div>
-
-        <!-- Razón -->
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <button id="exReason-cambio"    onclick="setExReason('cambio')"    class="ex-reason-btn active">↔ Cambio</button>
-          <button id="exReason-garantia" onclick="setExReason('garantia')"  class="ex-reason-btn">🛡 Garantía</button>
-          <button id="exReason-devolucion" onclick="setExReason('devolucion')" class="ex-reason-btn">↩ Devolución</button>
-        </div>
-
-        <!-- Paso 1: ítems a devolver -->
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-dim)">1. ¿QUÉ DEVUELVE?</div>
-        <div id="exReturnItems" style="margin-bottom:16px"></div>
-
-        <!-- Paso 2: ítem de reemplazo (oculto en devolución) -->
-        <div id="exReplacementSection">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-dim)">2. ¿QUÉ LLEVA?</div>
-          <input id="exProductSearch" placeholder="Buscar producto de reemplazo…" oninput="searchExchangeProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:8px">
-          <div id="exProductResults" style="max-height:160px;overflow-y:auto;margin-bottom:8px"></div>
-          <div id="exSelectedReplacement" style="margin-bottom:12px"></div>
-        </div>
-
-        <!-- Notas -->
-        <textarea id="exNotes" placeholder="Notas opcionales (motivo, observaciones…)" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:13px;box-sizing:border-box;resize:none;height:60px;margin-bottom:14px"></textarea>
-
-        <!-- Resumen de precio -->
-        <div id="exPriceSummary" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;margin-bottom:16px"></div>
-
-        <div style="display:flex;gap:8px">
-          <button onclick="closeExchangeModal()" style="flex:1;padding:10px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer">Cancelar</button>
-          <button id="exConfirmBtn" onclick="confirmExchange()" style="flex:2;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600">Confirmar cambio</button>
-        </div>
-      </div>
-    </div>
 
     <!-- Pestaña: Clientes -->
     <div id="datPaneClientes" style="display:none">
@@ -945,8 +905,55 @@
     <!-- Pestaña: Cambios y Garantías -->
     <div id="datPaneExchanges" style="display:none">
       <div class="cfg-sec">
-        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">swap_horiz</span> Cambios y Garantías</h3>
-        <div class="desc">Historial de cambios, garantías y devoluciones procesados.</div>
+        <h3 style="display:flex;align-items:center;justify-content:space-between">
+          <span><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">swap_horiz</span> Cambios y Garantías</span>
+          <button id="exNewBtn" onclick="toggleExCreate()" style="display:flex;align-items:center;gap:4px;padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nuevo</button>
+        </h3>
+
+        <!-- Formulario inline de creación -->
+        <div id="exCreatePanel" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px">
+
+          <!-- Razón -->
+          <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">TIPO</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <button id="exReason-cambio"    onclick="setExReason('cambio')"    class="ex-reason-btn active">↔ Cambio</button>
+            <button id="exReason-garantia"  onclick="setExReason('garantia')"  class="ex-reason-btn">🛡 Garantía</button>
+            <button id="exReason-devolucion" onclick="setExReason('devolucion')" class="ex-reason-btn">↩ Devolución</button>
+          </div>
+
+          <!-- Búsqueda de pedido -->
+          <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">PEDIDO</div>
+          <input id="exOrderSearch" placeholder="Buscar por # pedido o nombre del cliente…" oninput="searchExOrder()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:6px;background:var(--surface);color:var(--text)">
+          <div id="exOrderResults" style="max-height:180px;overflow-y:auto;margin-bottom:10px"></div>
+          <div id="exOrderSelected" style="margin-bottom:14px"></div>
+
+          <!-- Ítems a devolver (aparece al seleccionar pedido) -->
+          <div id="exReturnSection" style="display:none">
+            <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">¿QUÉ DEVUELVE?</div>
+            <div id="exReturnItems" style="margin-bottom:16px"></div>
+
+            <!-- Reemplazo (oculto en devolución) -->
+            <div id="exReplacementSection">
+              <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">¿QUÉ LLEVA?</div>
+              <input id="exProductSearch" placeholder="Buscar producto de reemplazo…" oninput="searchExchangeProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:8px;background:var(--surface);color:var(--text)">
+              <div id="exProductResults" style="max-height:160px;overflow-y:auto;margin-bottom:8px"></div>
+              <div id="exSelectedReplacement" style="margin-bottom:12px"></div>
+            </div>
+
+            <!-- Notas -->
+            <textarea id="exNotes" placeholder="Notas opcionales (motivo, observaciones…)" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:13px;box-sizing:border-box;resize:none;height:60px;margin-bottom:14px;background:var(--surface);color:var(--text)"></textarea>
+
+            <!-- Resumen -->
+            <div id="exPriceSummary" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;margin-bottom:16px"></div>
+
+            <div style="display:flex;gap:8px">
+              <button onclick="toggleExCreate()" style="flex:1;padding:10px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer;font-size:14px">Cancelar</button>
+              <button id="exConfirmBtn" onclick="confirmExchange()" style="flex:2;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px">Confirmar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtros e historial -->
         <div class="rep-filter" id="exFilter" style="margin-bottom:12px">
           <button class="on" onclick="filterExchanges('todos',this)">Todos</button>
           <button onclick="filterExchanges('cambio',this)">Cambios</button>
