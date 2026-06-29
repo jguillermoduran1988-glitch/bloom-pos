@@ -2108,10 +2108,11 @@ function toggleExCreate(open){
 }
 
 function _resetExForm(){
-  _exCtx = { saleId:null, shopifyOrderId:null, orderName:null, items:[], customer:{}, reason:'cambio', replacement:[], returnSel:{} };
-  const ids = ["exOrderSearch","exNotes","exProductSearch"];
-  ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+  _exCtx = { saleId:null, shopifyOrderId:null, orderName:null, items:[], customer:{}, reason:'cambio', replacement:[], returnSel:{}, chargePayment:null };
+  ["exOrderSearch","exNotes","exProductSearch","exBarcodeInput"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
   ["exOrderResults","exOrderSelected","exReturnItems","exProductResults","exSelectedReplacement","exPriceSummary"].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=""; });
+  const payBtns = document.getElementById("exPaymentBtns"); if(payBtns) payBtns.dataset.built="0";
+  const paySection = document.getElementById("exPaymentSection"); if(paySection) paySection.style.display="none";
   document.getElementById("exReturnSection").style.display = "none";
   document.querySelectorAll(".ex-reason-btn").forEach(b=>b.classList.remove("active"));
   document.getElementById("exReason-cambio")?.classList.add("active");
@@ -2202,35 +2203,114 @@ function exQty(key, delta){
   updateExSummary();
 }
 
+// ---- Pistola de barras ----
+async function scanExBarcode(){
+  const input = document.getElementById("exBarcodeInput");
+  const code = (input.value || "").trim();
+  if(!code) return;
+  input.value = "";
+
+  // Asegurar catálogo cargado
+  if(!pos.catalog.length){
+    input.placeholder = "Cargando catálogo…";
+    await fetchProducts();
+    input.placeholder = "Apunta el pistolero aquí y escanea — Enter para agregar";
+  }
+
+  const c = code.toLowerCase();
+  let found = null;
+  for(const p of pos.catalog){
+    for(const v of (p.variants||[])){
+      if((v.sku && v.sku.toLowerCase()===c) || (v.barcode && v.barcode.toLowerCase()===c)){
+        found = { name:p.name, variant:[v.color,v.talla].filter(Boolean).join(" / "), price:v.price, qty:1, sku:v.sku||null, variant_id:v.variant_id };
+        break;
+      }
+    }
+    if(found) break;
+  }
+
+  if(found){ addExReplacement(found); }
+  else {
+    const box = document.getElementById("exProductResults");
+    box.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:6px">Código no encontrado: ${esc(code)}</div>`;
+    setTimeout(()=>{ if(box.textContent.includes(code)) box.innerHTML=""; }, 3000);
+  }
+}
+
+// ---- Búsqueda manual de productos ----
 let _exSearchTimer = null;
 function searchExchangeProduct(){
   clearTimeout(_exSearchTimer);
   _exSearchTimer = setTimeout(async () => {
-    const q = $("#exProductSearch").value.trim();
-    if(q.length < 2){ $("#exProductResults").innerHTML=""; return; }
+    const q = document.getElementById("exProductSearch").value.trim();
+    const box = document.getElementById("exProductResults");
+    if(q.length < 2){ box.innerHTML=""; return; }
     const products = await fetch(`${C.WORKER_URL}/products?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]);
-    const box = $("#exProductResults");
     box.innerHTML = "";
-    for(const p of products.slice(0,12)){
-      const div = document.createElement("div");
-      div.className = "ex-product-result";
-      div.innerHTML = `<span>${esc(p.name)} <span style="color:var(--text-dim);font-size:12px">${esc(p.variant||'')}</span></span><b>${money(p.price)}</b>`;
-      div.onclick = () => selectExReplacement(p);
-      box.appendChild(div);
+    let shown = 0;
+    for(const p of products){
+      if(shown >= 15) break;
+      const variants = p.variants && p.variants.length > 1 ? p.variants : [null];
+      for(const v of variants){
+        if(shown >= 15) break;
+        const varLabel = v ? [v.color, v.talla].filter(Boolean).join(" / ") : (p.variant||"");
+        const price = v ? v.price : p.price;
+        const item = { name: p.name, variant: varLabel, price, qty:1, sku: v?.sku||p.sku||null, variant_id: v?.variant_id||null };
+        const div = document.createElement("div");
+        div.className = "ex-product-result";
+        div.innerHTML = `<span>${esc(p.name)}${varLabel?` <span style="color:var(--text-dim);font-size:12px">${esc(varLabel)}</span>`:""}</span><b>${money(price)}</b>`;
+        div.onclick = () => { addExReplacement(item); document.getElementById("exProductSearch").value=""; box.innerHTML=""; };
+        box.appendChild(div);
+        shown++;
+      }
     }
   }, 300);
 }
 
-function selectExReplacement(p){
-  _exCtx.replacement = [{ name: p.name, variant: p.variant||'', price: p.price, qty: 1, sku: p.sku||null }];
-  $("#exProductResults").innerHTML = "";
-  $("#exProductSearch").value = "";
-  $("#exSelectedReplacement").innerHTML = `
-    <div class="ex-selected-chip">
-      <span>${esc(p.name)} ${esc(p.variant||'')} · ${money(p.price)}</span>
-      <button onclick="_exCtx.replacement=[];$('#exSelectedReplacement').innerHTML='';updateExSummary()">×</button>
-    </div>`;
+// ---- Agregar producto al reemplazo ----
+function addExReplacement(item){
+  const existing = _exCtx.replacement.find(r => r.variant_id && r.variant_id === item.variant_id || (!r.variant_id && r.sku && r.sku === item.sku));
+  if(existing){ existing.qty = (existing.qty||1) + 1; }
+  else { _exCtx.replacement.push({...item, qty:1}); }
+  renderExReplacements();
   updateExSummary();
+}
+
+function removeExReplacement(i){
+  _exCtx.replacement.splice(i, 1);
+  renderExReplacements();
+  updateExSummary();
+}
+
+function exReplQty(i, delta){
+  const item = _exCtx.replacement[i];
+  if(!item) return;
+  item.qty = Math.max(1, (item.qty||1) + delta);
+  renderExReplacements();
+  updateExSummary();
+}
+
+function renderExReplacements(){
+  const box = document.getElementById("exSelectedReplacement");
+  if(!_exCtx.replacement.length){ box.innerHTML=""; return; }
+  box.innerHTML = _exCtx.replacement.map((r,i)=>`
+    <div class="ex-return-item" style="margin-bottom:6px">
+      <div style="flex:1">
+        <div style="font-weight:500">${esc(r.name)}</div>
+        <div style="font-size:12px;color:var(--text-dim)">${esc(r.variant||"")} · ${money(r.price)}</div>
+      </div>
+      <div class="qty-ctrl">
+        <button onclick="exReplQty(${i},-1)">−</button>
+        <span>${r.qty||1}</span>
+        <button onclick="exReplQty(${i},1)">+</button>
+      </div>
+      <button onclick="removeExReplacement(${i})" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;padding:0 4px">×</button>
+    </div>`).join("");
+}
+
+function setExPayment(method){
+  _exCtx.chargePayment = method;
+  document.querySelectorAll(".ex-pay-btn").forEach(b=>b.classList.toggle("on", b.dataset.pm===method));
 }
 
 function updateExSummary(){
@@ -2254,7 +2334,24 @@ function updateExSummary(){
     else if(diff < 0) html += `<div style="display:flex;justify-content:space-between;font-weight:600"><span>Nota crédito para cliente</span><b style="color:#1d8a5e">${money(Math.abs(diff))}</b></div>`;
     else html += `<div style="color:#1d8a5e;font-weight:600">Sin cobro adicional</div>`;
   }
-  $("#exPriceSummary").innerHTML = html;
+  document.getElementById("exPriceSummary").innerHTML = html;
+
+  // Mostrar medio de pago solo si hay excedente a cobrar
+  const paySection = document.getElementById("exPaymentSection");
+  const payBtns = document.getElementById("exPaymentBtns");
+  if(paySection && payBtns){
+    if(diff > 0){
+      paySection.style.display = "";
+      if(!payBtns.children.length || payBtns.dataset.built !== "1"){
+        const pms = (pos.payments||[]).filter(p=>/shopify/i.test(p.name)===false);
+        payBtns.innerHTML = pms.map(p=>`<button class="ex-pay-btn ex-reason-btn" data-pm="${esc(p.name)}" onclick="setExPayment('${esc(p.name)}')">${p.icon||""} ${esc(p.name)}</button>`).join("");
+        payBtns.dataset.built = "1";
+      }
+    } else {
+      paySection.style.display = "none";
+      _exCtx.chargePayment = null;
+    }
+  }
 }
 
 async function confirmExchange(){
@@ -2300,7 +2397,7 @@ async function confirmExchange(){
       refund_amount: retTotal,
       charge_amount: Math.max(0, replTotal - retTotal),
       reason: _exCtx.reason,
-      notes: $("#exNotes").value.trim(),
+      notes: [document.getElementById("exNotes")?.value.trim(), _exCtx.chargePayment ? `Pago diferencia: ${_exCtx.chargePayment}` : ""].filter(Boolean).join(" | "),
     });
 
     toggleExCreate(false);
@@ -2311,7 +2408,7 @@ async function confirmExchange(){
     loadExchangesTab();
   } catch(e){
     alert("Error: "+e);
-    btn.disabled=false; btn.textContent="Confirmar cambio";
+    btn.disabled=false; btn.textContent="Confirmar";
   }
 }
 

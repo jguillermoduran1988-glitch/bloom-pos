@@ -935,9 +935,28 @@
             <!-- Reemplazo (oculto en devolución) -->
             <div id="exReplacementSection">
               <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">¿QUÉ LLEVA?</div>
-              <input id="exProductSearch" placeholder="Buscar producto de reemplazo…" oninput="searchExchangeProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:8px;background:var(--surface);color:var(--text)">
-              <div id="exProductResults" style="max-height:160px;overflow-y:auto;margin-bottom:8px"></div>
+
+              <!-- Pistola de barras -->
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;background:var(--surface);border:1.5px dashed var(--accent);border-radius:10px;padding:6px 10px">
+                <span class="material-symbols-outlined" style="color:var(--accent);font-size:20px;flex-shrink:0">barcode_scanner</span>
+                <input id="exBarcodeInput" placeholder="Apunta el pistolero aquí y escanea — Enter para agregar" autocomplete="off"
+                  onkeydown="if(event.key==='Enter'){scanExBarcode();event.preventDefault()}"
+                  style="flex:1;border:none;background:transparent;font-size:14px;outline:none;color:var(--text)">
+              </div>
+
+              <!-- Búsqueda manual -->
+              <input id="exProductSearch" placeholder="O escribe el nombre del producto…" oninput="searchExchangeProduct()"
+                style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:6px;background:var(--surface);color:var(--text)">
+              <div id="exProductResults" style="max-height:180px;overflow-y:auto;margin-bottom:8px"></div>
+
+              <!-- Lista de reemplazos agregados -->
               <div id="exSelectedReplacement" style="margin-bottom:12px"></div>
+            </div>
+
+            <!-- Medio de pago para excedente (aparece si el cliente debe pagar diferencia) -->
+            <div id="exPaymentSection" style="display:none;margin-bottom:14px">
+              <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">¿CÓMO PAGA LA DIFERENCIA?</div>
+              <div id="exPaymentBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
             </div>
 
             <!-- Notas -->
