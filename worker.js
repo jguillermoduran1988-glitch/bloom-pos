@@ -111,12 +111,16 @@ export default {
       try {
         const shopHeaders = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
 
-        // 1) Orden original — line_items y transacciones
-        const orderR = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}.json?fields=line_items,transactions`, { headers: shopHeaders });
+        // 1) Orden original — line_items + transacciones (endpoint separado)
+        const [orderR, txR] = await Promise.all([
+          fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}.json?fields=line_items`, { headers: shopHeaders }),
+          fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}/transactions.json`, { headers: shopHeaders }),
+        ]);
         const orderData = await orderR.json();
+        const txData = await txR.json();
         const lineItems = orderData.order?.line_items || [];
-        const transactions = orderData.order?.transactions || [];
-        const saleTx = transactions.find(t => t.kind === "sale" && t.status === "success");
+        const transactions = txData.transactions || [];
+        const saleTx = transactions.find(t => ["sale","capture"].includes(t.kind) && t.status === "success");
 
         // 2) Ubicación principal (para restock)
         const locR = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/locations.json`, { headers: shopHeaders });
