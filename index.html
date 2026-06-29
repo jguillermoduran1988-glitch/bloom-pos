@@ -567,6 +567,15 @@
         <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">wifi_off</span>
         Sin conexión — las ventas se guardan y envían al reconectar
       </div>
+      <div id="goalBar" style="display:none;padding:8px 14px 6px;background:var(--surface-2);border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px">
+          <span style="font-weight:600;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">flag</span> Meta del día</span>
+          <span id="goalText" style="font-weight:700;color:var(--accent)">$0 / $0</span>
+        </div>
+        <div style="background:var(--border);border-radius:4px;height:7px;overflow:hidden">
+          <div id="goalProgress" style="background:var(--accent);height:7px;border-radius:4px;width:0%;transition:width 0.6s"></div>
+        </div>
+      </div>
       <div class="cart-head">
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">shopping_cart</span> Venta</h3>
         <div style="display:flex;align-items:center;gap:8px">
@@ -794,12 +803,59 @@
     </div>
 
     <div class="cfg-sec">
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">flag</span> Meta de ventas</h3>
+      <div class="desc">Objetivo diario en pesos. Aparece como barra de progreso en el POS.</div>
+      <div class="field">
+        <label>Meta diaria ($)</label>
+        <input type="number" id="setSalesGoal" placeholder="Ej: 2000000" inputmode="numeric" oninput="saveSalesGoal()">
+      </div>
+    </div>
+
+    <div class="cfg-sec">
       <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">credit_card</span> Métodos de pago</h3>
       <div class="desc">Los que aparecen al registrar una venta en el POS.</div>
       <div id="paymentsList"></div>
       <div class="cfg-add">
         <input id="newPayment" placeholder="Nuevo método (ej: Addi, Sistecrédito)">
         <button onclick="addPayment()">Agregar</button>
+      </div>
+    </div>
+
+    <div class="cfg-sec" id="cfgLabels">
+      <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">label</span> Etiquetas de precio</h3>
+      <div class="desc">Diseña e imprime etiquetas para tus productos.</div>
+
+      <div class="field" style="margin-bottom:10px">
+        <label>Tamaño de etiqueta</label>
+        <select id="lblSize" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface)">
+          <option value="58x40">Térmica 58×40 mm (1 columna)</option>
+          <option value="80x50">Térmica 80×50 mm (1 columna)</option>
+          <option value="100x60">Etiqueta 10×6 cm (2 columnas)</option>
+          <option value="a4">Hoja A4 — 3 columnas × 8 filas</option>
+        </select>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowName" checked> Nombre</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowVariant" checked> Variante</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowPrice" checked> Precio</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowBarcode" checked> Código de barras</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowQr"> Código QR</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowStore"> Nombre tienda</label>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input id="lblSearch" placeholder="Buscar producto por nombre o código..." style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none" oninput="searchLabelProducts()">
+      </div>
+      <div id="lblResults" style="margin-bottom:10px;max-height:180px;overflow-y:auto"></div>
+
+      <div id="lblQueue" style="margin-bottom:12px"></div>
+
+      <div style="display:flex;gap:8px">
+        <button onclick="printLabels()" style="flex:1;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">
+          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">print</span> Imprimir etiquetas
+        </button>
+        <button onclick="clearLabelQueue()" style="background:none;border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px;cursor:pointer;color:var(--text-dim)">Limpiar</button>
       </div>
     </div>
   </div>
@@ -1234,5 +1290,7 @@
     </div>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </body>
 </html>

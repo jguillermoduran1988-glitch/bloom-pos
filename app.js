@@ -587,6 +587,7 @@ async function initPos(){
   await loadUsers(); await loadPayments(); await loadSettings();
   renderPosCatalog(); renderSellerSelect(); renderPayGrid(); renderCart();
   renderCashierBtn(); renderHoldsBtn(); renderOfflineUI();
+  loadGoalBar();
   if(navigator.onLine) syncPendingSales();
   initDeptos();
   checkCustomOrderAlerts();
@@ -1437,11 +1438,12 @@ function renderPosCatalog(){
     }
     return false;
   };
-  const list = pos.catalog.filter(p=>p.stock>0 && match(p));
+  const list = pos.catalog.filter(p=>match(p));
   for(const p of list){
     const card=el("div","pos-card");
     const img=p.image?`<img src="${esc(p.image)}">`:(p.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>");
-    card.innerHTML=`<div class="img">${img}</div><div class="b"><div class="n">${esc(p.name)}</div><div class="p">${money(p.price)}</div><div class="s">${p.stock} disp.</div></div>`;
+    const stockLbl = p.stock<=0 ? `<span style="color:#c0392b;font-weight:600">Agotado</span>` : p.stock<=3 ? `<span style="color:#e67e22">${p.stock} disp.</span>` : `<span>${p.stock} disp.</span>`;
+    card.innerHTML=`<div class="img">${img}</div><div class="b"><div class="n">${esc(p.name)}</div><div class="p">${money(p.price)}</div><div class="s">${stockLbl}</div></div>`;
     card.onclick=()=>addToCart(p);
     grid.appendChild(card);
   }
@@ -1484,9 +1486,7 @@ function pushToCart(p, v){
 let _vpProduct=null;
 function openVariantPicker(p){
   _vpProduct=p;
-  // Solo variantes CON stock disponible
-  const disponibles = p.variants.filter(v=>v.stock>0);
-  const usar = disponibles.length ? disponibles : p.variants; // si ninguna, muestra todas
+  const usar = p.variants; // todas las variantes (agotado no bloquea)
   const colors=[...new Set(usar.map(v=>v.color).filter(Boolean))];
   const tallas=[...new Set(usar.map(v=>v.talla).filter(Boolean))];
   _vpProduct._usar = usar;
@@ -1810,6 +1810,8 @@ function pickImage(maxSize){
 async function initConfig(){
   await loadUsers(); await loadPayments(); await loadSettings();
   await renderUsersList(); renderPaymentsList(); renderSettings();
+  const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
+  if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
 }
 
 // ===== Configuración del POS (settings) =====
@@ -1840,6 +1842,175 @@ async function saveSettings(){
   pos.settings={...pos.settings, ...patch};
   if($("#receiptFields")) $("#receiptFields").style.display = patch.receipt_enabled ? "block":"none";
   await sbPatch(`pos_settings?store=eq.${C.STORE}`, patch);
+}
+
+// ---- Meta de ventas del día ----
+function saveSalesGoal(){
+  const v=parseInt($("#setSalesGoal")?.value)||0;
+  localStorage.setItem("bloom_sales_goal", v);
+  renderGoalBar();
+}
+async function loadGoalBar(){
+  const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
+  if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
+  if(!goal){ const b=$("#goalBar"); if(b) b.style.display="none"; return; }
+  const today=new Date().toISOString().slice(0,10);
+  const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00&select=total&status=eq.completada`);
+  const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
+  renderGoalBar(goal,total);
+}
+function renderGoalBar(goal,total){
+  if(goal===undefined) goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
+  const bar=$("#goalBar"); if(!bar) return;
+  if(!goal){ bar.style.display="none"; return; }
+  bar.style.display="block";
+  if(total===undefined) total=0;
+  const pct=Math.min(100,Math.round(total/goal*100));
+  const prog=$("#goalProgress"); if(prog) prog.style.width=pct+"%";
+  const txt=$("#goalText"); if(txt) txt.textContent=`${money(total)} / ${money(goal)} (${pct}%)`;
+  if(prog) prog.style.background = pct>=100?"#27ae60":pct>=70?"var(--accent)":"var(--accent)";
+}
+
+// ====================================================================
+//  ETIQUETAS DE PRECIO
+// ====================================================================
+let _lblQueue = []; // [{name, variant, price, barcode, sku, qty}]
+
+function searchLabelProducts(){
+  const q=($("#lblSearch")?.value||"").toLowerCase().trim();
+  const box=$("#lblResults"); if(!box) return;
+  if(!q){ box.innerHTML=""; return; }
+  const list=pos.catalog.filter(p=>{
+    if(p.name.toLowerCase().includes(q)) return true;
+    if((p.sku||"").toLowerCase().includes(q)) return true;
+    if((p.barcode||"").toLowerCase().includes(q)) return true;
+    if(p.variants) return p.variants.some(v=>(v.barcode||"").toLowerCase().includes(q)||(v.sku||"").toLowerCase().includes(q));
+    return false;
+  }).slice(0,8);
+  if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:8px">Sin resultados</div>'; return; }
+  box.innerHTML=list.map(p=>{
+    if(p.variants && p.variants.length){
+      return p.variants.map(v=>`
+        <div onclick="addLabelItem('${esc(p.name)}','${esc(v.talla||v.size||v.color||"")}',${v.price||p.price},'${esc(v.barcode||p.barcode||"")}','${esc(v.sku||p.sku||"")}')"
+          style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface)">
+          <b>${esc(p.name)}</b> <span style="color:var(--text-dim)">${esc(v.talla||v.size||v.color||"única")}</span>
+          <span style="float:right;color:var(--accent);font-weight:600">${money(v.price||p.price)}</span>
+        </div>`).join('');
+    }
+    return `<div onclick="addLabelItem('${esc(p.name)}','',${p.price},'${esc(p.barcode||"")}','${esc(p.sku||"")}')"
+      style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface)">
+      <b>${esc(p.name)}</b>
+      <span style="float:right;color:var(--accent);font-weight:600">${money(p.price)}</span>
+    </div>`;
+  }).join('');
+}
+
+function addLabelItem(name,variant,price,barcode,sku){
+  _lblQueue.push({name,variant,price,barcode,sku,qty:1});
+  renderLabelQueue();
+  const s=$("#lblSearch"); if(s){ s.value=""; }
+  const r=$("#lblResults"); if(r) r.innerHTML="";
+}
+function removeLabelItem(i){ _lblQueue.splice(i,1); renderLabelQueue(); }
+function setLabelQty(i,v){ _lblQueue[i].qty=Math.max(1,parseInt(v)||1); renderLabelQueue(); }
+function clearLabelQueue(){ _lblQueue=[]; renderLabelQueue(); }
+
+function renderLabelQueue(){
+  const box=$("#lblQueue"); if(!box) return;
+  if(!_lblQueue.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim)">No hay productos en cola. Busca y agrega arriba.</div>'; return; }
+  box.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px">COLA DE IMPRESIÓN (${_lblQueue.reduce((s,r)=>s+r.qty,0)} etiquetas)</div>`+
+  _lblQueue.map((item,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;background:var(--surface);font-size:13px">
+      <span style="flex:1"><b>${esc(item.name)}</b>${item.variant?` <span style="color:var(--text-dim)">${esc(item.variant)}</span>`:''} · <span style="color:var(--accent);font-weight:600">${money(item.price)}</span></span>
+      <input type="number" min="1" value="${item.qty}" onchange="setLabelQty(${i},this.value)"
+        style="width:52px;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px;text-align:center;background:var(--bg)">
+      <button onclick="removeLabelItem(${i})" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim);padding:0 4px">×</button>
+    </div>`).join('');
+}
+
+function printLabels(){
+  if(!_lblQueue.length){ alert("Agrega productos a la cola primero"); return; }
+  const size=$("#lblSize")?.value||"58x40";
+  const showName=$("#lblShowName")?.checked!==false;
+  const showVariant=$("#lblShowVariant")?.checked!==false;
+  const showPrice=$("#lblShowPrice")?.checked!==false;
+  const showBarcode=$("#lblShowBarcode")?.checked!==false;
+  const showQr=$("#lblShowQr")?.checked||false;
+  const showStore=$("#lblShowStore")?.checked||false;
+  const storeName=(pos.settings?.receipt_business)||"Bloom";
+
+  const sizeMap={
+    "58x40":{w:"58mm",h:"40mm",cols:1,fontSize:"11px",priceSize:"15px"},
+    "80x50":{w:"80mm",h:"50mm",cols:1,fontSize:"13px",priceSize:"18px"},
+    "100x60":{w:"100mm",h:"60mm",cols:2,fontSize:"13px",priceSize:"18px"},
+    "a4":{w:"66mm",h:"36mm",cols:3,fontSize:"11px",priceSize:"14px"},
+  };
+  const sz=sizeMap[size]||sizeMap["58x40"];
+
+  // Expand queue by qty
+  const items=[];
+  for(const row of _lblQueue) for(let i=0;i<row.qty;i++) items.push(row);
+
+  const labelHTML=items.map(item=>{
+    const barcodeId="bc_"+Math.random().toString(36).slice(2);
+    const qrId="qr_"+Math.random().toString(36).slice(2);
+    const code=item.barcode||item.sku||"";
+    return `<div class="lbl">
+      ${showStore?`<div class="lbl-store">${esc(storeName)}</div>`:""}
+      ${showName?`<div class="lbl-name">${esc(item.name)}</div>`:""}
+      ${showVariant&&item.variant?`<div class="lbl-variant">${esc(item.variant)}</div>`:""}
+      ${showPrice?`<div class="lbl-price">${money(item.price)}</div>`:""}
+      ${showBarcode&&code?`<svg id="${barcodeId}" class="lbl-barcode"></svg>`:""}
+      ${showQr&&code?`<canvas id="${qrId}" class="lbl-qr"></canvas>`:""}
+    </div>`;
+  }).join('');
+
+  const win=window.open("","_blank");
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas Bloom</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;background:#fff}
+    .grid{display:flex;flex-wrap:wrap}
+    .lbl{width:${sz.w};height:${sz.h};border:1px dashed #ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;text-align:center;overflow:hidden;page-break-inside:avoid}
+    .lbl-store{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+    .lbl-name{font-size:${sz.fontSize};font-weight:700;line-height:1.2;margin-bottom:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .lbl-variant{font-size:10px;color:#555;margin-bottom:2px}
+    .lbl-price{font-size:${sz.priceSize};font-weight:900;margin-bottom:3px}
+    .lbl-barcode{max-width:100%;height:28px}
+    .lbl-qr{width:40px;height:40px}
+    @media print{body{margin:0}.lbl{border-color:transparent}@page{margin:0;size:${sz.cols===1?sz.w+" "+sz.h:sz.cols===2?"210mm 297mm":"210mm 297mm"}}}
+  </style></head><body>
+  <div class="grid">${labelHTML}</div>
+  <script>
+    window.onload=function(){
+      document.querySelectorAll("[id^='bc_']").forEach(el=>{
+        try{ JsBarcode(el,el.id.replace(/bc_[a-z0-9]+/,"")||"0",{format:"CODE128",displayValue:true,fontSize:8,height:28,margin:2}); }catch(e){}
+      });
+      // Init barcodes with real data via data-code attr workaround: re-generate with data
+    };
+  <\/script>
+  </body></html>`);
+  win.document.close();
+
+  // Pass data to the new window after load
+  setTimeout(()=>{
+    try{
+      const svgs=win.document.querySelectorAll("[id^='bc_']");
+      const canvases=win.document.querySelectorAll("[id^='qr_']");
+      items.forEach((item,i)=>{
+        const code=item.barcode||item.sku||"";
+        if(showBarcode&&code&&svgs[i]){
+          try{ win.JsBarcode(svgs[i],code,{format:"CODE128",displayValue:true,fontSize:8,height:26,margin:1,width:1}); }catch(e){}
+        }
+        if(showQr&&code&&canvases[i]){
+          try{ win.QRCode.toCanvas(canvases[i],code,{width:40,margin:1},()=>{}); }catch(e){}
+        }
+      });
+      setTimeout(()=>win.print(),300);
+    }catch(e){ win.print(); }
+  },800);
 }
 
 // ---- Datos / estadísticas ----
