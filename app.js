@@ -1277,7 +1277,8 @@ function saveCustomerModal(){
 // ====================================================================
 function openPaymentModal(){
   $("#payModalTotal").textContent = money(cartTotal());
-  renderPayGrid();
+  if(!pos.splitPayments.length) pos.splitPayments.push({method:'',amount:cartTotal()});
+  renderPayRows();
   $("#paymentModal").classList.add("show");
 }
 function closePaymentModal(){ $("#paymentModal").classList.remove("show"); }
@@ -1285,13 +1286,67 @@ function savePaymentModal(){
   const total=cartTotal();
   const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
   if(!pos.splitPayments.length){ alert("Agrega al menos un medio de pago"); return; }
-  if(sum!==total){ alert(`El pago no cuadra. Total: ${money(total)}, pago: ${money(sum)}`); return; }
+  if(!pos.splitPayments.every(p=>p.method)){ alert("Selecciona el medio de pago en cada fila"); return; }
+  if(sum!==total){ alert(`El pago no cuadra. Total: ${money(total)}, pagado: ${money(sum)}`); return; }
   const btn=$("#btnPayment");
   btn.classList.add("done");
   const resumen=pos.splitPayments.map(p=>`${p.method} ${money(p.amount)}`).join(" + ");
   $("#payBtnLabel").innerHTML=`✓ ${esc(resumen)} <span class="chk">editar</span>`;
   closePaymentModal();
   refreshConfirmState();
+}
+
+function renderPayRows(){
+  const box=$("#payRows"); if(!box) return;
+  const total=cartTotal();
+  const pms=pos.payments.filter(p=>/shopify/i.test(p.name)===false);
+  const opts=pms.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  box.innerHTML=pos.splitPayments.map((row,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select onchange="payRowMethod(${i},this.value)"
+        style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+        <option value="">— Medio de pago —</option>${opts}
+      </select>
+      <input type="number" inputmode="numeric" min="0" value="${row.amount||''}"
+        oninput="payRowAmount(${i},this.value)"
+        placeholder="Monto"
+        style="width:110px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+      <button onclick="removePayRow(${i})" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim);padding:0 4px;flex-shrink:0">×</button>
+    </div>`).join('');
+  // Restore selected values (innerHTML reset loses select state)
+  pos.splitPayments.forEach((row,i)=>{
+    const sel=box.querySelectorAll('select')[i];
+    if(sel && row.method) sel.value=row.method;
+  });
+  const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
+  const diff=total-sum;
+  const diffEl=$("#payDiff");
+  if(diffEl) diffEl.textContent = diff===0?'✓ Cuadra exacto':`Faltan: ${money(Math.abs(diff))}${diff<0?' (exceso)':''}`;
+}
+function addPayRow(){
+  const total=cartTotal();
+  const already=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
+  pos.splitPayments.push({method:'',amount:Math.max(0,total-already)});
+  renderPayRows();
+}
+function removePayRow(i){
+  pos.splitPayments.splice(i,1);
+  renderPayRows();
+}
+function payRowMethod(i,v){
+  const p=pos.payments.find(p=>p.name===v)||{};
+  pos.splitPayments[i].method=v;
+  pos.splitPayments[i].id=p.id||null;
+  pos.splitPayments[i].icon=p.icon||'💳';
+  pos.splitPayments[i].icon_url=p.icon_url||null;
+}
+function payRowAmount(i,v){
+  pos.splitPayments[i].amount=parseFloat(v)||0;
+  const total=cartTotal();
+  const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
+  const diff=total-sum;
+  const diffEl=$("#payDiff");
+  if(diffEl) diffEl.textContent = diff===0?'✓ Cuadra exacto':`Faltan: ${money(Math.abs(diff))}${diff<0?' (exceso)':''}`;
 }
 
 // ====================================================================
@@ -1519,9 +1574,6 @@ function renderCart(){
   }else{
     $("#discRow").style.display="none";
   }
-  // Si el total cambió, el pago anterior puede haber quedado descuadrado:
-  // recalcula el autofill y revisa el estado.
-  autoFillLastPayment();
   // si cambió el total, el pago confirmado ya no es válido
   const paySum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
   if(pos.splitPayments.length && paySum!==total){
@@ -1597,76 +1649,8 @@ function renderSellerSelect(){
   for(const s of pos.sellers){const o=el("option");o.value=s.id;o.textContent=s.name;sel.appendChild(o);}
 }
 
-// ===== Medios de pago mixtos (hasta 4) =====
-function renderPayGrid(){
-  // Botones para AÑADIR un medio de pago al split
-  const grid=$("#payGrid"); grid.innerHTML="";
-  for(const p of pos.payments.filter(p=>/shopify/i.test(p.name)===false)){
-    const yaEsta = pos.splitPayments.find(sp=>sp.method===p.name);
-    const b=el("div","pay-opt"+(yaEsta?" on":""));
-    b.innerHTML = p.icon_url
-      ? `<img src="${esc(p.icon_url)}" class="pay-ic"> ${esc(p.name)}`
-      : `${p.icon||"💳"} ${esc(p.name)}`;
-    b.onclick=()=>togglePayMethod(p);
-    grid.appendChild(b);
-  }
-  renderPaySplit();
-}
-
-function togglePayMethod(p){
-  const i = pos.splitPayments.findIndex(sp=>sp.method===p.name);
-  if(i>=0){
-    pos.splitPayments.splice(i,1);  // quitar
-  }else{
-    if(pos.splitPayments.length>=4){ alert("Máximo 4 medios de pago por venta"); return; }
-    pos.splitPayments.push({method:p.name, id:p.id||null, icon:p.icon||"💳", icon_url:p.icon_url||null, amount:0});
-  }
-  autoFillLastPayment();
-  renderPayGrid();
-}
-
-// Rellena automáticamente el último medio con lo que falte para cuadrar el total
-function autoFillLastPayment(){
-  const total = cartTotal();
-  if(pos.splitPayments.length===0) return;
-  if(pos.splitPayments.length===1){ pos.splitPayments[0].amount = total; return; }
-  const others = pos.splitPayments.slice(0,-1).reduce((s,p)=>s+(p.amount||0),0);
-  const last = pos.splitPayments[pos.splitPayments.length-1];
-  last.amount = Math.max(0, total - others);
-}
-
-function setPayAmount(idx, val){
-  const n=parseInt(String(val).replace(/\D/g,""))||0;
-  pos.splitPayments[idx].amount = n;
-  renderPaySplit();
-}
-
-function renderPaySplit(){
-  const box=$("#paySplit"); if(!box) return;
-  const total = cartTotal();
-  if(!pos.splitPayments.length){
-    box.innerHTML = '<div class="split-hint">Toca uno o más medios de pago arriba (hasta 4)</div>';
-    return;
-  }
-  const sum = pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
-  const diff = total - sum;
-  let rows = "";
-  pos.splitPayments.forEach((p,idx)=>{
-    rows += `<div class="split-row">
-      <span class="split-ic">${p.icon_url?`<img src="${esc(p.icon_url)}" class="pay-ic">`:p.icon}</span>
-      <span class="split-name">${esc(p.method)}</span>
-      <span class="split-amt">$<input type="text" inputmode="numeric" value="${(p.amount||0).toLocaleString('es-CO')}" onchange="setPayAmount(${idx},this.value)" onclick="this.select()"></span>
-    </div>`;
-  });
-  let estado = "";
-  if(diff===0) estado = `<div class="split-ok">✓ Cuadra exacto: ${money(total)}</div>`;
-  else if(diff>0) estado = `<div class="split-warn">Falta ${money(diff)}</div>`;
-  else estado = `<div class="split-warn">Sobra ${money(-diff)}</div>`;
-  box.innerHTML = rows + estado;
-  // habilita el botón "Confirmar pago" del modal solo si cuadra
-  const saveBtn=$("#payModalSave");
-  if(saveBtn) saveBtn.disabled = diff!==0;
-}
+// ===== Medios de pago — compatibilidad con llamadas legacy =====
+function renderPayGrid(){ /* reemplazado por renderPayRows */ }
 async function confirmSale(){
   if(!pos.cashier){ alert("Selecciona el cajero (botón arriba)"); return; }
   if(!pos.customerSaved || !pos.customer){ alert("Falta guardar los datos del cliente"); return; }

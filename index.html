@@ -613,12 +613,12 @@
     <div style="font-size:16px;font-weight:700;margin-bottom:6px">¿Cómo es la venta?</div>
     <div style="font-size:13px;color:var(--text-dim);margin-bottom:20px">Selecciona el canal antes de registrar</div>
     <div style="display:flex;gap:12px;margin-bottom:16px">
-      <button onclick="chooseSaleType('tienda')" style="flex:1;padding:18px 10px;border:2px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
+      <button onclick="chooseSaleType('tienda')" style="flex:1;padding:18px 10px;border:2px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text)">
         <span class="material-symbols-outlined" style="font-size:32px;color:var(--accent)">storefront</span>
         Tienda
       </button>
-      <button onclick="chooseSaleType('envios')" style="flex:1;padding:18px 10px;border:2px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
-        <span class="material-symbols-outlined" style="font-size:32px;color:#25d366">chat</span>
+      <button onclick="chooseSaleType('envios')" style="flex:1;padding:18px 10px;border:2px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text)">
+        <span class="material-symbols-outlined" style="font-size:32px;color:var(--accent)">chat</span>
         WhatsApp
       </button>
     </div>
@@ -712,9 +712,9 @@
     <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">credit_card</span> Medios de pago</h3><button class="modal-x" onclick="closePaymentModal()">✕</button></div>
     <div class="modal-body">
       <div class="pay-total-info">Total a pagar: <b id="payModalTotal">$0</b></div>
-      <label class="modal-label">Toca un medio para agregarlo (hasta 4):</label>
-      <div class="pay-grid" id="payGrid"></div>
-      <div class="pay-split" id="paySplit"></div>
+      <div id="payRows" style="margin-bottom:8px"></div>
+      <button onclick="addPayRow()" style="font-size:13px;padding:6px 14px;border:1px dashed var(--border);background:none;border-radius:8px;cursor:pointer;color:var(--text-dim);margin-bottom:4px">+ Agregar medio</button>
+      <div id="payDiff" style="font-size:12px;color:var(--text-dim);margin-top:6px;min-height:18px"></div>
     </div>
     <div class="modal-foot"><button class="modal-save" id="payModalSave" onclick="savePaymentModal()">Confirmar pago</button></div>
   </div>
