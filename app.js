@@ -4657,11 +4657,11 @@ async function init(){
 init();
 
 // ============================================================
-// BOT DE RESPUESTAS AUTOMÁTICAS
+// BOT DE RESPUESTAS AUTOMÁTICAS (estilo Kommo SalesBot)
 // ============================================================
 let _botEditor = { flowId:null, name:"", triggerType:"new_conversation", triggerValue:"", active:false, steps:[] };
 let _botEditingIdx = -1;
-let _botEditingData = null; // copia mutable del paso en edición
+let _botEditingData = null;
 
 // ---- Cargar y renderizar lista de flujos ----
 async function loadBotFlows(){
@@ -4712,7 +4712,10 @@ function closeBotEditor(){ $("#botEditorModal").style.display="none"; loadBotFlo
 function onBotTriggerChange(){
   const t = $("#botTriggerTypeSelect").value;
   const vi = $("#botTriggerValueInput");
-  vi.style.display = t==="keyword" ? "" : "none";
+  const needsValue = ["keyword","stage_change","tag_added"].includes(t);
+  vi.style.display = needsValue ? "" : "none";
+  const ph = {keyword:"hola, buenos días, hi", stage_change:"Nombre exacto de la etapa", tag_added:"nombre-etiqueta"};
+  vi.placeholder = ph[t]||"";
 }
 
 // ---- Renderizar lista de pasos en el editor ----
@@ -4739,19 +4742,25 @@ function renderBotEditor(){
 }
 
 function stepTypeIcon(type){
-  return {text:"chat_bubble",image:"image",audio:"mic",buttons:"radio_button_checked",list:"format_list_bulleted",condition:"alt_route",action:"bolt"}[type]||"help";
+  return {text:"chat_bubble",image:"image",audio:"mic",video:"videocam",buttons:"radio_button_checked",list:"format_list_bulleted",condition:"alt_route",validate:"rule",delay:"schedule",webhook:"webhook",assign:"person_pin",note:"sticky_note_2",action:"bolt"}[type]||"help";
 }
 function stepTypeLabel(type){
-  return {text:"Texto",image:"Imagen",audio:"Audio",buttons:"Botones",list:"Lista",condition:"Condición",action:"Acción"}[type]||type;
+  return {text:"Texto",image:"Imagen",audio:"Audio",video:"Video",buttons:"Botones",list:"Lista",condition:"Condición",validate:"Validar",delay:"Esperar",webhook:"Webhook",assign:"Asignar",note:"Nota interna",action:"Acción"}[type]||type;
 }
 function stepPreview(s, steps){
-  if(s.type==="text") return esc(s.body||"").slice(0,80);
-  if(s.type==="image") return `🖼 ${esc(s.body||s.media_url||"").slice(0,60)}`;
-  if(s.type==="audio") return `🎤 ${esc(s.media_url||"").slice(0,60)}`;
-  if(s.type==="buttons") return `${esc(s.body||"").slice(0,40)} · ${(s.buttons||[]).map(b=>`[${esc(b.title)}]`).join(" ")}`;
-  if(s.type==="list") return `${esc(s.body||"").slice(0,40)} · ${(s.sections||[]).reduce((a,sec)=>a+(sec.rows||[]).length,0)} opciones`;
-  if(s.type==="condition") return `${(s.conditions||[]).length} condición(es) · default → ${nextLabel(s.default_next, steps)}`;
-  if(s.type==="action") return `${s.action||""} ${s.value?"→ "+esc(s.value):""}`;
+  if(s.type==="text")      return esc(s.body||"").slice(0,80);
+  if(s.type==="image")     return `🖼 ${esc(s.body||s.media_url||"").slice(0,60)}`;
+  if(s.type==="audio")     return `🎤 ${esc(s.media_url||"").slice(0,60)}`;
+  if(s.type==="video")     return `🎬 ${esc(s.body||s.media_url||"").slice(0,60)}`;
+  if(s.type==="buttons")   return `${esc(s.body||"").slice(0,35)} · ${(s.buttons||[]).map(b=>`[${esc(b.title)}]`).join(" ")}`;
+  if(s.type==="list")      return `${esc(s.body||"").slice(0,35)} · ${(s.sections||[]).reduce((a,sec)=>a+(sec.rows||[]).length,0)} opciones`;
+  if(s.type==="condition"){ const f=(s.conditions||[])[0]?.field||"mensaje"; return `Si ${f} · ${(s.conditions||[]).length} condición(es) · default → ${nextLabel(s.default_next,steps)}`; }
+  if(s.type==="validate")  return `${s.validate_type||"email"} · ✓→${nextLabel(s.next_pass,steps)} · ✗→${nextLabel(s.next_fail,steps)}`;
+  if(s.type==="delay")     return `⏱ ${s.minutes||1} minuto(s) → ${nextLabel(s.next,steps)}`;
+  if(s.type==="webhook")   return `🔗 ${esc(s.url||"").slice(0,50)}`;
+  if(s.type==="assign")    return `👤 ${esc(s.seller_name||s.seller||"cualquiera")}`;
+  if(s.type==="note")      return `📌 ${esc(s.body||"").slice(0,60)}`;
+  if(s.type==="action")    return `${s.action||""} ${s.value?"→ "+esc(s.value):""}`;
   return "";
 }
 function nextLabel(nxt, steps){
@@ -4768,13 +4777,19 @@ function addBotStep(type){
   $("#botAddMenu").style.display="none";
   const id="s"+Date.now();
   const defaults = {
-    text:{id,type:"text",body:"",next:null},
-    image:{id,type:"image",media_url:"",body:"",next:null},
-    audio:{id,type:"audio",media_url:"",next:null},
-    buttons:{id,type:"buttons",body:"",buttons:[{id:"b"+Date.now(),title:"Opción 1",next:"__end__"}],next:null},
-    list:{id,type:"list",body:"",button_label:"Ver opciones",sections:[{title:"",rows:[{id:"r"+Date.now(),title:"Opción 1",description:"",next:"__end__"}]}],next:null},
-    condition:{id,type:"condition",conditions:[{keywords:"",next:"__end__"}],default_next:"__end__",next:null},
-    action:{id,type:"action",action:"change_stage",value:"",next:null},
+    text:     {id,type:"text",body:"",next:"__end__"},
+    image:    {id,type:"image",media_url:"",body:"",next:"__end__"},
+    audio:    {id,type:"audio",media_url:"",next:"__end__"},
+    video:    {id,type:"video",media_url:"",body:"",next:"__end__"},
+    buttons:  {id,type:"buttons",body:"",buttons:[{id:"b"+Date.now(),title:"Opción 1",next:"__end__"}]},
+    list:     {id,type:"list",body:"",button_label:"Ver opciones",sections:[{title:"",rows:[{id:"r"+Date.now(),title:"Opción 1",description:"",next:"__end__"}]}]},
+    condition:{id,type:"condition",conditions:[{keywords:"",field:"message",operation:"contains",next:"__end__"}],default_next:"__end__"},
+    validate: {id,type:"validate",validate_type:"email",validate_pattern:"",next_pass:"__end__",next_fail:"__end__"},
+    delay:    {id,type:"delay",minutes:30,next:"__end__"},
+    webhook:  {id,type:"webhook",url:"",method:"POST",next:"__end__"},
+    assign:   {id,type:"assign",seller:"",seller_name:"",next:"__end__"},
+    note:     {id,type:"note",body:"",next:"__end__"},
+    action:   {id,type:"action",action:"change_stage",value:"",next:"__end__"},
   };
   const step = defaults[type]||defaults.text;
   _botEditor.steps.push(step);
@@ -4812,41 +4827,43 @@ function openBotStepModal(){
 }
 
 function buildStepForm(s, steps){
-  const nextOpts = `<option value="__end__">Fin del flujo</option>`+steps.filter((_,i)=>i!==_botEditingIdx).map(st=>`<option value="${st.id}">${stepTypeLabel(st.type)}: ${esc((st.body||st.media_url||"").slice(0,30))}</option>`).join("");
+  const otherSteps = steps.filter((_,i)=>i!==_botEditingIdx);
+  const nextOpts = `<option value="__end__">— Fin del flujo —</option>`+otherSteps.map(st=>`<option value="${st.id}">${stepTypeLabel(st.type)}: ${esc((st.body||st.media_url||"").slice(0,28))}</option>`).join("");
+  const selNext=(id,lbl,val)=>sel(id,lbl,val||"__end__",[{v:"__end__",l:"— Fin del flujo —"},...otherSteps.map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,28))}))]);
   const fld=(id,lbl,val,ph="")=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><input id="${id}" value="${esc(val||"")}" placeholder="${ph}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"></div>`;
   const ta=(id,lbl,val,ph="")=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><textarea id="${id}" placeholder="${ph}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:70px;font-family:inherit;box-sizing:border-box">${esc(val||"")}</textarea></div>`;
-  const sel=(id,lbl,val,opts)=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><select id="${id}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px;background:var(--bg);color:var(--text)">${opts.map(o=>`<option value="${o.v}"${val===o.v?" selected":""}>${o.l}</option>`).join("")}</select></div>`;
-  const hint=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">Usa <b>{nombre}</b> para el nombre del cliente.</div>`;
+  const sel=(id,lbl,val,opts)=>`<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text-dim)">${lbl}</label><br><select id="${id}" style="width:100%;margin-top:4px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px;background:var(--bg);color:var(--text)">${opts.map(o=>`<option value="${o.v}"${(val===o.v)||(o.v==="__end__"&&!val)?" selected":""}>${o.l}</option>`).join("")}</select></div>`;
+  const hint=`<div style="font-size:11px;color:var(--text-dim);background:var(--surface);border-radius:8px;padding:8px 10px;margin-bottom:12px">Variables: <b>{nombre}</b> · <b>{telefono}</b> · <b>{etapa}</b> · <b>{etiquetas}</b> · <b>{fecha}</b> · <b>{hora}</b></div>`;
+  const IS = s.type;
 
-  if(s.type==="text") return hint+ta("bsf_body","Mensaje",s.body,"Hola {nombre}! Bienvenida a Bloom 🌸")+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+  if(IS==="text")  return hint+ta("bsf_body","Mensaje",s.body,"Hola {nombre}! Bienvenida a Bloom 🌸")+selNext("bsf_next","Continuar a",s.next);
+  if(IS==="image") return fld("bsf_url","URL de la imagen",s.media_url,"https://...")+hint+ta("bsf_body","Pie de foto (opcional)",s.body)+selNext("bsf_next","Continuar a",s.next);
+  if(IS==="audio") return fld("bsf_url","URL del audio",s.media_url,"https://...")+selNext("bsf_next","Continuar a",s.next);
+  if(IS==="video") return fld("bsf_url","URL del video",s.media_url,"https://...")+hint+ta("bsf_body","Pie de video (opcional)",s.body)+selNext("bsf_next","Continuar a",s.next);
 
-  if(s.type==="image") return fld("bsf_url","URL de la imagen",s.media_url,"https://...")+ta("bsf_body","Pie de foto (opcional)",s.body)+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
-
-  if(s.type==="audio") return fld("bsf_url","URL del audio",s.media_url,"https://...")+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
-
-  if(s.type==="buttons"){
+  if(IS==="buttons"){
     const btns = (s.buttons||[]).map((b,i)=>`
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-          <input id="bsf_btn_${i}_title" value="${esc(b.title)}" maxlength="20" placeholder="Botón ${i+1}" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
+          <input id="bsf_btn_${i}_title" value="${esc(b.title)}" maxlength="20" placeholder="Botón ${i+1} (máx 20 chars)" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
           ${s.buttons.length>1?`<button onclick="removeBotBtn(${i})" style="background:none;border:none;cursor:pointer;color:#e74c3c"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>`:""}
         </div>
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Lleva a:</div>
-        <select id="bsf_btn_${i}_next" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;background:var(--bg);color:var(--text)">${nextOpts}</select>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Ir a paso:</div>
+        <select id="bsf_btn_${i}_next" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;background:var(--bg);color:var(--text)">${nextOpts.replace(`value="${b.next||"__end__"}"`,`value="${b.next||"__end__"}" selected`)}</select>
       </div>`).join("");
     const addBtn = s.buttons.length<3 ? `<button onclick="addBotBtn()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%;margin-bottom:10px">+ Agregar botón</button>` : "";
-    return hint+ta("bsf_body","Mensaje del menú",s.body,"¿En qué te puedo ayudar?")+`<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">BOTONES (máx 3, texto hasta 20 caracteres)</div>`+btns+addBtn;
+    return hint+ta("bsf_body","Mensaje del menú",s.body,"¿En qué te puedo ayudar?")+`<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">BOTONES (máx 3, texto hasta 20 chars)</div>`+btns+addBtn;
   }
 
-  if(s.type==="list"){
-    let secHtml = (s.sections||[]).map((sec,si)=>{
-      const rows = (sec.rows||[]).map((r,ri)=>`
+  if(IS==="list"){
+    const secHtml = (s.sections||[]).map((sec,si)=>{
+      const rows=(sec.rows||[]).map((r,ri)=>`
         <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
           <div style="flex:1">
-            <input id="bsf_sec_${si}_row_${ri}_title" value="${esc(r.title)}" maxlength="24" placeholder="Opción" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;margin-bottom:3px">
-            <input id="bsf_sec_${si}_row_${ri}_desc" value="${esc(r.description||"")}" placeholder="Descripción (opcional, max 72 chars)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+            <input id="bsf_sec_${si}_row_${ri}_title" value="${esc(r.title)}" maxlength="24" placeholder="Título (máx 24)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;margin-bottom:3px">
+            <input id="bsf_sec_${si}_row_${ri}_desc" value="${esc(r.description||"")}" placeholder="Descripción (opcional, máx 72)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
           </div>
-          <select id="bsf_sec_${si}_row_${ri}_next" style="width:110px;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:11px;background:var(--bg);color:var(--text)">${nextOpts.replace(`value="${r.next}"`,`value="${r.next||"__end__"}" selected`)}</select>
+          <select id="bsf_sec_${si}_row_${ri}_next" style="width:110px;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:11px;background:var(--bg);color:var(--text)">${nextOpts.replace(`value="${r.next||"__end__"}"`,`value="${r.next||"__end__"}" selected`)}</select>
           ${(sec.rows||[]).length>1?`<button onclick="removeBotRow(${si},${ri})" style="background:none;border:none;cursor:pointer;color:#e74c3c;padding:0"><span class="material-symbols-outlined" style="font-size:14px">close</span></button>`:""}
         </div>`).join("");
       return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
@@ -4855,23 +4872,56 @@ function buildStepForm(s, steps){
         <button onclick="addBotRow(${si})" style="font-size:11px;background:none;border:1px dashed var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text-dim)">+ Fila</button>
       </div>`;
     }).join("");
-    return hint+ta("bsf_body","Mensaje del menú",s.body,"Selecciona una opción:")+fld("bsf_btn_label","Texto del botón para abrir lista",s.button_label,"Ver opciones")+`<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">SECCIONES</div>`+secHtml+`<button onclick="addBotSection()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%">+ Agregar sección</button>`;
+    return hint+ta("bsf_body","Mensaje del menú",s.body,"Selecciona una opción:")+fld("bsf_btn_label","Texto del botón para desplegar la lista",s.button_label,"Ver opciones")+`<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px">SECCIONES (máx 10 filas en total)</div>`+secHtml+`<button onclick="addBotSection()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%">+ Agregar sección</button>`;
   }
 
-  if(s.type==="condition"){
-    const conds = (s.conditions||[]).map((c,i)=>`
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;display:flex;gap:8px;align-items:center">
-        <input id="bsf_cond_${i}_kw" value="${esc(c.keywords||"")}" placeholder="si, sí, claro, ok" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none">
-        <span style="font-size:11px;color:var(--text-dim);white-space:nowrap">→ ir a</span>
-        <select id="bsf_cond_${i}_next" style="width:120px;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:11px;background:var(--bg);color:var(--text)">${nextOpts}</select>
-        ${s.conditions.length>1?`<button onclick="removeBotCond(${i})" style="background:none;border:none;cursor:pointer;color:#e74c3c"><span class="material-symbols-outlined" style="font-size:14px">close</span></button>`:""}
+  if(IS==="condition"){
+    const FIELDS=[{v:"message",l:"Texto del mensaje recibido"},{v:"name",l:"Nombre del contacto"},{v:"tag",l:"Etiquetas del contacto"},{v:"stage",l:"Etapa actual"}];
+    const OPS=[{v:"contains",l:"contiene"},{v:"not_contains",l:"no contiene"},{v:"=",l:"es igual a"},{v:"!=",l:"es diferente de"},{v:"regex",l:"coincide con regex"},{v:"email",l:"es un email válido"},{v:"phone",l:"es un teléfono válido"},{v:"not_empty",l:"no está vacío"}];
+    const conds=(s.conditions||[]).map((c,i)=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <select id="bsf_cond_${i}_field" style="border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;background:var(--bg);color:var(--text)">${FIELDS.map(f=>`<option value="${f.v}"${(c.field||"message")===f.v?" selected":""}>${f.l}</option>`).join("")}</select>
+          <select id="bsf_cond_${i}_op" style="border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;background:var(--bg);color:var(--text)">${OPS.map(o=>`<option value="${o.v}"${(c.operation||"contains")===o.v?" selected":""}>${o.l}</option>`).join("")}</select>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="bsf_cond_${i}_kw" value="${esc(c.keywords||"")}" placeholder="valores separados por coma" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;background:var(--bg);color:var(--text);outline:none">
+          <span style="font-size:11px;color:var(--text-dim);white-space:nowrap">→</span>
+          <select id="bsf_cond_${i}_next" style="width:120px;border:1px solid var(--border);border-radius:6px;padding:5px 4px;font-size:11px;background:var(--bg);color:var(--text)">${nextOpts.replace(`value="${c.next||"__end__"}"`,`value="${c.next||"__end__"}" selected`)}</select>
+          ${(s.conditions||[]).length>1?`<button onclick="removeBotCond(${i})" style="background:none;border:none;cursor:pointer;color:#e74c3c;padding:0 2px"><span class="material-symbols-outlined" style="font-size:14px">close</span></button>`:""}
+        </div>
       </div>`).join("");
-    return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Evalúa el texto que el cliente acaba de escribir y ramifica según palabras clave (separadas por comas).</div>`+conds+`<button onclick="addBotCond()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%;margin-bottom:10px">+ Agregar condición</button>`+sel("bsf_default_next","Si ninguna coincide, ir a",s.default_next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+    return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Evalúa un campo y ramifica. Si el campo es <b>mensaje</b>, espera la respuesta del cliente; si es otro campo, actúa inmediatamente.</div>`+conds+`<button onclick="addBotCond()" style="font-size:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--text-dim);width:100%;margin-bottom:10px">+ Agregar condición</button>`+selNext("bsf_default_next","Si ninguna condición coincide, ir a",s.default_next);
   }
 
-  if(s.type==="action"){
-    return sel("bsf_action","Acción",s.action,[{v:"change_stage",l:"Cambiar etapa de la conversación"},{v:"add_tag",l:"Agregar etiqueta al contacto"},{v:"pause_bot",l:"Pausar bot (agente humano)"},{v:"end",l:"Finalizar flujo"}])+fld("bsf_value","Valor (etapa o etiqueta)",s.value||"","Interesado / lead_caliente")+sel("bsf_next","Continuar a",s.next||"__end__",[{v:"__end__",l:"Fin del flujo"},...steps.filter((_,i)=>i!==_botEditingIdx).map(st=>({v:st.id,l:stepTypeLabel(st.type)+": "+((st.body||st.media_url||"").slice(0,25))}))])  ;
+  if(IS==="validate"){
+    const VT=[{v:"email",l:"Es un email válido"},{v:"phone",l:"Es un teléfono válido"},{v:"regex",l:"Coincide con patrón (regex)"},{v:"not_empty",l:"No está vacío"}];
+    return sel("bsf_vtype","Tipo de validación",s.validate_type,VT)+fld("bsf_vpattern","Patrón regex (solo si elegiste regex)",s.validate_pattern||"","[A-Z]{3}-\\d{4}")+selNext("bsf_next_pass","✅ Si es válido, ir a",s.next_pass)+selNext("bsf_next_fail","❌ Si no es válido, ir a",s.next_fail);
   }
+
+  if(IS==="delay"){
+    return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">El bot esperará X minutos antes de continuar. Si el cliente escribe durante la espera, el temporizador se reinicia.</div>`+fld("bsf_minutes","Minutos a esperar",String(s.minutes||30),"30")+selNext("bsf_next","Continuar a",s.next);
+  }
+
+  if(IS==="webhook"){
+    return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Envía un POST (o GET) a una URL externa con los datos del contacto. El bot continúa sin esperar respuesta.</div>`+fld("bsf_url","URL del webhook",s.url||"")+sel("bsf_method","Método HTTP",s.method||"POST",[{v:"POST",l:"POST"},{v:"GET",l:"GET"}])+selNext("bsf_next","Continuar a",s.next);
+  }
+
+  if(IS==="assign"){
+    const sellers = pos.sellers||[];
+    const opts=[{v:"",l:"Cualquier vendedora disponible"},...sellers.map(sv=>({v:sv.id||sv.name,l:sv.name}))];
+    return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Asigna esta conversación a una vendedora específica del equipo.</div>`+sel("bsf_seller","Asignar a",s.seller||"",opts)+selNext("bsf_next","Continuar a",s.next);
+  }
+
+  if(IS==="note"){
+    return hint+ta("bsf_body","Texto de la nota interna",s.body,"Nota: este cliente preguntó por...")+selNext("bsf_next","Continuar a",s.next);
+  }
+
+  if(IS==="action"){
+    const ACTS=[{v:"change_stage",l:"Cambiar etapa de la conversación"},{v:"add_tag",l:"Agregar etiqueta al contacto"},{v:"unset_tag",l:"Quitar etiqueta del contacto"},{v:"assign_seller",l:"Asignar a vendedora"},{v:"close_conversation",l:"Cerrar conversación"},{v:"pause_bot",l:"Pausar bot (agente humano toma control)"},{v:"end",l:"Finalizar flujo"}];
+    return sel("bsf_action","Acción a ejecutar",s.action||"change_stage",ACTS)+fld("bsf_value","Valor (etapa, etiqueta o nombre de vendedora)",s.value||"")+selNext("bsf_next","Continuar a",s.next);
+  }
+
   return "<em>Tipo desconocido</em>";
 }
 
@@ -4917,25 +4967,32 @@ function removeBotCond(i){
 
 function _syncEditingDataFromForm(){
   const s=_botEditingData;
-  if(s.type==="text"){ s.body=$("#bsf_body")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
-  if(s.type==="image"){ s.media_url=$("#bsf_url")?.value||""; s.body=$("#bsf_body")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
-  if(s.type==="audio"){ s.media_url=$("#bsf_url")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
+  const gv=id=>document.getElementById(id)?.value||"";
+  if(s.type==="text")  { s.body=gv("bsf_body"); s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="image") { s.media_url=gv("bsf_url"); s.body=gv("bsf_body"); s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="audio") { s.media_url=gv("bsf_url"); s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="video") { s.media_url=gv("bsf_url"); s.body=gv("bsf_body"); s.next=gv("bsf_next")||"__end__"; }
   if(s.type==="buttons"){
-    s.body=$("#bsf_body")?.value||"";
-    (s.buttons||[]).forEach((b,i)=>{ b.title=($(`#bsf_btn_${i}_title`)?.value||b.title).slice(0,20); b.next=$(`#bsf_btn_${i}_next`)?.value||"__end__"; });
+    s.body=gv("bsf_body");
+    (s.buttons||[]).forEach((b,i)=>{ b.title=(gv(`bsf_btn_${i}_title`)||b.title).slice(0,20); b.next=gv(`bsf_btn_${i}_next`)||"__end__"; });
   }
   if(s.type==="list"){
-    s.body=$("#bsf_body")?.value||""; s.button_label=$("#bsf_btn_label")?.value||"Ver opciones";
+    s.body=gv("bsf_body"); s.button_label=gv("bsf_btn_label")||"Ver opciones";
     (s.sections||[]).forEach((sec,si)=>{
-      sec.title=$(`#bsf_sec_${si}_title`)?.value||"";
-      (sec.rows||[]).forEach((r,ri)=>{ r.title=$(`#bsf_sec_${si}_row_${ri}_title`)?.value||""; r.description=$(`#bsf_sec_${si}_row_${ri}_desc`)?.value||""; r.next=$(`#bsf_sec_${si}_row_${ri}_next`)?.value||"__end__"; });
+      sec.title=gv(`bsf_sec_${si}_title`);
+      (sec.rows||[]).forEach((r,ri)=>{ r.title=gv(`bsf_sec_${si}_row_${ri}_title`); r.description=gv(`bsf_sec_${si}_row_${ri}_desc`); r.next=gv(`bsf_sec_${si}_row_${ri}_next`)||"__end__"; });
     });
   }
   if(s.type==="condition"){
-    (s.conditions||[]).forEach((c,i)=>{ c.keywords=$(`#bsf_cond_${i}_kw`)?.value||""; c.next=$(`#bsf_cond_${i}_next`)?.value||"__end__"; });
-    s.default_next=$("#bsf_default_next")?.value||"__end__";
+    (s.conditions||[]).forEach((c,i)=>{ c.field=gv(`bsf_cond_${i}_field`)||"message"; c.operation=gv(`bsf_cond_${i}_op`)||"contains"; c.keywords=gv(`bsf_cond_${i}_kw`); c.next=gv(`bsf_cond_${i}_next`)||"__end__"; });
+    s.default_next=gv("bsf_default_next")||"__end__";
   }
-  if(s.type==="action"){ s.action=$("#bsf_action")?.value||"change_stage"; s.value=$("#bsf_value")?.value||""; s.next=$("#bsf_next")?.value||"__end__"; }
+  if(s.type==="validate"){ s.validate_type=gv("bsf_vtype")||"email"; s.validate_pattern=gv("bsf_vpattern"); s.next_pass=gv("bsf_next_pass")||"__end__"; s.next_fail=gv("bsf_next_fail")||"__end__"; }
+  if(s.type==="delay")   { s.minutes=parseInt(gv("bsf_minutes"))||30; s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="webhook") { s.url=gv("bsf_url"); s.method=gv("bsf_method")||"POST"; s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="assign")  { s.seller=gv("bsf_seller"); s.seller_name=document.querySelector(`#bsf_seller option:checked`)?.textContent||""; s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="note")    { s.body=gv("bsf_body"); s.next=gv("bsf_next")||"__end__"; }
+  if(s.type==="action")  { s.action=gv("bsf_action")||"change_stage"; s.value=gv("bsf_value"); s.next=gv("bsf_next")||"__end__"; }
 }
 
 function saveBotStepEdit(){

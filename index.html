@@ -1545,6 +1545,9 @@
     <select id="botTriggerTypeSelect" onchange="onBotTriggerChange()" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--bg);color:var(--text);cursor:pointer">
       <option value="new_conversation">Nueva conversación</option>
       <option value="keyword">Palabra clave recibida</option>
+      <option value="inbound_any">Cualquier mensaje entrante (sin bot activo)</option>
+      <option value="stage_change">Cambio de etapa</option>
+      <option value="tag_added">Etiqueta agregada al contacto</option>
     </select>
     <input id="botTriggerValueInput" placeholder="hola, buenos días, hi" style="display:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;background:var(--bg);color:var(--text);outline:none;min-width:200px">
   </div>
@@ -1556,11 +1559,21 @@
       <span class="material-symbols-outlined" style="font-size:16px">add</span> Agregar paso
     </button>
     <div id="botAddMenu" class="bot-add-menu" style="display:none">
-      <button class="bot-add-opt" onclick="addBotStep('text')"><span class="material-symbols-outlined">chat_bubble</span> Mensaje de texto</button>
-      <button class="bot-add-opt" onclick="addBotStep('image')"><span class="material-symbols-outlined">image</span> Imagen con pie de foto</button>
-      <button class="bot-add-opt" onclick="addBotStep('buttons')"><span class="material-symbols-outlined">radio_button_checked</span> Botones interactivos (max 3)</button>
-      <button class="bot-add-opt" onclick="addBotStep('list')"><span class="material-symbols-outlined">format_list_bulleted</span> Lista interactiva (max 10)</button>
-      <button class="bot-add-opt" onclick="addBotStep('condition')"><span class="material-symbols-outlined">alt_route</span> Condición por palabras clave</button>
+      <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;padding:4px 12px 2px">Mensajes</div>
+      <button class="bot-add-opt" onclick="addBotStep('text')"><span class="material-symbols-outlined">chat_bubble</span> Texto</button>
+      <button class="bot-add-opt" onclick="addBotStep('image')"><span class="material-symbols-outlined">image</span> Imagen</button>
+      <button class="bot-add-opt" onclick="addBotStep('audio')"><span class="material-symbols-outlined">mic</span> Audio</button>
+      <button class="bot-add-opt" onclick="addBotStep('video')"><span class="material-symbols-outlined">videocam</span> Video</button>
+      <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;padding:6px 12px 2px">Interacción</div>
+      <button class="bot-add-opt" onclick="addBotStep('buttons')"><span class="material-symbols-outlined">radio_button_checked</span> Botones (máx 3)</button>
+      <button class="bot-add-opt" onclick="addBotStep('list')"><span class="material-symbols-outlined">format_list_bulleted</span> Lista (máx 10)</button>
+      <button class="bot-add-opt" onclick="addBotStep('condition')"><span class="material-symbols-outlined">alt_route</span> Condición / ramificar</button>
+      <button class="bot-add-opt" onclick="addBotStep('validate')"><span class="material-symbols-outlined">rule</span> Validar respuesta</button>
+      <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;padding:6px 12px 2px">Acciones</div>
+      <button class="bot-add-opt" onclick="addBotStep('delay')"><span class="material-symbols-outlined">schedule</span> Esperar X minutos</button>
+      <button class="bot-add-opt" onclick="addBotStep('assign')"><span class="material-symbols-outlined">person_pin</span> Asignar a vendedora</button>
+      <button class="bot-add-opt" onclick="addBotStep('note')"><span class="material-symbols-outlined">sticky_note_2</span> Nota interna</button>
+      <button class="bot-add-opt" onclick="addBotStep('webhook')"><span class="material-symbols-outlined">webhook</span> Webhook externo</button>
       <button class="bot-add-opt" onclick="addBotStep('action')"><span class="material-symbols-outlined">bolt</span> Acción del sistema</button>
     </div>
   </div>

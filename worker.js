@@ -362,6 +362,11 @@ export default {
       if (!fields.length) return Response.json({ ok: false, error: "no fields" }, { headers: cors });
       fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(convId);
       await env.bloom_wa.prepare(`UPDATE wa_conversations SET ${fields.join(", ")} WHERE id = ?`).bind(...values).run();
+      // Disparar bot por cambio de etapa
+      if (updates.stage !== undefined) {
+        const conv = await env.bloom_wa.prepare(`SELECT phone FROM wa_conversations WHERE id=?`).bind(convId).first().catch(()=>null);
+        if (conv?.phone) await triggerBotByStage(env, convId, conv.phone, updates.stage).catch(()=>{});
+      }
       return Response.json({ ok: true }, { headers: cors });
     }
 
@@ -369,12 +374,20 @@ export default {
     if (request.method === "PATCH" && url.pathname.startsWith("/wa/contacts/")) {
       const phone = decodeURIComponent(url.pathname.split("/")[3]);
       const updates = await request.json();
+      // Detectar etiquetas nuevas para disparar bot
+      let newTags = [];
+      if (updates.tags !== undefined) {
+        const ct = await env.bloom_wa.prepare(`SELECT tags FROM wa_contacts WHERE phone=?`).bind(phone).first().catch(()=>null);
+        const oldTags = JSON.parse(ct?.tags||"[]");
+        newTags = (updates.tags||[]).filter(t => !oldTags.includes(t));
+      }
       const fields = []; const values = [];
       if (updates.tags !== undefined) { fields.push("tags = ?"); values.push(JSON.stringify(updates.tags)); }
       if (updates.name !== undefined) { fields.push("name = ?"); values.push(updates.name); }
       if (!fields.length) return Response.json({ ok: false, error: "no fields" }, { headers: cors });
       fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(phone);
       await env.bloom_wa.prepare(`UPDATE wa_contacts SET ${fields.join(", ")} WHERE phone = ?`).bind(...values).run();
+      for (const tag of newTags) await triggerBotByTag(env, phone, tag).catch(()=>{});
       return Response.json({ ok: true }, { headers: cors });
     }
 
@@ -857,6 +870,68 @@ async function handleIncoming(env, msg, contact) {
 }
 
 // ============ Ejecución del bot ============
+
+// Construir variables disponibles para un contacto/conversación
+async function buildVars(env, phone, convId, lastText, contactName) {
+  const now = new Date();
+  const ct = await env.bloom_wa.prepare(`SELECT tags FROM wa_contacts WHERE phone=?`).bind(phone).first().catch(()=>null);
+  const conv = await env.bloom_wa.prepare(`SELECT stage FROM wa_conversations WHERE id=?`).bind(convId).first().catch(()=>null);
+  return {
+    nombre: contactName || phone,
+    telefono: phone,
+    etapa: conv?.stage || "",
+    etiquetas: JSON.parse(ct?.tags||"[]").join(", "),
+    fecha: now.toLocaleDateString("es-CO"),
+    hora: now.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"}),
+    _lastInput: lastText || "",
+  };
+}
+
+// Resolver variables en un texto
+function rv(s, vars) {
+  return (s||"")
+    .replace(/\{nombre\}/gi, vars.nombre||"")
+    .replace(/\{telefono\}/gi, vars.telefono||"")
+    .replace(/\{etapa\}/gi, vars.etapa||"")
+    .replace(/\{etiquetas\}/gi, vars.etiquetas||"")
+    .replace(/\{fecha\}/gi, vars.fecha||"")
+    .replace(/\{hora\}/gi, vars.hora||"");
+}
+
+// Evaluar una sola condición contra un valor
+function testCondition(cond, fieldValue) {
+  const op = cond.operation || "contains";
+  const fv = (fieldValue||"").toLowerCase();
+  if (op === "email")     return /[^\s@]+@[^\s@]+\.[^\s@]+/.test(fieldValue||"");
+  if (op === "phone")     return /\d{7,}/.test((fieldValue||"").replace(/[\s\+\-\(\)]/g,""));
+  if (op === "not_empty") return (fieldValue||"").trim().length > 0;
+  if (op === "regex")     { try { return new RegExp(cond.value||cond.keywords||"").test(fieldValue||""); } catch(e){ return false; } }
+  const kws = (cond.keywords||cond.value||"").toLowerCase().split(",").map(k=>k.trim()).filter(Boolean);
+  if (op === "contains")     return kws.some(k => fv.includes(k));
+  if (op === "not_contains") return kws.every(k => !fv.includes(k));
+  if (op === "=")            return kws.some(k => fv === k);
+  if (op === "!=")           return kws.every(k => fv !== k);
+  return false;
+}
+
+// Obtener el valor del campo a evaluar en una condición
+async function getConditionFieldValue(env, field, phone, convId, vars) {
+  if (field === "tag" || field === "etiqueta") return vars.etiquetas;
+  if (field === "stage" || field === "etapa")  return vars.etapa;
+  if (field === "name"  || field === "nombre") return vars.nombre;
+  return vars._lastInput; // "message" por defecto
+}
+
+// Evaluar lista de condiciones (lógica OR: primera que coincide gana)
+async function evaluateConditions(env, conditions, logic, phone, convId, vars) {
+  for (const cond of (conditions||[])) {
+    const field = cond.field || "message";
+    const fv = await getConditionFieldValue(env, field, phone, convId, vars);
+    if (testCondition(cond, fv)) return cond.next || "__end__";
+  }
+  return null;
+}
+
 async function handleBotInput(env, convId, phone, text, inputId, isNew, contact) {
   const state = await env.bloom_wa.prepare(
     `SELECT * FROM wa_bot_state WHERE conversation_id = ?`
@@ -864,7 +939,16 @@ async function handleBotInput(env, convId, phone, text, inputId, isNew, contact)
 
   if (state?.paused) return;
 
-  const vars = { nombre: contact?.profile?.name || phone, telefono: phone };
+  // Delay: si hay resume_at en el futuro, esperar
+  if (state?.resume_at && new Date(state.resume_at) > new Date()) return;
+  if (state?.resume_at) {
+    // Delay cumplido: continuar desde step guardado
+    await env.bloom_wa.prepare(
+      `UPDATE wa_bot_state SET resume_at=NULL WHERE conversation_id=?`
+    ).bind(convId).run();
+  }
+
+  const vars = await buildVars(env, phone, convId, text, contact?.profile?.name);
 
   if (state?.step_id && state?.flow_id) {
     const flow = await env.bloom_wa.prepare(`SELECT * FROM wa_bot_flows WHERE id = ?`).bind(state.flow_id).first();
@@ -882,15 +966,12 @@ async function handleBotInput(env, convId, phone, text, inputId, isNew, contact)
         const row = (sec.rows||[]).find(r => r.id === inputId || r.title.toLowerCase() === text.toLowerCase());
         if (row) { nextId = row.next ?? null; break; }
       }
-    } else if (cur.type === "condition") {
-      for (const cond of (cur.conditions||[])) {
-        const kws = (cond.keywords||"").toLowerCase().split(",").map(k=>k.trim()).filter(Boolean);
-        if (kws.some(k => text.toLowerCase().includes(k))) { nextId = cond.next ?? null; break; }
-      }
+    } else if (cur.type === "condition" || cur.type === "validate") {
+      nextId = await evaluateConditions(env, cur.conditions, cur.logic, phone, convId, vars);
       if (nextId === null) nextId = cur.default_next ?? null;
     }
 
-    if (nextId === "__end__" || nextId === null) { await clearBotState(env, convId); return; }
+    if (!nextId || nextId === "__end__") { await clearBotState(env, convId); return; }
     await executeFlowFrom(env, convId, phone, steps, nextId, flow.id, vars);
     return;
   }
@@ -903,9 +984,11 @@ async function handleBotInput(env, convId, phone, text, inputId, isNew, contact)
     const steps = JSON.parse(flow.steps||"[]");
     if (!steps.length) continue;
     let triggered = false;
+    const tv = flow.trigger_value||"";
     if (flow.trigger_type === "new_conversation" && isNew) triggered = true;
-    if (flow.trigger_type === "keyword" && flow.trigger_value) {
-      const kws = flow.trigger_value.toLowerCase().split(",").map(k=>k.trim()).filter(Boolean);
+    if (flow.trigger_type === "inbound_any") triggered = true;
+    if (flow.trigger_type === "keyword" && tv) {
+      const kws = tv.toLowerCase().split(",").map(k=>k.trim()).filter(Boolean);
       if (kws.some(k => text.toLowerCase().includes(k))) triggered = true;
     }
     if (triggered) {
@@ -915,55 +998,164 @@ async function handleBotInput(env, convId, phone, text, inputId, isNew, contact)
   }
 }
 
+// Disparar por cambio de etapa
+async function triggerBotByStage(env, convId, phone, stage) {
+  const flows = await env.bloom_wa.prepare(
+    `SELECT * FROM wa_bot_flows WHERE store='bloom' AND active=1 AND trigger_type='stage_change' AND trigger_value=?`
+  ).bind(stage).all();
+  for (const flow of (flows.results||[])) {
+    const steps = JSON.parse(flow.steps||"[]");
+    if (!steps.length) continue;
+    const ct = await env.bloom_wa.prepare(`SELECT name FROM wa_contacts WHERE phone=?`).bind(phone).first().catch(()=>null);
+    const vars = await buildVars(env, phone, convId, "", ct?.name);
+    await executeFlowFrom(env, convId, phone, steps, steps[0].id, flow.id, vars);
+    break;
+  }
+}
+
+// Disparar por etiqueta agregada
+async function triggerBotByTag(env, phone, tag) {
+  const convId = phone;
+  const conv = await env.bloom_wa.prepare(`SELECT id FROM wa_conversations WHERE id=?`).bind(convId).first().catch(()=>null);
+  if (!conv) return;
+  const flows = await env.bloom_wa.prepare(
+    `SELECT * FROM wa_bot_flows WHERE store='bloom' AND active=1 AND trigger_type='tag_added' AND trigger_value=?`
+  ).bind(tag).all();
+  for (const flow of (flows.results||[])) {
+    const steps = JSON.parse(flow.steps||"[]");
+    if (!steps.length) continue;
+    const ct = await env.bloom_wa.prepare(`SELECT name FROM wa_contacts WHERE phone=?`).bind(phone).first().catch(()=>null);
+    const vars = await buildVars(env, phone, convId, "", ct?.name);
+    await executeFlowFrom(env, convId, phone, steps, steps[0].id, flow.id, vars);
+    break;
+  }
+}
+
 async function executeFlowFrom(env, convId, phone, steps, startId, flowId, vars) {
   let stepId = startId;
-  let guard = 20;
+  let guard = 25;
   while (stepId && stepId !== "__end__" && guard-- > 0) {
     const step = steps.find(s => s.id === stepId);
     if (!step || step.type === "end") { await clearBotState(env, convId); return; }
-    await executeBotStep(env, phone, step, vars, convId);
-    if (["buttons","list","condition"].includes(step.type)) {
+
+    // ---- Pasos que no envían mensajes y se resuelven inmediatamente ----
+
+    // Delay: pausar el flujo hasta resume_at
+    if (step.type === "delay") {
+      const mins = parseInt(step.minutes||1);
+      const resumeAt = new Date(Date.now() + mins*60000).toISOString();
+      await setBotState(env, convId, flowId, step.next||"__end__", 0, resumeAt);
+      return;
+    }
+
+    // Validar: evaluar el último mensaje del cliente, ramificar
+    if (step.type === "validate") {
+      const fv = vars._lastInput||"";
+      let pass = false;
+      if (step.validate_type === "email")     pass = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(fv);
+      else if (step.validate_type === "phone") pass = /\d{7,}/.test(fv.replace(/[\s\+\-\(\)]/g,""));
+      else if (step.validate_type === "regex") { try { pass = new RegExp(step.validate_pattern||"").test(fv); } catch(e){} }
+      else if (step.validate_type === "not_empty") pass = fv.trim().length > 0;
+      stepId = (pass ? step.next_pass : step.next_fail) || "__end__";
+      continue;
+    }
+
+    // Condición inmediata (campo != "message"): evalúa sin esperar input
+    if (step.type === "condition") {
+      const needsInput = (step.conditions||[]).some(c => !c.field || c.field==="message");
+      if (!needsInput) {
+        const nextId = await evaluateConditions(env, step.conditions, step.logic, phone, convId, vars);
+        stepId = nextId || step.default_next || "__end__";
+        continue;
+      }
+      // Si alguna condición usa "message", esperar input del usuario
       await setBotState(env, convId, flowId, step.id, 0);
       return;
     }
-    if (step.type === "action" && step.action === "pause_bot") { await setBotState(env, convId, flowId, null, 1); return; }
-    if (step.type === "action" && step.action === "end")       { await clearBotState(env, convId); return; }
-    stepId = step.next ?? "__end__";
+
+    // ---- Pasos que ejecutan algo ----
+    await executeBotStep(env, phone, step, vars, convId);
+
+    // Pasos que esperan respuesta del usuario
+    if (step.type === "buttons" || step.type === "list") {
+      await setBotState(env, convId, flowId, step.id, 0);
+      return;
+    }
+
+    // Acciones que terminan el flujo
+    if (step.type === "action") {
+      if (step.action === "pause_bot") { await setBotState(env, convId, flowId, null, 1); return; }
+      if (step.action === "end")       { await clearBotState(env, convId); return; }
+    }
+
+    stepId = step.next || "__end__";
   }
   await clearBotState(env, convId);
 }
 
 async function executeBotStep(env, phone, step, vars, convId) {
-  const rv = s => (s||"").replace(/\{nombre\}/gi, vars.nombre).replace(/\{telefono\}/gi, vars.telefono);
+  const r = s => rv(s, vars);
+  const now = new Date().toISOString();
+
   if (step.type === "text") {
-    await sendWhatsApp(env, phone, rv(step.body));
+    await sendWhatsApp(env, phone, r(step.body));
+
   } else if (step.type === "image") {
-    await sendWhatsAppPayload(env, phone, { type:"image", image:{ link:step.media_url, caption:rv(step.body||"") } });
+    await sendWhatsAppPayload(env, phone, { type:"image", image:{ link:step.media_url, caption:r(step.body||"") } });
+
   } else if (step.type === "audio") {
     await sendWhatsAppPayload(env, phone, { type:"audio", audio:{ link:step.media_url } });
+
+  } else if (step.type === "video") {
+    await sendWhatsAppPayload(env, phone, { type:"video", video:{ link:step.media_url, caption:r(step.body||"") } });
+
   } else if (step.type === "buttons") {
     await sendWhatsAppPayload(env, phone, { type:"interactive", interactive:{
-      type:"button", body:{ text:rv(step.body) },
+      type:"button", body:{ text:r(step.body) },
       action:{ buttons:(step.buttons||[]).slice(0,3).map(b=>({ type:"reply", reply:{ id:b.id, title:b.title.slice(0,20) } })) }
     }});
+
   } else if (step.type === "list") {
     await sendWhatsAppPayload(env, phone, { type:"interactive", interactive:{
-      type:"list", body:{ text:rv(step.body) },
+      type:"list", body:{ text:r(step.body) },
       action:{ button:(step.button_label||"Ver opciones").slice(0,20),
-        sections:(step.sections||[]).map(sec=>({ title:sec.title||"", rows:(sec.rows||[]).slice(0,10).map(r=>({ id:r.id, title:r.title.slice(0,24), description:(r.description||"").slice(0,72) })) }))
+        sections:(step.sections||[]).map(sec=>({ title:sec.title||"", rows:(sec.rows||[]).slice(0,10).map(row=>({ id:row.id, title:row.title.slice(0,24), description:(row.description||"").slice(0,72) })) }))
       }
     }});
-  } else if (step.type === "condition") {
-    // No envía mensaje, solo ramifica — se maneja en handleBotInput
+
+  } else if (step.type === "webhook") {
+    const payload = { phone, convId, nombre:vars.nombre, etapa:vars.etapa, etiquetas:vars.etiquetas, step_id:step.id };
+    await fetch(step.url||"", {
+      method: step.method||"POST",
+      headers:{ "Content-Type":"application/json", ...(step.headers||{}) },
+      body: JSON.stringify({ ...payload, ...(step.extra||{}) }),
+    }).catch(()=>{});
+
+  } else if (step.type === "assign") {
+    await env.bloom_wa.prepare(`UPDATE wa_conversations SET assigned_to=?,updated_at=? WHERE id=?`).bind(step.seller||null, now, convId).run();
+
+  } else if (step.type === "note") {
+    // Nota interna: guardar como mensaje tipo note en D1
+    const nId = "note-"+Date.now()+"-"+Math.random().toString(36).slice(2,5);
+    await env.bloom_wa.prepare(
+      `INSERT OR IGNORE INTO wa_messages (id,conversation_id,direction,type,body,status,ts) VALUES (?,?,'outbound','note',?,'sent',?)`
+    ).bind(nId, convId, r(step.body||""), now).run();
+
   } else if (step.type === "action") {
-    const now = new Date().toISOString();
     if (step.action === "change_stage") {
       await env.bloom_wa.prepare(`UPDATE wa_conversations SET stage=?,updated_at=? WHERE id=?`).bind(step.value||null, now, convId).run();
     } else if (step.action === "add_tag") {
-      const ct = await env.bloom_wa.prepare(`SELECT tags FROM wa_contacts WHERE phone=?`).bind(phone).first();
+      const ct = await env.bloom_wa.prepare(`SELECT tags FROM wa_contacts WHERE phone=?`).bind(phone).first().catch(()=>null);
       const tags = JSON.parse(ct?.tags||"[]");
-      if (step.value && !tags.includes(step.value)) tags.push(step.value);
+      if (step.value && !tags.includes(step.value)) { tags.push(step.value); await env.bloom_wa.prepare(`UPDATE wa_contacts SET tags=?,updated_at=? WHERE phone=?`).bind(JSON.stringify(tags), now, phone).run(); }
+    } else if (step.action === "unset_tag") {
+      const ct = await env.bloom_wa.prepare(`SELECT tags FROM wa_contacts WHERE phone=?`).bind(phone).first().catch(()=>null);
+      const tags = JSON.parse(ct?.tags||"[]").filter(t=>t!==step.value);
       await env.bloom_wa.prepare(`UPDATE wa_contacts SET tags=?,updated_at=? WHERE phone=?`).bind(JSON.stringify(tags), now, phone).run();
+    } else if (step.action === "close_conversation") {
+      await env.bloom_wa.prepare(`UPDATE wa_conversations SET status='closed',updated_at=? WHERE id=?`).bind(now, convId).run();
+    } else if (step.action === "assign_seller") {
+      await env.bloom_wa.prepare(`UPDATE wa_conversations SET assigned_to=?,updated_at=? WHERE id=?`).bind(step.value||null, now, convId).run();
     }
   }
 }
@@ -977,12 +1169,12 @@ async function sendWhatsAppPayload(env, phone, payload) {
   });
 }
 
-async function setBotState(env, convId, flowId, stepId, paused) {
+async function setBotState(env, convId, flowId, stepId, paused, resumeAt=null) {
   const now = new Date().toISOString();
   await env.bloom_wa.prepare(
-    `INSERT INTO wa_bot_state (conversation_id,flow_id,step_id,paused,updated_at) VALUES (?,?,?,?,?)
-     ON CONFLICT(conversation_id) DO UPDATE SET flow_id=excluded.flow_id,step_id=excluded.step_id,paused=excluded.paused,updated_at=excluded.updated_at`
-  ).bind(convId, flowId, stepId, paused?1:0, now).run();
+    `INSERT INTO wa_bot_state (conversation_id,flow_id,step_id,paused,resume_at,updated_at) VALUES (?,?,?,?,?,?)
+     ON CONFLICT(conversation_id) DO UPDATE SET flow_id=excluded.flow_id,step_id=excluded.step_id,paused=excluded.paused,resume_at=excluded.resume_at,updated_at=excluded.updated_at`
+  ).bind(convId, flowId, stepId, paused?1:0, resumeAt, now).run();
 }
 
 async function clearBotState(env, convId) {
