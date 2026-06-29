@@ -795,6 +795,7 @@
       <button id="datTab5" onclick="datosTab('clientes')"><span class="material-symbols-outlined">diversity_4</span> <span class="dat-tab-lbl">Clientes</span></button>
       <div class="dat-tabs-extra" id="datTabsExtra">
         <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">package_2</span> <span class="dat-tab-lbl">Pers.</span></button>
+        <button id="datTab6" onclick="datosTab('exchanges')"><span class="material-symbols-outlined">swap_horiz</span> <span class="dat-tab-lbl">Cambios</span></button>
       </div>
       <button class="dat-more-btn" id="datMoreBtn" onclick="toggleDatMore()" title="Más opciones"><span class="material-symbols-outlined">more_horiz</span></button>
     </div>
@@ -937,6 +938,21 @@
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">package_2</span> Pedidos personalizados</h3>
         <div class="desc">Pendientes de entregar. Marca como entregado para quitarlos.</div>
         <div id="persTable"></div>
+      </div>
+    </div>
+
+    <!-- Pestaña: Cambios y Garantías -->
+    <div id="datPaneExchanges" style="display:none">
+      <div class="cfg-sec">
+        <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">swap_horiz</span> Cambios y Garantías</h3>
+        <div class="desc">Historial de cambios, garantías y devoluciones procesados.</div>
+        <div class="rep-filter" id="exFilter" style="margin-bottom:12px">
+          <button class="on" onclick="filterExchanges('todos',this)">Todos</button>
+          <button onclick="filterExchanges('cambio',this)">Cambios</button>
+          <button onclick="filterExchanges('garantia',this)">Garantías</button>
+          <button onclick="filterExchanges('devolucion',this)">Devoluciones</button>
+        </div>
+        <div id="exchangesList"></div>
       </div>
     </div>
   </div>

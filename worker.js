@@ -106,7 +106,7 @@ export default {
 
     // -------- Cambio / Garantía en Shopify --------
     if (request.method === "POST" && url.pathname === "/exchange") {
-      const { shopify_order_id, original_order_name, returned_items, replacement, customer, reason, notes } = await request.json();
+      const { shopify_order_id, original_order_name, returned_items, replacement, customer, reason, notes, dry_run } = await request.json();
       if (!shopify_order_id) return Response.json({ ok: false, error: "sin shopify_order_id" }, { headers: cors });
       try {
         const shopHeaders = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
@@ -138,6 +138,18 @@ export default {
           }
         }
         if (!refundLineItems.length) return Response.json({ ok: false, error: "no se encontraron los ítems en la orden de Shopify" }, { headers: cors });
+
+        // dry_run: devuelve todo lo que se haría sin ejecutar nada
+        if (dry_run) {
+          return Response.json({
+            ok: true, dry_run: true,
+            matched_items: refundLineItems,
+            refund_amount: refundTotal,
+            location_id: locationId,
+            sale_transaction: saleTx ? { id: saleTx.id, gateway: saleTx.gateway, amount: saleTx.amount } : null,
+            replacement_items: replacement || [],
+          }, { headers: cors });
+        }
 
         // 4) Crear reembolso con restock
         const refundBody = { refund: { notify: false, refund_line_items: refundLineItems } };

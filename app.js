@@ -1859,15 +1859,67 @@ function toggleDatMore(){
   if(btn) btn.classList.toggle("on");
 }
 function datosTab(which){
-  ["tienda","ventas","clientes","pers"].forEach(t=>{
-    const p=$("#datPane"+t.charAt(0).toUpperCase()+t.slice(1));
-    if(p) p.style.display = which===t?"block":"none";
+  ["tienda","ventas","clientes","pers","Exchanges"].forEach(t=>{
+    const key = t==="Exchanges" ? "datPaneExchanges" : "datPane"+t.charAt(0).toUpperCase()+t.slice(1);
+    const p=document.getElementById(key);
+    const w = t==="Exchanges" ? "exchanges" : t;
+    if(p) p.style.display = which===w?"block":"none";
   });
-  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3"};
+  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3",exchanges:"datTab6"};
   Object.entries(tabMap).forEach(([t,id])=>{ const b=document.getElementById(id); if(b) b.classList.toggle("on",which===t); });
   if(which==="pers") loadCustomOrders();
   if(which==="ventas") loadSalesHistory();
   if(which==="clientes") initClientesTab();
+  if(which==="exchanges") loadExchangesTab();
+}
+
+// ---- Pestaña Cambios y Garantías ----
+let _exAll = [];
+async function loadExchangesTab(){
+  const box=document.getElementById("exchangesList"); if(!box) return;
+  box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Cargando cambios…</div>';
+  const rows = await sbGet(`exchanges?order=created_at.desc&limit=200`);
+  _exAll = rows || [];
+  renderExchangesList(_exAll);
+}
+
+function filterExchanges(reason, btn){
+  document.querySelectorAll("#exFilter button").forEach(b=>b.classList.remove("on"));
+  if(btn) btn.classList.add("on");
+  const filtered = reason==="todos" ? _exAll : _exAll.filter(e=>e.reason===reason);
+  renderExchangesList(filtered);
+}
+
+function renderExchangesList(rows){
+  const box=document.getElementById("exchangesList"); if(!box) return;
+  if(!rows.length){ box.innerHTML='<div style="color:var(--text-dim);font-size:13px;padding:12px 0">No hay registros.</div>'; return; }
+  const reasonLabel={cambio:"Cambio",garantia:"Garantía",devolucion:"Devolución"};
+  const reasonColor={cambio:"#7c3aed",garantia:"#0ea5e9",devolucion:"#ef4444"};
+  const statusColor={completado:"#16a34a",pendiente:"#d97706",cancelado:"#6b7280"};
+  box.innerHTML = rows.map(e=>{
+    const ret = (e.returned_items||[]).map(i=>`${i.qty}× ${i.title||i.sku||i.variant_id}`).join(", ")||"—";
+    const rep = (e.replacement_items||[]).map(i=>`${i.quantity||1}× ${i.title||i.variant_id}`).join(", ")||"Sin reemplazo";
+    const diff = (e.charge_amount||0)-(e.refund_amount||0);
+    const diffStr = diff===0?"Sin cobro adicional":diff>0?`+$${diff.toLocaleString("es-CO")} cobro`:`$${Math.abs(diff).toLocaleString("es-CO")} a favor`;
+    const date = new Date(e.created_at).toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"});
+    return `<div class="ex-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:20px;background:${reasonColor[e.reason]||"#6b7280"}20;color:${reasonColor[e.reason]||"#6b7280"}">${reasonLabel[e.reason]||e.reason}</span>
+          <span style="font-size:12px;font-weight:600;color:var(--text)">${e.original_order_name||"—"}</span>
+          ${e.new_order_name?`<span style="font-size:11px;color:var(--text-dim)">→ ${e.new_order_name}</span>`:""}
+        </div>
+        <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${statusColor[e.status]||"#6b7280"}20;color:${statusColor[e.status]||"#6b7280"}">${e.status||"completado"}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px"><b>Devuelve:</b> ${ret}</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px"><b>Reemplazo:</b> ${rep}</div>
+      ${e.notes?`<div style="font-size:12px;color:var(--text-dim);margin-bottom:4px"><b>Nota:</b> ${e.notes}</div>`:""}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        <span style="font-size:12px;color:var(--text-dim)">${e.seller_name||""} · ${date}</span>
+        <span style="font-size:12px;font-weight:600;color:${diff>=0?"var(--text)":"#16a34a"}">${diffStr}</span>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 // ---- Pestaña Clientes ----
