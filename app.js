@@ -779,11 +779,7 @@ function restoreHold(i){
     $("#btnPayment").classList.add("done");
     $("#payBtnLabel").innerHTML=`✓ ${esc(resumen)} <span class="chk">editar</span>`;
   }
-  if(h.saleType==="envios"){
-    $("#typeTienda")?.classList.remove("on"); $("#typeDespacho")?.classList.add("on");
-  } else {
-    $("#typeTienda")?.classList.add("on"); $("#typeDespacho")?.classList.remove("on");
-  }
+
   renderCart(); renderPayGrid(); refreshConfirmState();
   renderHoldsBtn();
   closeHoldsModal();
@@ -1590,11 +1586,11 @@ function saveNote(){
   }
   closeNoteModal();
 }
-function setSaleType(t){
-  pos.saleType=t;
-  $("#typeTienda").classList.toggle("on",t==="tienda");
-  $("#typeDespacho").classList.toggle("on",t==="envios");
-}
+function setSaleType(t){ pos.saleType = t; }
+
+function openSaleTypeModal(){ document.getElementById("saleTypeOverlay").classList.add("show"); }
+function closeSaleTypeModal(){ document.getElementById("saleTypeOverlay").classList.remove("show"); }
+function chooseSaleType(t){ setSaleType(t); closeSaleTypeModal(); confirmSale(); }
 // Cambia "Apellidos" según tipo de documento (NIT = empresa, no lleva apellido)
 function renderSellerSelect(){
   const sel=$("#sellerSelect"); sel.innerHTML="";
@@ -2071,7 +2067,7 @@ async function loadSalesHistory(){
     card.innerHTML=`
       <div class="sale-card-main">
         <div>
-          <div><b>${money(s.total)}</b>${statusBadge} <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">local_shipping</span> Envío":"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda"}</span></div>
+          <div><b>${money(s.total)}</b>${statusBadge} <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px;color:#25d366\">chat</span> WhatsApp":"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda"}</span></div>
           <div style="font-size:12px;color:var(--text-dim)">${esc(s.customer_name||"Sin cliente")}${s.customer_doc?' · '+esc(s.customer_doc):''}${s.customer_phone?' · '+esc(s.customer_phone):''} · ${fecha}</div>
           ${s.shopify_order_name?`<div style="font-size:11px;color:var(--text-dim)">${esc(s.shopify_order_name)}</div>`:''}
           ${s.alegra_invoice?`<div style="font-size:11px;color:#1d8a5e">✓ Factura Alegra: ${esc(s.alegra_invoice)}</div>`:""}

@@ -575,10 +575,6 @@
         <span><span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">sync</span> <span id="pendingBadge" style="display:none"></span></span>
         <button onclick="syncPendingSales()" style="font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer">Sincronizar</button>
       </div>
-      <div class="cart-type">
-        <button class="on" id="typeTienda" onclick="setSaleType('tienda')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">storefront</span> Tienda</button>
-        <button id="typeDespacho" onclick="setSaleType('envios')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">package_2</span> Envíos</button>
-      </div>
       <div class="cart-items" id="cartItems"><div class="cart-empty">Toca productos para agregarlos</div></div>
       <div class="cart-foot">
         <!-- Resumen con descuento -->
@@ -605,9 +601,28 @@
           <span id="payBtnLabel"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">credit_card</span> Medios de pago *</span>
         </button>
 
-        <button class="pos-confirm" id="confirmSale" disabled onclick="confirmSale()">Registrar venta</button>
+        <button class="pos-confirm" id="confirmSale" disabled onclick="openSaleTypeModal()">Registrar venta</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: TIPO DE VENTA ============ -->
+<div class="overlay" id="saleTypeOverlay" onclick="if(event.target===this)closeSaleTypeModal()">
+  <div class="modal" style="max-width:340px;text-align:center">
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px">¿Cómo es la venta?</div>
+    <div style="font-size:13px;color:var(--text-dim);margin-bottom:20px">Selecciona el canal antes de registrar</div>
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <button onclick="chooseSaleType('tienda')" style="flex:1;padding:18px 10px;border:2px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <span class="material-symbols-outlined" style="font-size:32px;color:var(--accent)">storefront</span>
+        Tienda
+      </button>
+      <button onclick="chooseSaleType('envios')" style="flex:1;padding:18px 10px;border:2px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <span class="material-symbols-outlined" style="font-size:32px;color:#25d366">chat</span>
+        WhatsApp
+      </button>
+    </div>
+    <button onclick="closeSaleTypeModal()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:none;cursor:pointer;font-size:14px;color:var(--text-dim)">Cancelar</button>
   </div>
 </div>
 
