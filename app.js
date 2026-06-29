@@ -554,7 +554,7 @@ function switchScreen(name){
     document.getElementById("screen-"+s).style.display = s===name? (s==="chats"||s==="pos"?"grid":"block") : "none";
     const nav=document.getElementById("nav-"+s); if(nav) nav.classList.toggle("on", s===name);
   });
-  if(name==="pos" && !pos.catalog.length) initPos();
+  if(name==="pos" && !pos._posReady) initPos();
   if(name==="config"){
     if(!pos.currentUser?.is_master){ alert("Solo el master puede acceder a la configuración."); switchScreen("pos"); return; }
     initConfig();
@@ -592,6 +592,7 @@ async function initPos(){
   initDeptos();
   checkCustomOrderAlerts();
   initBarcodeInput();
+  pos._posReady = true;
   if(!pos.currentUser){
     const restored = await restoreSession();
     if(!restored) showLoginModal();
