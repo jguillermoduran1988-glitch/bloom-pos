@@ -1440,9 +1440,10 @@ function renderPosCatalog(){
   };
   const list = pos.catalog.filter(p=>{
     if(!match(p)) return false;
-    // Ocultar solo si todo está completamente agotado
-    if(p.variants && p.variants.length) return p.variants.some(v=>v.stock>0);
-    return p.stock>0;
+    const agotado = p.variants?.length ? p.variants.every(v=>v.stock<=0) : p.stock<=0;
+    // Sin búsqueda: ocultar agotados. Con búsqueda: mostrar todos
+    if(agotado && !q) return false;
+    return true;
   });
   for(const p of list){
     const card=el("div","pos-card");
