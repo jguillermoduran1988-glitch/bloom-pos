@@ -1927,26 +1927,37 @@ function searchLabelProducts(){
   }).slice(0,10);
   if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:8px">Sin resultados</div>'; _lblResults=[]; return; }
 
-  // Construir filas indexadas para onclick seguro (sin JSON en HTML)
   _lblResults = [];
   const rows = list.map(p=>{
     if(p.variants && p.variants.length){
-      const allIdx = _lblResults.length; // índice del grupo completo
+      const allIdx = _lblResults.length;
       const variantItems = p.variants.map(v=>({
         name: p.name,
         variant: [v.color, v.talla||v.size].filter(Boolean).join(" / ")||"única",
         price: v.price||p.price,
         barcode: v.barcode||p.barcode||"",
-        sku: v.sku||p.sku||""
+        sku: v.sku||p.sku||"",
+        stock: v.stock||0,
+        variant_id: v.variant_id||null,
+        _product: p
       }));
-      _lblResults.push({ _group: true, items: variantItems }); // grupo = índice allIdx
+      _lblResults.push({ _group: true, items: variantItems });
       variantItems.forEach(item => _lblResults.push(item));
 
       const varRows = variantItems.map((item, vi)=>{
         const idx = allIdx + 1 + vi;
-        return `<div onclick="addLabelByIdx(${idx})" style="padding:7px 10px 7px 20px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;background:var(--surface)">
-          <span style="color:var(--text-dim)">${esc(item.variant)}${item.barcode?`<span style="font-size:10px;margin-left:6px">${esc(item.barcode)}</span>`:''}</span>
-          <span style="color:var(--accent);font-weight:600;font-size:12px">${money(item.price)}</span>
+        const bcTag = item.barcode
+          ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${esc(item.barcode)}</span>`
+          : `<button onclick="event.stopPropagation();generateLabelBarcode(${idx})" style="font-size:10px;padding:1px 7px;margin-left:6px;border:1px dashed #c0392b;border-radius:4px;background:none;color:#c0392b;cursor:pointer">Generar código</button>`;
+        const skuTag = item.sku ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">SKU: ${esc(item.sku)}</span>` : '';
+        const stk = item.stock>0 ? `<span style="font-size:10px;color:#27ae60">${item.stock} disp.</span>` : `<span style="font-size:10px;color:#c0392b">Agotado</span>`;
+        return `<div onclick="addLabelByIdx(${idx})" style="padding:7px 10px 7px 18px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;background:var(--surface)">
+          <span style="display:flex;align-items:center;flex-wrap:wrap;gap:2px">
+            <span style="color:var(--text)">${esc(item.variant)}</span>${skuTag}${bcTag}
+          </span>
+          <span style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px">
+            ${stk}<span style="color:var(--accent);font-weight:600;font-size:12px">${money(item.price)}</span>
+          </span>
         </div>`;
       }).join('');
 
@@ -1958,11 +1969,17 @@ function searchLabelProducts(){
         ${varRows}
       </div>`;
     }
+    // Producto sin variantes
     const idx = _lblResults.length;
-    _lblResults.push({name:p.name, variant:"", price:p.price, barcode:p.barcode||"", sku:p.sku||""});
+    _lblResults.push({name:p.name, variant:"", price:p.price, barcode:p.barcode||"", sku:p.sku||"", stock:p.stock||0, variant_id:null, _product:p});
+    const bcTag = p.barcode
+      ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${esc(p.barcode)}</span>`
+      : `<button onclick="event.stopPropagation();generateLabelBarcode(${idx})" style="font-size:10px;padding:1px 7px;margin-left:6px;border:1px dashed #c0392b;border-radius:4px;background:none;color:#c0392b;cursor:pointer">Generar código</button>`;
+    const skuTag = p.sku ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">SKU: ${esc(p.sku)}</span>` : '';
+    const stk = p.stock>0 ? `<span style="font-size:10px;color:#27ae60">${p.stock} disp.</span>` : `<span style="font-size:10px;color:#c0392b">Agotado</span>`;
     return `<div onclick="addLabelByIdx(${idx})" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
-      <span><b>${esc(p.name)}</b>${p.barcode?`<span style="color:var(--text-dim);font-size:11px;margin-left:6px">${esc(p.barcode)}</span>`:''}</span>
-      <span style="color:var(--accent);font-weight:700">${money(p.price)}</span>
+      <span style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><b>${esc(p.name)}</b>${skuTag}${bcTag}</span>
+      <span style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px">${stk}<span style="color:var(--accent);font-weight:700">${money(p.price)}</span></span>
     </div>`;
   });
   box.innerHTML = rows.join('');
@@ -1970,21 +1987,57 @@ function searchLabelProducts(){
 
 function addLabelByIdx(idx){
   const item=_lblResults[idx]; if(!item||item._group) return;
-  _lblQueue.push({...item, qty:1});
+  _lblQueue.push({...item, qty: Math.max(1, item.stock||1)});
   renderLabelQueue();
 }
 function addAllLabelVariants(groupIdx){
   const group=_lblResults[groupIdx]; if(!group?._group) return;
-  group.items.forEach(item=>_lblQueue.push({...item, qty:1}));
+  group.items.forEach(item=>_lblQueue.push({...item, qty: Math.max(1, item.stock||1)}));
   renderLabelQueue();
   const s=$("#lblSearch"); if(s) s.value="";
   const r=$("#lblResults"); if(r){ r.innerHTML=""; _lblResults=[]; }
 }
-function addLabelItem(name,variant,price,barcode,sku){
-  _lblQueue.push({name,variant,price,barcode,sku,qty:1});
+function addLabelItem(name,variant,price,barcode,sku,stock){
+  _lblQueue.push({name,variant,price,barcode,sku,qty:Math.max(1,stock||1)});
   renderLabelQueue();
   const s=$("#lblSearch"); if(s) s.value="";
   const r=$("#lblResults"); if(r){ r.innerHTML=""; _lblResults=[]; }
+}
+
+async function generateLabelBarcode(idx){
+  const item=_lblResults[idx]; if(!item) return;
+  // Generar código: SKU si tiene, si no "BL" + 10 dígitos únicos
+  const generated = item.sku ? item.sku : "BL" + Date.now().toString().slice(-8) + Math.floor(Math.random()*99).toString().padStart(2,"0");
+  if(!confirm(`¿Crear código de barras "${generated}" y guardarlo en Shopify?`)) return;
+
+  const btn = document.querySelector(`[onclick="event.stopPropagation();generateLabelBarcode(${idx})"]`);
+  if(btn){ btn.textContent="Guardando…"; btn.disabled=true; }
+
+  try{
+    const r = await fetch(`${C.WORKER_URL}/update-barcode`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ variant_id: item.variant_id, barcode: generated })
+    });
+    const data = await r.json();
+    if(data.ok){
+      // Actualizar en el catálogo local
+      item.barcode = generated;
+      if(item._product){
+        if(item.variant_id && item._product.variants){
+          const v=item._product.variants.find(v=>String(v.variant_id)===String(item.variant_id));
+          if(v) v.barcode=generated;
+        } else { item._product.barcode=generated; }
+      }
+      if(btn){ btn.replaceWith(document.createTextNode(" "+generated)); }
+      alert(`✓ Código "${generated}" guardado en Shopify`);
+    } else {
+      if(btn){ btn.textContent="Generar código"; btn.disabled=false; }
+      alert("Error al guardar en Shopify");
+    }
+  }catch(e){
+    if(btn){ btn.textContent="Generar código"; btn.disabled=false; }
+    alert("Error de conexión");
+  }
 }
 function removeLabelItem(i){ _lblQueue.splice(i,1); renderLabelQueue(); }
 function setLabelQty(i,v){ _lblQueue[i].qty=Math.max(1,parseInt(v)||1); }

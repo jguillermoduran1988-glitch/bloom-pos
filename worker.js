@@ -51,6 +51,18 @@ export default {
       return Response.json(products, { headers: cors });
     }
 
+    // -------- Actualizar código de barras de variante en Shopify --------
+    if (request.method === "POST" && url.pathname === "/update-barcode") {
+      const { variant_id, barcode } = await request.json();
+      const shopHeaders = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
+      const r = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/variants/${variant_id}.json`, {
+        method: "PUT", headers: shopHeaders,
+        body: JSON.stringify({ variant: { id: variant_id, barcode } })
+      });
+      const data = await r.json();
+      return Response.json({ ok: r.ok, barcode: data.variant?.barcode }, { headers: cors });
+    }
+
     // -------- POS: crear venta -> orden en Shopify --------
     if (request.method === "POST" && url.pathname === "/order") {
       const order = await request.json();
