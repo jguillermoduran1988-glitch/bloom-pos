@@ -1880,14 +1880,15 @@ function renderGoalBar(goal,total){
 // ====================================================================
 //  ETIQUETAS DE PRECIO
 // ====================================================================
-let _lblQueue = []; // [{name, variant, price, barcode, sku, qty}]
+let _lblQueue = [];       // [{name, variant, price, barcode, sku, qty}]
+let _lblResults = [];     // resultados de búsqueda temporales para onclick seguro
 
 function _lblG(id){ const e=document.getElementById(id); if(!e) return null; return e.type==="checkbox"?e.checked:(e.value||null); }
 
 function searchLabelProducts(){
   const q=($("#lblSearch")?.value||"").toLowerCase().trim();
   const box=$("#lblResults"); if(!box) return;
-  if(!q){ box.innerHTML=""; return; }
+  if(!q){ box.innerHTML=""; _lblResults=[]; return; }
   const list=pos.catalog.filter(p=>{
     if(p.name.toLowerCase().includes(q)) return true;
     if((p.sku||"").toLowerCase().includes(q)) return true;
@@ -1895,33 +1896,66 @@ function searchLabelProducts(){
     if(p.variants) return p.variants.some(v=>(v.barcode||"").toLowerCase().includes(q)||(v.sku||"").toLowerCase().includes(q));
     return false;
   }).slice(0,10);
-  if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:8px">Sin resultados</div>'; return; }
-  box.innerHTML=list.map(p=>{
+  if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:8px">Sin resultados</div>'; _lblResults=[]; return; }
+
+  // Construir filas indexadas para onclick seguro (sin JSON en HTML)
+  _lblResults = [];
+  const rows = list.map(p=>{
     if(p.variants && p.variants.length){
-      return p.variants.map(v=>{
-        const varLabel=[v.color,v.talla||v.size].filter(Boolean).join(" / ")||"única";
-        const code=v.barcode||p.barcode||"";
-        const sku=v.sku||p.sku||"";
-        return `<div onclick="addLabelItem(${JSON.stringify(p.name)},${JSON.stringify(varLabel)},${v.price||p.price},${JSON.stringify(code)},${JSON.stringify(sku)})"
-          style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
-          <span><b>${esc(p.name)}</b> <span style="color:var(--text-dim);font-size:12px">${esc(varLabel)}</span>${code?`<span style="color:var(--text-dim);font-size:11px;margin-left:6px">${esc(code)}</span>`:''}</span>
-          <span style="color:var(--accent);font-weight:700;flex-shrink:0;margin-left:8px">${money(v.price||p.price)}</span>
+      const allIdx = _lblResults.length; // índice del grupo completo
+      const variantItems = p.variants.map(v=>({
+        name: p.name,
+        variant: [v.color, v.talla||v.size].filter(Boolean).join(" / ")||"única",
+        price: v.price||p.price,
+        barcode: v.barcode||p.barcode||"",
+        sku: v.sku||p.sku||""
+      }));
+      _lblResults.push({ _group: true, items: variantItems }); // grupo = índice allIdx
+      variantItems.forEach(item => _lblResults.push(item));
+
+      const varRows = variantItems.map((item, vi)=>{
+        const idx = allIdx + 1 + vi;
+        return `<div onclick="addLabelByIdx(${idx})" style="padding:7px 10px 7px 20px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;background:var(--surface)">
+          <span style="color:var(--text-dim)">${esc(item.variant)}${item.barcode?`<span style="font-size:10px;margin-left:6px">${esc(item.barcode)}</span>`:''}</span>
+          <span style="color:var(--accent);font-weight:600;font-size:12px">${money(item.price)}</span>
         </div>`;
       }).join('');
+
+      return `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden">
+        <div style="padding:8px 10px;background:var(--surface-2);display:flex;justify-content:space-between;align-items:center;font-size:13px">
+          <b>${esc(p.name)}</b>
+          <button onclick="addAllLabelVariants(${allIdx})" style="font-size:11px;padding:3px 10px;border:1px solid var(--accent);border-radius:6px;background:none;color:var(--accent);cursor:pointer;font-weight:600">+ Todas</button>
+        </div>
+        ${varRows}
+      </div>`;
     }
-    return `<div onclick="addLabelItem(${JSON.stringify(p.name)},'',${p.price},${JSON.stringify(p.barcode||'')},${JSON.stringify(p.sku||'')})"
-      style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
+    const idx = _lblResults.length;
+    _lblResults.push({name:p.name, variant:"", price:p.price, barcode:p.barcode||"", sku:p.sku||""});
+    return `<div onclick="addLabelByIdx(${idx})" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
       <span><b>${esc(p.name)}</b>${p.barcode?`<span style="color:var(--text-dim);font-size:11px;margin-left:6px">${esc(p.barcode)}</span>`:''}</span>
-      <span style="color:var(--accent);font-weight:700;margin-left:8px">${money(p.price)}</span>
+      <span style="color:var(--accent);font-weight:700">${money(p.price)}</span>
     </div>`;
-  }).join('');
+  });
+  box.innerHTML = rows.join('');
 }
 
+function addLabelByIdx(idx){
+  const item=_lblResults[idx]; if(!item||item._group) return;
+  _lblQueue.push({...item, qty:1});
+  renderLabelQueue();
+}
+function addAllLabelVariants(groupIdx){
+  const group=_lblResults[groupIdx]; if(!group?._group) return;
+  group.items.forEach(item=>_lblQueue.push({...item, qty:1}));
+  renderLabelQueue();
+  const s=$("#lblSearch"); if(s) s.value="";
+  const r=$("#lblResults"); if(r){ r.innerHTML=""; _lblResults=[]; }
+}
 function addLabelItem(name,variant,price,barcode,sku){
   _lblQueue.push({name,variant,price,barcode,sku,qty:1});
   renderLabelQueue();
   const s=$("#lblSearch"); if(s) s.value="";
-  const r=$("#lblResults"); if(r) r.innerHTML="";
+  const r=$("#lblResults"); if(r){ r.innerHTML=""; _lblResults=[]; }
 }
 function removeLabelItem(i){ _lblQueue.splice(i,1); renderLabelQueue(); }
 function setLabelQty(i,v){ _lblQueue[i].qty=Math.max(1,parseInt(v)||1); }
