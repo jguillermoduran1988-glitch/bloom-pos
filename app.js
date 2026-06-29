@@ -1818,6 +1818,35 @@ async function initConfig(){
   await renderUsersList(); renderPaymentsList(); renderSettings();
   const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
   if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
+  if(!pos.catalog.length) pos.catalog = await fetchProducts();
+  initConfigSections();
+}
+
+function initConfigSections(){
+  document.querySelectorAll("#screen-config .cfg-sec").forEach(sec=>{
+    if(sec.dataset.cfgInit) return; // ya inicializado
+    sec.dataset.cfgInit="1";
+    const h3=sec.querySelector("h3"); if(!h3) return;
+    // Chevron
+    const chev=document.createElement("span");
+    chev.className="material-symbols-outlined";
+    chev.style.cssText="font-size:20px;color:var(--text-dim);transition:transform .2s;flex-shrink:0";
+    chev.textContent="expand_more";
+    h3.style.cssText=(h3.style.cssText||"")+"cursor:pointer;display:flex;justify-content:space-between;align-items:center;width:100%";
+    h3.appendChild(chev);
+    // Wrap content below h3 in collapsible div
+    const body=document.createElement("div");
+    body.className="cfg-body";
+    body.style.display="none";
+    const children=[...sec.children].filter(c=>c!==h3);
+    children.forEach(c=>body.appendChild(c));
+    sec.appendChild(body);
+    h3.onclick=()=>{
+      const open=body.style.display==="none";
+      body.style.display=open?"block":"none";
+      chev.style.transform=open?"rotate(180deg)":"";
+    };
+  });
 }
 
 // ===== Configuración del POS (settings) =====
