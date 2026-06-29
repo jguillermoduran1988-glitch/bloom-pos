@@ -1820,7 +1820,6 @@ async function initConfig(){
   const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
   if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
   if(!pos.catalog.length) pos.catalog = await fetchProducts();
-  loadLabelDefaults();
   initConfigSections();
 }
 
@@ -2287,18 +2286,24 @@ function toggleDatMore(){
   if(btn) btn.classList.toggle("on");
 }
 function datosTab(which){
-  ["tienda","ventas","clientes","pers","Exchanges"].forEach(t=>{
+  ["tienda","ventas","clientes","pers","Exchanges","Etiquetas"].forEach(t=>{
     const key = t==="Exchanges" ? "datPaneExchanges" : "datPane"+t.charAt(0).toUpperCase()+t.slice(1);
     const p=document.getElementById(key);
-    const w = t==="Exchanges" ? "exchanges" : t;
+    const w = t==="Exchanges" ? "exchanges" : t==="Etiquetas" ? "etiquetas" : t;
     if(p) p.style.display = which===w?"block":"none";
   });
-  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3",exchanges:"datTab6"};
+  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3",exchanges:"datTab6",etiquetas:"datTab7"};
   Object.entries(tabMap).forEach(([t,id])=>{ const b=document.getElementById(id); if(b) b.classList.toggle("on",which===t); });
   if(which==="pers") loadCustomOrders();
   if(which==="ventas") loadSalesHistory();
   if(which==="clientes") initClientesTab();
   if(which==="exchanges") loadExchangesTab();
+  if(which==="etiquetas") initEtiquetasTab();
+}
+async function initEtiquetasTab(){
+  if(!pos.catalog.length) pos.catalog = await fetchProducts();
+  renderLabelPresetSelect();
+  loadLabelDefaults();
 }
 
 // ---- Pestaña Cambios y Garantías ----
