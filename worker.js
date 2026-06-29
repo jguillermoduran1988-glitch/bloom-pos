@@ -104,6 +104,81 @@ export default {
       return Response.json(result, { headers: cors });
     }
 
+    // -------- Cambio / Garantía en Shopify --------
+    if (request.method === "POST" && url.pathname === "/exchange") {
+      const { shopify_order_id, original_order_name, returned_items, replacement, customer, reason, notes } = await request.json();
+      if (!shopify_order_id) return Response.json({ ok: false, error: "sin shopify_order_id" }, { headers: cors });
+      try {
+        const shopHeaders = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
+
+        // 1) Orden original — line_items para hacer match por SKU/nombre
+        const orderR = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}.json?fields=line_items,transactions`, { headers: shopHeaders });
+        const orderData = await orderR.json();
+        const lineItems = orderData.order?.line_items || [];
+        const transactions = orderData.order?.transactions || [];
+        const saleTx = transactions.find(t => t.kind === "sale" && t.status === "success");
+
+        // 2) Ubicación principal (para restock)
+        const locR = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/locations.json`, { headers: shopHeaders });
+        const locData = await locR.json();
+        const locationId = locData.locations?.[0]?.id;
+
+        // 3) Construir refund_line_items haciendo match por SKU o nombre+variante
+        let refundTotal = 0;
+        const refundLineItems = [];
+        for (const ret of returned_items) {
+          const match = lineItems.find(li =>
+            (ret.sku && li.sku && li.sku === ret.sku) ||
+            (li.name === ret.name) ||
+            (li.title === ret.name && li.variant_title === ret.variant)
+          );
+          if (match) {
+            refundLineItems.push({ line_item_id: match.id, quantity: ret.qty || 1, restock_type: locationId ? "return" : "cancel", location_id: locationId || undefined });
+            refundTotal += Number(match.price) * (ret.qty || 1);
+          }
+        }
+        if (!refundLineItems.length) return Response.json({ ok: false, error: "no se encontraron los ítems en la orden de Shopify" }, { headers: cors });
+
+        // 4) Crear reembolso con restock
+        const refundBody = { refund: { notify: false, refund_line_items: refundLineItems } };
+        if (saleTx && refundTotal > 0) {
+          refundBody.refund.transactions = [{ parent_id: saleTx.id, amount: String(refundTotal.toFixed(2)), kind: "refund", gateway: saleTx.gateway }];
+        }
+        const refR = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}/refunds.json`, { method: "POST", headers: shopHeaders, body: JSON.stringify(refundBody) });
+        const refData = await refR.json();
+        if (!refR.ok) return Response.json({ ok: false, error: "refund error: " + JSON.stringify(refData) }, { headers: cors });
+
+        // 5) Nueva orden para el ítem de reemplazo
+        let newOrderName = null, newOrderId = null;
+        if (replacement && replacement.length) {
+          const chargeTotal = replacement.reduce((s, i) => s + Number(i.price) * (i.qty || 1), 0);
+          const diff = Math.max(0, chargeTotal - refundTotal);
+          const newOrder = await createShopifyOrder(env, {
+            customer: customer || {},
+            items: replacement,
+            total: diff,
+            sale_type: "tienda",
+            payment: diff > 0 ? "Cambio — diferencia" : "Cambio sin costo",
+            note: `Cambio de ${original_order_name}. Razón: ${reason || "cambio"}. ${notes || ""}`.trim(),
+            tags: ["cambio", `cambio-de-${original_order_name}`],
+            financial_status: diff > 0 ? "pending" : "paid",
+          });
+          newOrderName = newOrder.order_name || null;
+          newOrderId = newOrder.order_id || null;
+        }
+
+        // 6) Agregar nota a la orden original
+        await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}.json`, {
+          method: "PUT", headers: shopHeaders,
+          body: JSON.stringify({ order: { id: shopify_order_id, note: `Cambio procesado${newOrderName ? " → nuevo pedido " + newOrderName : ""}. Razón: ${reason || "cambio"}. ${notes || ""}`.trim(), tags: "cambio" } }),
+        });
+
+        return Response.json({ ok: true, refund_id: refData.refund?.id, refund_amount: refundTotal, new_order_name: newOrderName, new_order_id: newOrderId }, { headers: cors });
+      } catch (e) {
+        return Response.json({ ok: false, error: e.message }, { headers: cors });
+      }
+    }
+
     // -------- Cancelar o reembolsar venta en Shopify --------
     if (request.method === "POST" && url.pathname === "/refund") {
       const { shopify_order_id, amount, full } = await request.json();

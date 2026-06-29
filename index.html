@@ -289,6 +289,16 @@
   .pers-detail-edit:focus{border-color:var(--accent)}
   .pers-save-note{flex:1;background:var(--accent-soft);color:var(--accent-dark);border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer}
   .sale-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:10px}
+  .ex-reason-btn{padding:7px 14px;border:1px solid var(--border);border-radius:20px;background:none;cursor:pointer;font-size:13px;transition:all .15s}
+  .ex-reason-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .ex-return-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:13px}
+  .ex-return-item input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary)}
+  .ex-return-item .qty-ctrl{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .ex-return-item .qty-ctrl button{width:24px;height:24px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;font-size:14px;line-height:1}
+  .ex-product-result{padding:9px 12px;border-radius:10px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .ex-product-result:hover{background:var(--surface)}
+  .ex-selected-chip{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--primary);border-radius:20px;padding:5px 12px;font-size:13px}
+  .ex-selected-chip button{background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-dim);padding:0;line-height:1}
   .sale-card-main{display:flex;justify-content:space-between;align-items:flex-start}
   .sale-menu-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim);padding:0 6px;line-height:1}
   .sale-menu{display:none;flex-direction:column;gap:6px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px}
@@ -865,6 +875,46 @@
         <div style="display:flex;gap:8px">
           <button onclick="closeRefundModal()" style="flex:1;padding:10px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer">Cancelar</button>
           <button onclick="confirmPartialRefund()" style="flex:1;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600">Reembolsar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal cambio / garantía -->
+    <div id="exchangeModal" class="modal-overlay" style="display:none;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
+      <div class="modal-box" style="max-width:560px;width:100%;padding:24px;margin-bottom:40px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0">Cambio / Garantía</h3>
+          <button onclick="closeExchangeModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim)">×</button>
+        </div>
+
+        <!-- Razón -->
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button id="exReason-cambio"    onclick="setExReason('cambio')"    class="ex-reason-btn active">↔ Cambio</button>
+          <button id="exReason-garantia" onclick="setExReason('garantia')"  class="ex-reason-btn">🛡 Garantía</button>
+          <button id="exReason-devolucion" onclick="setExReason('devolucion')" class="ex-reason-btn">↩ Devolución</button>
+        </div>
+
+        <!-- Paso 1: ítems a devolver -->
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-dim)">1. ¿QUÉ DEVUELVE?</div>
+        <div id="exReturnItems" style="margin-bottom:16px"></div>
+
+        <!-- Paso 2: ítem de reemplazo (oculto en devolución) -->
+        <div id="exReplacementSection">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-dim)">2. ¿QUÉ LLEVA?</div>
+          <input id="exProductSearch" placeholder="Buscar producto de reemplazo…" oninput="searchExchangeProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:8px">
+          <div id="exProductResults" style="max-height:160px;overflow-y:auto;margin-bottom:8px"></div>
+          <div id="exSelectedReplacement" style="margin-bottom:12px"></div>
+        </div>
+
+        <!-- Notas -->
+        <textarea id="exNotes" placeholder="Notas opcionales (motivo, observaciones…)" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:13px;box-sizing:border-box;resize:none;height:60px;margin-bottom:14px"></textarea>
+
+        <!-- Resumen de precio -->
+        <div id="exPriceSummary" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;margin-bottom:16px"></div>
+
+        <div style="display:flex;gap:8px">
+          <button onclick="closeExchangeModal()" style="flex:1;padding:10px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer">Cancelar</button>
+          <button id="exConfirmBtn" onclick="confirmExchange()" style="flex:2;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600">Confirmar cambio</button>
         </div>
       </div>
     </div>
