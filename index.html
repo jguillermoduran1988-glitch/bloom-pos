@@ -766,6 +766,13 @@
 <!-- ============ PANTALLA: CONFIG ============ -->
 <div class="screen" id="screen-config" style="display:none">
   <div class="config">
+    <div class="note-tabs" style="margin-bottom:4px" id="cfgTabs">
+      <button class="on" id="cfgTabPOS" onclick="cfgTab('pos')"><span class="material-symbols-outlined">point_of_sale</span> POS</button>
+      <button id="cfgTabChat" onclick="cfgTab('chat')"><span class="material-symbols-outlined">chat_bubble</span> Chat</button>
+    </div>
+
+    <!-- ===== PANEL POS ===== -->
+    <div id="cfgPanePOS">
     <div class="cfg-sec">
       <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">badge</span> Usuarios</h3>
       <div class="desc">Vendedores, cajeros y administradores del POS.</div>
@@ -816,6 +823,9 @@
       <button onclick="openGoalPlanner()" style="width:100%;background:var(--accent-soft);color:var(--accent-dark);border:1px solid var(--accent);border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
         <span class="material-symbols-outlined" style="font-size:18px">auto_graph</span> Planificador mensual inteligente
       </button>
+      <button onclick="_previewGoalCelebration()" style="width:100%;margin-top:8px;background:none;color:var(--text-dim);border:1px dashed var(--border);border-radius:10px;padding:9px;font-size:12px;cursor:pointer">
+        👁 Vista previa mensaje de meta cumplida
+      </button>
     </div>
 
     <div class="cfg-sec">
@@ -827,6 +837,39 @@
         <button onclick="addPayment()">Agregar</button>
       </div>
     </div>
+    </div><!-- /cfgPanePOS -->
+
+    <!-- ===== PANEL CHAT ===== -->
+    <div id="cfgPaneChat" style="display:none">
+
+      <div class="cfg-sec">
+        <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">quick_phrases</span> Comandos rápidos</h3>
+        <div class="desc">Escribe <b>/comando</b> en el chat para enviar una respuesta predefinida. Usa <b>{nombre}</b> para insertar el nombre del cliente.</div>
+        <div id="cfgQrList" style="margin-bottom:12px"></div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px" id="cfgQrForm">
+          <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px" id="cfgQrFormTitle">Nuevo comando</div>
+          <div style="display:flex;gap:8px">
+            <input id="cfgQrCommand" placeholder="/saludo" style="width:130px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+            <input id="cfgQrLabel" placeholder="Etiqueta (ej: Saludo inicial)" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+          </div>
+          <textarea id="cfgQrTemplate" placeholder="Hola {nombre}! Bienvenida a Bloom 🌸 ¿En qué te puedo ayudar?" style="border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:80px;font-family:inherit"></textarea>
+          <div style="display:flex;gap:8px">
+            <button id="cfgQrSaveBtn" onclick="saveCfgQuickReply()" style="flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer">Guardar</button>
+            <button id="cfgQrCancelBtn" onclick="cancelCfgQuickReply()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer;color:var(--text-dim)">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cfg-sec" style="margin-top:16px">
+        <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">account_tree</span> Embudos de venta</h3>
+        <div class="desc">Etapas por las que pasan tus clientes en el chat. Mueve conversaciones entre etapas desde el panel derecho.</div>
+        <div id="cfgPipeList" style="margin-bottom:12px"></div>
+        <button onclick="openPipeModal()" style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">
+          <span class="material-symbols-outlined" style="font-size:16px">add</span> Nuevo embudo
+        </button>
+      </div>
+
+    </div><!-- /cfgPaneChat -->
   </div>
 </div>
 
@@ -1383,7 +1426,7 @@
       </div>
       <div class="field" style="margin:0">
         <label style="font-size:11px">Mes</label>
-        <select id="gpMonth" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+        <select id="gpMonth" onchange="_checkExistingPlan()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
           <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
           <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
           <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
@@ -1392,9 +1435,15 @@
       </div>
       <div class="field" style="margin:0">
         <label style="font-size:11px">Año</label>
-        <input id="gpYear" type="number" value="2026" min="2023" max="2030"
+        <input id="gpYear" type="number" value="2026" min="2023" max="2030" onchange="_checkExistingPlan()"
           style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
       </div>
+    </div>
+
+    <div id="gpSavedBadge" style="display:none;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:10px;flex-shrink:0">
+      <span class="material-symbols-outlined" style="font-size:16px;color:var(--accent)">check_circle</span>
+      <span id="gpSavedBadgeText" style="font-size:13px;color:var(--accent);font-weight:600"></span>
+      <button onclick="cargarPlanGuardado()" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">Editar</button>
     </div>
 
     <div style="margin-bottom:14px;flex-shrink:0">
@@ -1408,6 +1457,32 @@
       .gp-row:hover td { background: var(--surface-2); }
     </style>
     <div id="gpResult" style="overflow-y:auto;flex:1"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CONFIRMAR CAMBIO DE CAJERO ===== -->
+<div class="overlay center" id="switchCashierModal" style="display:none;z-index:1200">
+  <div class="modal" style="max-width:320px;text-align:center;padding:28px 24px">
+    <span class="material-symbols-outlined" style="font-size:40px;color:var(--accent);display:block;margin-bottom:12px">switch_account</span>
+    <h3 style="margin:0 0 8px;font-size:16px">¿Cambiar cajero?</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin:0 0 22px;line-height:1.5">
+      De <b id="scFrom"></b><br>a <b id="scTo"></b>
+    </p>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeSwitchCashierModal()" style="flex:1;background:var(--bg-alt);color:var(--text);border:2px solid var(--border);border-radius:10px;padding:11px;font-size:14px;cursor:pointer">Cancelar</button>
+      <button onclick="confirmCashierSwitch()" style="flex:2;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;cursor:pointer">Sí, cambiar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CELEBRACIÓN META DEL DÍA ===== -->
+<div class="overlay center" id="goalCelebrationModal" style="display:none;z-index:2100">
+  <div style="background:var(--surface);border-radius:24px;padding:36px 28px 28px;max-width:380px;width:90%;text-align:center;position:relative;box-shadow:0 24px 64px rgba(0,0,0,0.35)">
+    <div style="font-size:56px;line-height:1;margin-bottom:12px">🌸</div>
+    <h2 id="gcTitle" style="font-size:19px;font-weight:700;margin:0 0 14px;color:var(--accent)"></h2>
+    <div id="gcBadge" style="display:none;background:var(--accent-soft);border:1.5px solid var(--accent);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:600;color:var(--accent);margin:0 auto 16px"></div>
+    <p id="gcMsg" style="font-size:14px;line-height:1.7;color:var(--text);margin:0 0 26px;text-align:left"></p>
+    <button onclick="closeGoalCelebration()" style="background:var(--accent);color:#fff;border:none;border-radius:14px;padding:13px 0;font-size:15px;font-weight:700;cursor:pointer;width:100%">¡Gracias equipo! 💖</button>
   </div>
 </div>
 </body>

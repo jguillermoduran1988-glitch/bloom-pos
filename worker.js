@@ -10,7 +10,7 @@ export default {
     const url = new URL(request.url);
     const cors = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -100,6 +100,30 @@ export default {
       if (order.source_name !== "web") return new Response("skip", { status: 200, headers: cors });
       const result = await importShopifyOnlineOrder(env, order);
       return Response.json(result, { headers: cors });
+    }
+
+    // -------- Importar pedido Shopify manualmente por nombre (#XXXX) --------
+    if (request.method === "POST" && url.pathname === "/import-order") {
+      const { order_name, force } = await request.json();
+      if (!order_name) return Response.json({ ok: false, error: "falta order_name" }, { headers: cors });
+      const shopHeaders = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN };
+      const r = await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders.json?name=${encodeURIComponent(order_name)}&status=any&limit=1`, { headers: shopHeaders });
+      if (!r.ok) return Response.json({ ok: false, error: "Shopify error " + r.status }, { headers: cors });
+      const data = await r.json();
+      const order = data.orders?.[0];
+      if (!order) return Response.json({ ok: false, error: "pedido no encontrado en Shopify" }, { headers: cors });
+      // force: devuelve datos crudos del pedido sin importar (para diagnóstico)
+      if (force === "inspect") return Response.json({
+        id: order.id, name: order.name, source_name: order.source_name,
+        email: order.email, contact_email: order.contact_email, phone: order.phone,
+        payment_gateway: order.payment_gateway, payment_gateway_names: order.payment_gateway_names,
+        customer: order.customer ? { name: `${order.customer.first_name||""} ${order.customer.last_name||""}`.trim(), email: order.customer.email, phone: order.customer.phone } : null,
+        shipping_address: order.shipping_address || null,
+        billing_address: order.billing_address || null,
+        total_price: order.total_price,
+      }, { headers: cors });
+      const result = await importShopifyOnlineOrder(env, order);
+      return Response.json({ ...result, order_name: order.name, source: order.source_name }, { headers: cors });
     }
 
     // -------- Buscar cliente en la DIAN vía Alegra --------
@@ -264,6 +288,90 @@ export default {
       } catch (e) {
         return Response.json({ ok: false, error: e.message }, { headers: cors });
       }
+    }
+
+    // -------- WhatsApp Inbox: lista de conversaciones --------
+    if (request.method === "GET" && url.pathname === "/wa/conversations") {
+      const store = url.searchParams.get("store") || "bloom";
+      const status = url.searchParams.get("status") || "all";
+      const whereStatus = status === "all" ? "" : "AND c.status = ?";
+      const binds = status === "all" ? [store] : [store, status];
+      const result = await env.bloom_wa.prepare(`
+        SELECT c.id, c.phone, c.status, c.assigned_to,
+               c.last_message, c.last_message_at, c.unread_count, c.updated_at,
+               c.pipeline_id, c.stage,
+               ct.name as contact_name, ct.email as contact_email, ct.avatar as contact_avatar, ct.tags as contact_tags
+        FROM wa_conversations c
+        LEFT JOIN wa_contacts ct ON ct.phone = c.phone
+        WHERE c.store = ? ${whereStatus}
+        ORDER BY c.updated_at DESC
+        LIMIT 80
+      `).bind(...binds).all();
+      return Response.json(result.results || [], { headers: cors });
+    }
+
+    // -------- WhatsApp Inbox: mensajes de una conversación --------
+    if (request.method === "GET" && url.pathname.startsWith("/wa/conversations/") && url.pathname.endsWith("/messages")) {
+      const convId = decodeURIComponent(url.pathname.split("/")[3]);
+      const result = await env.bloom_wa.prepare(
+        `SELECT * FROM wa_messages WHERE conversation_id = ? ORDER BY ts ASC LIMIT 120`
+      ).bind(convId).all();
+      return Response.json(result.results || [], { headers: cors });
+    }
+
+    // -------- WhatsApp Inbox: marcar conversación como leída --------
+    if (request.method === "POST" && url.pathname.startsWith("/wa/conversations/") && url.pathname.endsWith("/read")) {
+      const convId = decodeURIComponent(url.pathname.split("/")[3]);
+      await env.bloom_wa.prepare(
+        `UPDATE wa_conversations SET unread_count = 0 WHERE id = ?`
+      ).bind(convId).run();
+      return Response.json({ ok: true }, { headers: cors });
+    }
+
+    // -------- WhatsApp Inbox: enviar mensaje --------
+    if (request.method === "POST" && url.pathname === "/wa/send") {
+      const { conversation_id, phone, body } = await request.json();
+      if (!body || !conversation_id) return Response.json({ ok: false, error: "faltan campos" }, { headers: cors });
+      const now = new Date().toISOString();
+      const msgId = "out-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      await env.bloom_wa.prepare(
+        `INSERT INTO wa_messages (id, conversation_id, direction, type, body, status, ts) VALUES (?, ?, 'outbound', 'text', ?, 'sent', ?)`
+      ).bind(msgId, conversation_id, body, now).run();
+      await env.bloom_wa.prepare(
+        `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, updated_at = ? WHERE id = ?`
+      ).bind(body, now, now, conversation_id).run();
+      // Envío real cuando esté configurado WA_TOKEN
+      if (env.WA_TOKEN && env.WA_PHONE_ID && phone) {
+        await sendWhatsApp(env, phone, body).catch(() => {});
+      }
+      return Response.json({ ok: true, id: msgId }, { headers: cors });
+    }
+
+    // -------- PATCH conversación: stage, pipeline_id --------
+    if (request.method === "PATCH" && url.pathname.startsWith("/wa/conversations/")) {
+      const convId = decodeURIComponent(url.pathname.split("/")[3]);
+      const updates = await request.json();
+      const fields = []; const values = [];
+      if (updates.stage !== undefined) { fields.push("stage = ?"); values.push(updates.stage); }
+      if (updates.pipeline_id !== undefined) { fields.push("pipeline_id = ?"); values.push(updates.pipeline_id); }
+      if (updates.assigned_to !== undefined) { fields.push("assigned_to = ?"); values.push(updates.assigned_to); }
+      if (!fields.length) return Response.json({ ok: false, error: "no fields" }, { headers: cors });
+      fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(convId);
+      await env.bloom_wa.prepare(`UPDATE wa_conversations SET ${fields.join(", ")} WHERE id = ?`).bind(...values).run();
+      return Response.json({ ok: true }, { headers: cors });
+    }
+
+    // -------- PATCH contacto: tags --------
+    if (request.method === "PATCH" && url.pathname.startsWith("/wa/contacts/")) {
+      const phone = decodeURIComponent(url.pathname.split("/")[3]);
+      const updates = await request.json();
+      const fields = []; const values = [];
+      if (updates.tags !== undefined) { fields.push("tags = ?"); values.push(JSON.stringify(updates.tags)); }
+      if (updates.name !== undefined) { fields.push("name = ?"); values.push(updates.name); }
+      if (!fields.length) return Response.json({ ok: false, error: "no fields" }, { headers: cors });
+      fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(phone);
+      await env.bloom_wa.prepare(`UPDATE wa_contacts SET ${fields.join(", ")} WHERE phone = ?`).bind(...values).run();
+      return Response.json({ ok: true }, { headers: cors });
     }
 
     return new Response("Not found", { status: 404 });
@@ -650,67 +758,54 @@ async function createShopifyOrder(env, o) {
   return { ok: true, order_id: String(data.order.id), order_name: data.order.name };
 }
 
-// ============ Procesar entrante (clave: el REFERRAL) ============
+// ============ Procesar entrante (guarda en D1) ============
 async function handleIncoming(env, msg, contact) {
   const phone = msg.from;
   const name = contact?.profile?.name || phone;
   const text = msg.text?.body || msg.button?.text || "";
   const waId = msg.id;
+  const now = new Date().toISOString();
 
-  // ¿Viene de una historia o pauta? Meta lo manda en msg.referral
+  // Upsert contacto en D1
+  await d1UpsertContact(env, phone, name);
+
+  // Referral: actualizar datos del contacto y agregar mensaje especial
   const ref = msg.referral;
-  const refData = ref ? {
-    ref_source_type: ref.source_type || null,       // 'ad' o 'post'
-    ref_headline:    ref.headline || null,
-    ref_body:        ref.body || null,
-    ref_media_url:   ref.image_url || ref.video_url || null,
-    ref_source_id:   ref.source_id || null,
-    ref_ctwa_clid:   ref.ctwa_clid || null,
-  } : {};
-
-  // Crear/actualizar contacto. Si trae referral, lo guarda (solo primera vez).
-  await upsertContact(env, phone, name, refData);
-
-  // Si trajo referral, lo dejamos también como un "mensaje" especial para verlo en el hilo
   if (ref) {
-    await insertMessage(env, phone, {
-      direction: "in",
-      body: ref.headline || "Escribió desde un anuncio",
-      media_url: ref.image_url || ref.video_url || null,
-      msg_type: "referral",
-    });
+    await env.bloom_wa.prepare(
+      `UPDATE wa_contacts SET ref_source = ?, ref_headline = ?, ref_ctwa_clid = ?, updated_at = ? WHERE phone = ? AND ref_source IS NULL`
+    ).bind(ref.source_type || null, ref.headline || null, ref.ctwa_clid || null, now, phone).run();
   }
 
-  // El mensaje de texto normal
-  await insertMessage(env, phone, {
-    direction: "in", body: text, wa_message_id: waId, msg_type: "text",
-  });
-}
+  // Crear o actualizar conversación (id = phone: una conversación activa por contacto)
+  const convId = phone;
+  const existing = await env.bloom_wa.prepare(
+    `SELECT id FROM wa_conversations WHERE id = ?`
+  ).bind(convId).first();
 
-async function upsertContact(env, phone, name, refData) {
-  // Inserta si no existe; si trae referral lo incluye
-  const payload = { phone, name, store: "bloom", ...refData };
-  await fetch(`${env.SUPABASE_URL}/rest/v1/contacts`, {
-    method: "POST",
-    headers: sbHeaders(env, "resolution=ignore-duplicates"),
-    body: JSON.stringify(payload),
-  });
-  // Si ya existía pero ahora llegó con referral, lo actualiza (sin pisar con null)
-  if (refData.ref_source_type) {
-    await fetch(`${env.SUPABASE_URL}/rest/v1/contacts?phone=eq.${phone}&ref_source_type=is.null`, {
-      method: "PATCH",
-      headers: sbHeaders(env, "return=minimal"),
-      body: JSON.stringify(refData),
-    });
+  if (!existing) {
+    await env.bloom_wa.prepare(
+      `INSERT INTO wa_conversations (id, phone, store, status, last_message, last_message_at, unread_count, updated_at) VALUES (?, ?, 'bloom', 'open', ?, ?, 1, ?)`
+    ).bind(convId, phone, text, now, now).run();
+  } else {
+    await env.bloom_wa.prepare(
+      `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, unread_count = unread_count + 1, updated_at = ? WHERE id = ?`
+    ).bind(text, now, now, convId).run();
   }
+
+  // Guardar mensaje
+  const msgId = "in-" + (waId || Date.now()) + "-" + Math.random().toString(36).slice(2, 6);
+  await env.bloom_wa.prepare(
+    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, status, ts) VALUES (?, ?, ?, 'inbound', 'text', ?, 'delivered', ?)`
+  ).bind(msgId, convId, waId || null, text, now).run();
 }
 
-async function insertMessage(env, phone, m) {
-  await fetch(`${env.SUPABASE_URL}/rest/v1/messages`, {
-    method: "POST",
-    headers: sbHeaders(env, "return=minimal"),
-    body: JSON.stringify({ contact_phone: phone, store: "bloom", ...m }),
-  });
+async function d1UpsertContact(env, phone, name) {
+  const now = new Date().toISOString();
+  await env.bloom_wa.prepare(
+    `INSERT INTO wa_contacts (phone, name, store, created_at, updated_at) VALUES (?, ?, 'bloom', ?, ?)
+     ON CONFLICT(phone) DO UPDATE SET name = COALESCE(excluded.name, wa_contacts.name), updated_at = excluded.updated_at`
+  ).bind(phone, name, now, now).run();
 }
 
 function sbHeaders(env, prefer) {
@@ -721,6 +816,21 @@ function sbHeaders(env, prefer) {
     Prefer: prefer,
   };
 }
+
+// Mapa de gateways Shopify → nombre canónico del método de pago en el POS
+const SHOPIFY_GATEWAY_ALIASES = {
+  "bogota_payments": "wompi",
+  "wompi_latam": "wompi",
+  "wompi": "wompi",
+  "shopify_payments": "tarjeta crédito",
+  "manual": "efectivo",
+  "cash": "efectivo",
+  "nequi": "nequi",
+  "daviplata": "daviplata",
+  "addi": "addi shopify",
+  "bold": "bold",
+  "sumas": "sumas shopify",
+};
 
 // Cache de payment_methods para resolver gateway → id sin query repetida
 let _pmCache = null;
@@ -736,7 +846,9 @@ async function resolvePaymentMethodId(env, gatewayName) {
       for (const a of (m.aliases || [])) _pmCache.set(a.toLowerCase(), m.id);
     }
   }
-  return _pmCache.get((gatewayName || "").toLowerCase()) || null;
+  const key = (gatewayName || "").toLowerCase();
+  // Buscar directo, o via alias de gateway Shopify
+  return _pmCache.get(key) || _pmCache.get(SHOPIFY_GATEWAY_ALIASES[key] || "") || null;
 }
 
 // ============ Enviar a WhatsApp ============
@@ -752,8 +864,6 @@ async function sendWhatsApp(env, phone, message) {
       }),
     }
   );
-  // Guarda el saliente en la base
-  await insertMessage(env, phone, { direction: "out", body: message, msg_type: "text" });
   return res.json();
 }
 
@@ -937,15 +1047,21 @@ async function importShopifyOnlineOrder(env, order) {
     if (rows.length > 0) return { ok: true, skipped: true, reason: "duplicate" };
   }
 
-  const ship = order.shipping_address || order.billing_address || {};
-  const email = order.email || null;
-  const rawPhone = ship.phone || order.phone || null;
+  const ship = order.shipping_address || {};
+  const bill = order.billing_address || {};
+  const addr = Object.keys(ship).length ? ship : bill; // preferir envío, caer a facturación
+  const cust = order.customer || {};
+  const email = order.email || order.contact_email || cust.email || null;
+  const rawPhone = addr.phone || order.phone || cust.phone || null;
   const phone = rawPhone ? rawPhone.replace(/\D/g, "").slice(-10) : null;
-  const customerName = ship.name || email || "Cliente Online";
+  const custFullName = addr.name || bill.name || (`${cust.first_name||""} ${cust.last_name||""}`).trim() || null;
+  const customerName = custFullName || email || "Cliente Online";
 
   // Buscar cliente en POS por email o teléfono, si no existe crearlo
   await findOrCreatePosCustomer(env, { email, phone, name: customerName,
-    address: ship.address1 || null, city: ship.city || null, depto: ship.province || null });
+    address: addr.address1 || bill.address1 || null,
+    city: addr.city || bill.city || null,
+    depto: addr.province || bill.province || null });
 
   const items = (order.line_items || []).map(li => ({
     name: li.title,
@@ -968,9 +1084,9 @@ async function importShopifyOnlineOrder(env, order) {
     customer_name:      customerName,
     customer_email:     email,
     customer_phone:     phone,
-    customer_address:   ship.address1 || null,
-    customer_city:      ship.city || null,
-    customer_depto:     ship.province || null,
+    customer_address:   addr.address1 || bill.address1 || null,
+    customer_city:      addr.city || bill.city || null,
+    customer_depto:     addr.province || bill.province || null,
     customer_doc:       null,
     items,
     subtotal,
@@ -979,9 +1095,9 @@ async function importShopifyOnlineOrder(env, order) {
     discount_type:      discount > 0 ? "fixed" : null,
     discount_value:     discount,
     sale_type:          "shopify",
-    payment_method:     order.payment_gateway || "online",
-    payment_method_id:  await resolvePaymentMethodId(env, order.payment_gateway),
-    payment_detail:     [{ method: order.payment_gateway || "online", amount: total }],
+    payment_method:     order.payment_gateway || order.payment_gateway_names?.[0] || "online",
+    payment_method_id:  await resolvePaymentMethodId(env, order.payment_gateway || order.payment_gateway_names?.[0]),
+    payment_detail:     [{ method: order.payment_gateway || order.payment_gateway_names?.[0] || "online", amount: total }],
     seller_name:        "Shopify Online",
     status:             "completada",
     store:              "bloom",
@@ -1013,16 +1129,19 @@ async function findOrCreatePosCustomer(env, { email, phone, name, address, city,
   }
 
   // Crear cliente nuevo
-  const parts = (name || "Cliente").trim().split(/\s+/);
+  const nameUp = (name || "Cliente Online").toUpperCase();
+  const parts = nameUp.trim().split(/\s+/);
   const payload = {
-    full_name: name || "Cliente Online",
-    name: parts[0] || "Cliente",
+    full_name: nameUp,
+    name: parts[0] || "CLIENTE",
     last_name: parts.slice(1).join(" ") || "",
     email: email || null,
     phone: phone || null,
     address: address || null,
     city: city || null,
     depto: depto || null,
+    doc: null,
+    doc_type: "CC",
     store: "bloom",
   };
   const cr = await fetch(`${sb}/rest/v1/customers`, {

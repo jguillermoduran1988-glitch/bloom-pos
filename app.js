@@ -109,22 +109,20 @@ function currentPipeline(){ return state.pipelines.find(p=>p.id===state.activePi
 
 // ---------- Chats ----------
 async function loadChats(){
-  const rows = await sbGet(`contacts?store=eq.${C.STORE}&order=created_at.desc&limit=${CHAT_PAGE}`);
-  for(const c of rows){
-    state.chats.set(c.phone,{
-      phone:c.phone,name:c.name||c.phone,stage:c.stage||"nueva",
-      pipeline_id:c.pipeline_id,tags:c.tags||[],
-      ref_source_type:c.ref_source_type,ref_headline:c.ref_headline,
-      ref_body:c.ref_body,ref_media_url:c.ref_media_url,
-      last:"",lastAt:c.created_at,unread:0
+  const rows = await fetch(`${C.WORKER_URL}/wa/conversations`).then(r=>r.json()).catch(()=>[]);
+  for(const conv of rows){
+    state.chats.set(conv.phone,{
+      phone:conv.phone, id:conv.id,
+      name:conv.contact_name||conv.phone,
+      stage:conv.stage||"nueva",
+      pipeline_id:conv.pipeline_id||null,
+      tags: typeof conv.contact_tags==="string" ? JSON.parse(conv.contact_tags||"[]") : (conv.contact_tags||[]),
+      ref_source_type:null, ref_headline:null, ref_body:null, ref_media_url:null,
+      last:conv.last_message||"", lastAt:conv.last_message_at||conv.updated_at,
+      unread:conv.unread_count||0, status:conv.status||"open",
     });
   }
-  await hydrateLast();
   renderChatList();
-}
-async function hydrateLast(){
-  const rows=await sbGet(`messages?store=eq.${C.STORE}&order=created_at.desc&limit=300&select=contact_phone,body,created_at`);
-  for(const m of rows){const c=state.chats.get(m.contact_phone); if(c&&!c.last){c.last=m.body;c.lastAt=m.created_at;}}
 }
 
 function renderChatList(){
@@ -174,38 +172,28 @@ async function openChat(phone){
   $("#headName").textContent=c.name;
   $("#headSub").textContent="+"+phone;
   renderChatList(); renderPanel();
+  const _convId=state.chats.get(phone)?.id||phone;
+  fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
 }
 function closeChat(){document.body.classList.remove("chat-open");state.active=null;$("#panel").classList.add("hidden");}
 
-// ---------- Mensajes (ventana + scroll infinito hacia arriba) ----------
+// ---------- Mensajes (desde D1 vía worker) ----------
 async function loadMessages(phone){
-  state.allLoaded = false; state.loadingMore = false; state.oldestLoaded = null;
-  const rows=await sbGet(`messages?contact_phone=eq.${phone}&order=created_at.desc&limit=${MSG_WINDOW}&select=body,direction,created_at,msg_type,media_url`);
-  state.messages=rows.reverse();
-  if(state.messages.length) state.oldestLoaded = state.messages[0].created_at;
-  if(rows.length < MSG_WINDOW) state.allLoaded = true;
+  state.allLoaded = true; state.loadingMore = false; state.oldestLoaded = null;
+  const convId = state.chats.get(phone)?.id || phone;
+  const rows = await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}/messages`).then(r=>r.json()).catch(()=>[]);
+  state.messages = rows.map(m=>({
+    body: m.body||"",
+    direction: m.direction==="outbound"?"out":"in",
+    created_at: m.ts||m.created_at,
+    msg_type: m.type||"text",
+    media_url: m.media_url||null,
+  }));
   renderMessages();
 }
 
-// Carga los mensajes ANTERIORES cuando subes al tope (mantiene la posición)
-async function loadOlderMessages(){
-  if(state.loadingMore || state.allLoaded || !state.active || !state.oldestLoaded) return;
-  state.loadingMore = true;
-  const box = $("#msgs");
-  const prevHeight = box.scrollHeight;          // para conservar la posición visual
-  const rows = await sbGet(
-    `messages?contact_phone=eq.${state.active}&created_at=lt.${encodeURIComponent(state.oldestLoaded)}&order=created_at.desc&limit=${MSG_WINDOW}&select=body,direction,created_at,msg_type,media_url`
-  );
-  if(!rows.length){ state.allLoaded = true; state.loadingMore = false; return; }
-  const older = rows.reverse();
-  state.messages = [...older, ...state.messages];
-  state.oldestLoaded = state.messages[0].created_at;
-  if(rows.length < MSG_WINDOW) state.allLoaded = true;
-  renderMessages(true);                          // re-render sin saltar al fondo
-  box.scrollTop = box.scrollHeight - prevHeight;  // mantiene dónde estabas leyendo
-  state.loadingMore = false;
-}
+async function loadOlderMessages(){ /* paginación futura via D1 offset */ }
 
 function msgNode(m){
   // Nota privada del vendedor — NUNCA se envía al cliente
@@ -298,13 +286,17 @@ async function addTag(tag){
   if(!tag||!c||(c.tags||[]).includes(tag))return;
   c.tags=[...(c.tags||[]),tag];
   renderTags(c); renderChatList();
-  await sbPatch(`contacts?phone=eq.${c.phone}`,{tags:c.tags});
+  await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(c.phone)}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
+  }).catch(()=>{});
 }
 async function removeTag(tag){
   const c=state.chats.get(state.active);
   c.tags=(c.tags||[]).filter(t=>t!==tag);
   renderTags(c); renderChatList();
-  await sbPatch(`contacts?phone=eq.${c.phone}`,{tags:c.tags});
+  await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(c.phone)}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
+  }).catch(()=>{});
 }
 $("#tagInput").addEventListener("keydown",e=>{
   if(e.key==="Enter"){const v=e.target.value.trim();if(v)addTag(v);e.target.value="";e.target.classList.remove("show");}
@@ -325,7 +317,9 @@ function renderStages(c){
 async function setStage(st){
   const c=state.chats.get(state.active); c.stage=st;
   renderStages(c); renderChatList();
-  await sbPatch(`contacts?phone=eq.${c.phone}`,{stage:st});
+  await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({stage:st})
+  }).catch(()=>{});
 }
 
 // ---------- Mover de embudo ----------
@@ -340,12 +334,15 @@ async function movePipeline(){
   const target=others[idx];
   c.pipeline_id=target.id; c.stage=target.stages[0];
   renderPanel(); renderChatList();
-  await sbPatch(`contacts?phone=eq.${c.phone}`,{pipeline_id:target.id,stage:c.stage});
+  await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({pipeline_id:target.id,stage:c.stage})
+  }).catch(()=>{});
 }
 
 // ---------- Modal crear/editar embudo ----------
 let editingStages=[];
 function openPipeModal(){
+  _editingPipeId=null;
   editingStages=["nueva","interesada","pagada"];
   $("#pipeModalTitle").textContent="Nuevo embudo";
   $("#pipeNameInput").value="";
@@ -367,11 +364,18 @@ async function savePipeline(){
   const name=$("#pipeNameInput").value.trim();
   const stages=editingStages.map(s=>s.trim()).filter(Boolean);
   if(!name||!stages.length){alert("Pon un nombre y al menos una etapa");return;}
-  const r=await sbPost("pipelines",{name,stages,store:C.STORE,position:state.pipelines.length});
-  const created=(await r.json())[0];
-  created.stages=stages;
-  state.pipelines.push(created);
-  closePipeModal(); renderPipeTabs();
+  if(_editingPipeId){
+    await sbPatch(`pipelines?id=eq.${_editingPipeId}`,{name,stages});
+    const p=state.pipelines.find(x=>String(x.id)===String(_editingPipeId));
+    if(p){p.name=name;p.stages=stages;}
+  } else {
+    const r=await sbPost("pipelines",{name,stages,store:C.STORE,position:state.pipelines.length});
+    const created=(await r.json())[0];
+    created.stages=stages;
+    state.pipelines.push(created);
+  }
+  _editingPipeId=null;
+  closePipeModal(); renderPipeTabs(); renderCfgPipelines();
 }
 
 // ---------- Enviar ----------
@@ -386,8 +390,8 @@ async function dispatch(text){
   appendMessage({body:text,direction:"out",created_at:now,msg_type:"text"});
   const c=state.chats.get(phone); c.last=text; c.lastAt=now; renderChatList();
   try{
-    await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({phone,message:text,store:C.STORE})});
+    await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({conversation_id:state.chats.get(phone)?.id||phone,phone,body:text})});
   }catch(e){console.error("envío:",e);}
 }
 
@@ -421,6 +425,142 @@ async function loadQuickReplies(){
     bar.appendChild(chip);
   }
 }
+// ---------- Config: pestañas POS / Chat ----------
+function cfgTab(name){
+  document.getElementById("cfgTabPOS").classList.toggle("on", name==="pos");
+  document.getElementById("cfgTabChat").classList.toggle("on", name==="chat");
+  document.getElementById("cfgPanePOS").style.display = name==="pos" ? "" : "none";
+  document.getElementById("cfgPaneChat").style.display = name==="chat" ? "" : "none";
+  if(name==="chat"){ renderCfgQuickReplies(); renderCfgPipelines(); }
+}
+
+// ---------- Config Chat: gestión de comandos ----------
+let _editingQrId = null;
+
+function renderCfgQuickReplies(){
+  const box = document.getElementById("cfgQrList"); if(!box) return;
+  box.innerHTML = "";
+  if(!quickReplies.length){
+    box.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:4px 0">Aún no hay comandos. Crea el primero abajo.</div>`;
+    return;
+  }
+  for(const q of quickReplies){
+    const row = el("div","");
+    row.style.cssText = "display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px";
+    row.innerHTML = `
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-weight:700;color:var(--accent);font-size:14px">${esc(q.command)}</span>
+          <span style="font-size:12px;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:1px 8px">${esc(q.label)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word">${esc(q.message_template)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+        <button onclick="editCfgQuickReply('${q.id}')" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px;color:var(--text-dim)">
+          <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">edit</span>
+        </button>
+        <button onclick="deleteCfgQuickReply('${q.id}')" style="background:none;border:1px solid #fca5a5;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px;color:#b91c1c">
+          <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">delete</span>
+        </button>
+      </div>`;
+    box.appendChild(row);
+  }
+}
+
+function editCfgQuickReply(id){
+  const q = quickReplies.find(x=>String(x.id)===String(id)); if(!q) return;
+  _editingQrId = id;
+  document.getElementById("cfgQrCommand").value = q.command;
+  document.getElementById("cfgQrLabel").value = q.label;
+  document.getElementById("cfgQrTemplate").value = q.message_template;
+  document.getElementById("cfgQrFormTitle").textContent = "Editar comando";
+  document.getElementById("cfgQrCancelBtn").style.display = "";
+  document.getElementById("cfgQrForm").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function cancelCfgQuickReply(){
+  _editingQrId = null;
+  document.getElementById("cfgQrCommand").value = "";
+  document.getElementById("cfgQrLabel").value = "";
+  document.getElementById("cfgQrTemplate").value = "";
+  document.getElementById("cfgQrFormTitle").textContent = "Nuevo comando";
+  document.getElementById("cfgQrCancelBtn").style.display = "none";
+}
+
+async function saveCfgQuickReply(){
+  const command = document.getElementById("cfgQrCommand").value.trim();
+  const label = document.getElementById("cfgQrLabel").value.trim();
+  const template = document.getElementById("cfgQrTemplate").value.trim();
+  if(!command || !label || !template){ alert("Completa todos los campos"); return; }
+  if(!command.startsWith("/")){ alert("El comando debe empezar con /"); return; }
+  const btn = document.getElementById("cfgQrSaveBtn");
+  btn.disabled = true; btn.textContent = "Guardando…";
+  try{
+    if(_editingQrId){
+      await sbPatch(`quick_replies?id=eq.${_editingQrId}`,{command,label,message_template:template});
+      const idx = quickReplies.findIndex(x=>String(x.id)===String(_editingQrId));
+      if(idx>=0) quickReplies[idx]={...quickReplies[idx],command,label,message_template:template};
+    } else {
+      const pos = quickReplies.length;
+      const res = await sbPost("quick_replies",{store:C.STORE,command,label,message_template:template,position:pos});
+      const created = await res.json();
+      if(created && created[0]) quickReplies.push(created[0]);
+    }
+    cancelCfgQuickReply();
+    renderCfgQuickReplies();
+    loadQuickReplies(); // refresca la barra de comandos en el chat
+  } catch(e){ alert("Error guardando: "+e.message); }
+  finally{ btn.disabled=false; btn.textContent="Guardar"; }
+}
+
+async function deleteCfgQuickReply(id){
+  if(!confirm("¿Eliminar este comando?")) return;
+  await sbDelete(`quick_replies?id=eq.${id}`);
+  quickReplies = quickReplies.filter(x=>String(x.id)!==String(id));
+  renderCfgQuickReplies();
+  loadQuickReplies();
+}
+
+// ---------- Config Chat: gestión de embudos ----------
+function renderCfgPipelines(){
+  const box = document.getElementById("cfgPipeList"); if(!box) return;
+  box.innerHTML = "";
+  if(!state.pipelines.length){ box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Sin embudos. Crea uno.</div>'; return; }
+  for(const p of state.pipelines){
+    const row = document.createElement("div");
+    row.style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px";
+    const stages = (p.stages||[]).map(s=>`<span style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-size:11px">${esc(s)}</span>`).join(" ");
+    row.innerHTML=`<div style="flex:1"><div style="font-weight:600;font-size:14px;margin-bottom:4px">${esc(p.name)}</div><div style="display:flex;gap:4px;flex-wrap:wrap">${stages}</div></div>`;
+    const editBtn = document.createElement("button");
+    editBtn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">edit</span>';
+    editBtn.style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 8px;cursor:pointer;color:var(--text-dim)";
+    editBtn.onclick=()=>openEditPipeModal(p);
+    const delBtn = document.createElement("button");
+    delBtn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">delete</span>';
+    delBtn.style="background:none;border:1px solid #fca5a5;border-radius:7px;padding:5px 8px;cursor:pointer;color:#b91c1c";
+    delBtn.onclick=()=>deletePipeline(p.id);
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    box.appendChild(row);
+  }
+}
+let _editingPipeId = null;
+function openEditPipeModal(p){
+  _editingPipeId = p ? p.id : null;
+  editingStages = p ? [...(p.stages||[])] : ["nueva","interesada","pagada"];
+  document.getElementById("pipeModalTitle").textContent = p ? "Editar embudo" : "Nuevo embudo";
+  document.getElementById("pipeNameInput").value = p ? p.name : "";
+  renderStageEdit();
+  document.getElementById("pipeModal").classList.add("show");
+}
+async function deletePipeline(id){
+  if(!confirm("¿Eliminar este embudo?")) return;
+  await sbDelete(`pipelines?id=eq.${id}`);
+  state.pipelines = state.pipelines.filter(p=>String(p.id)!==String(id));
+  if(!state.pipelines.length){ /* sin embudos */ }
+  else if(state.activePipeline===id) state.activePipeline = state.pipelines[0].id;
+  renderPipeTabs(); renderCfgPipelines(); renderChatList();
+}
+
 // expandir comandos al escribir
 function expandCommand(text){
   if(!text.startsWith("/"))return text;
@@ -887,13 +1027,47 @@ function openCashierPick(){
       const lock = c.require_pin ? " <span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-2px\">lock</span>" : "";
       const av = c.photo_url?`<img src="${esc(c.photo_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px">`:"👤 ";
       row.innerHTML=`<div class="r-nm">${av}${esc(c.name)}${lock}</div>`;
-      row.onclick=()=>{ pos.cashier=c; renderCashierBtn(); closeCashierPick(); };
+      row.onclick=()=>_initCashierSwitch(c);
       box.appendChild(row);
     }
   }
   $("#cashierModal").classList.add("show");
 }
 function closeCashierPick(){ $("#cashierModal").classList.remove("show"); }
+
+// Cambio de cajero con confirmación y PIN
+let _pendingCashier=null;
+function _initCashierSwitch(c){
+  closeCashierPick();
+  _pendingCashier=c;
+  if(!pos.cashier || pos.cashier.id===c.id){ _doCashierSwitch(); return; }
+  // Hay cajero activo distinto → pedir confirmación
+  const modal=document.getElementById("switchCashierModal");
+  document.getElementById("scFrom").textContent=pos.cashier.name;
+  document.getElementById("scTo").textContent=c.name;
+  modal.style.display="flex";
+}
+function closeSwitchCashierModal(){
+  document.getElementById("switchCashierModal").style.display="none";
+  _pendingCashier=null;
+}
+function confirmCashierSwitch(){
+  document.getElementById("switchCashierModal").style.display="none";
+  _doCashierSwitch();
+}
+function _doCashierSwitch(){
+  const c=_pendingCashier; if(!c) return;
+  if(c.require_pin || c.pin){
+    window._pinForCashier=c;
+    _pinResolve=(ok)=>{ if(ok){ pos.cashier=c; renderCashierBtn(); } _pendingCashier=null; };
+    $("#pinInput").value=""; $("#pinError").style.display="none";
+    $("#pinMsg").textContent=`Clave de ${c.name} (4 dígitos)`;
+    $("#pinModal").classList.add("show");
+    setTimeout(()=>$("#pinInput").focus(),100);
+  } else {
+    pos.cashier=c; renderCashierBtn(); _pendingCashier=null;
+  }
+}
 
 // PIN: se pide en cada venta si el cajero lo requiere
 let _pinResolve=null;
@@ -909,8 +1083,10 @@ function askPin(){
 }
 function confirmPin(){
   const val=$("#pinInput").value.trim();
-  if(val===String(pos.cashier.pin)){
+  const target=window._pinForCashier||pos.cashier;
+  if(val===String(target.pin)){
     $("#pinModal").classList.remove("show");
+    window._pinForCashier=null;
     if(_pinResolve){ _pinResolve(true); _pinResolve=null; }
   }else{
     $("#pinError").style.display="block";
@@ -918,6 +1094,7 @@ function confirmPin(){
 }
 function closePin(){
   $("#pinModal").classList.remove("show");
+  window._pinForCashier=null;
   if(_pinResolve){ _pinResolve(false); _pinResolve=null; }
 }
 
@@ -1855,6 +2032,15 @@ async function loadSettings(){
   const rows=await sbGet(`pos_settings?store=eq.${C.STORE}&limit=1`);
   pos.settings = (rows && rows[0]) ? rows[0] : { store:C.STORE, shopify_draft:true, receipt_enabled:false,
     receipt_business:"Bloom", receipt_nit:"", receipt_address:"", receipt_phone:"", receipt_footer:"¡Gracias por tu compra!", iva_rate:19 };
+  // Supabase → localStorage: fuente de verdad para datos que no deben perderse con el caché
+  const row=rows&&rows[0];
+  if(row?.goal_plans && Object.keys(row.goal_plans).length){
+    if(row.goal_plans.plans) localStorage.setItem("bloom_goal_plans",JSON.stringify(row.goal_plans.plans));
+    if(row.goal_plans.monthly) localStorage.setItem("bloom_goal_monthly",JSON.stringify(row.goal_plans.monthly));
+  }
+  if(row?.label_presets && row.label_presets.length){
+    localStorage.setItem(_LBL_PRESETS_KEY,JSON.stringify(row.label_presets));
+  }
 }
 function renderSettings(){
   const s=pos.settings; if(!s) return;
@@ -1880,10 +2066,13 @@ async function saveSettings(){
   await sbPatch(`pos_settings?store=eq.${C.STORE}`, patch);
 }
 
+// Fecha local (no UTC) para evitar desfase de timezone
+function _localDate(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+
 // ---- Meta de ventas del día ----
 async function loadGoalBar(){
   const bar=$("#goalBar"); if(bar) bar.style.display="block";
-  const today=new Date().toISOString().slice(0,10);
+  const today=_localDate();
   const monthKey=today.slice(0,7);
   const mode=document.getElementById("goalViewMode")?.value||"dia";
   let plans={};
@@ -1909,10 +2098,90 @@ function renderGoalBar(goal,total,mode){
   const bar=$("#goalBar"); if(!bar) return;
   bar.style.display="block";
   if(total===undefined) total=0; if(goal===undefined) goal=0;
-  const pct=goal>0?Math.min(100,Math.round(total/goal*100)):0;
+  const realPct=goal>0?Math.round(total/goal*100):0;
+  const pct=Math.min(100,realPct);
   const prog=$("#goalProgress"); if(prog){ prog.style.width=pct+"%"; prog.style.background=pct>=100?"#27ae60":"var(--accent)"; }
   const txt=$("#goalText");
-  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta — configura en Config";
+  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta";
+  if(mode==="dia"&&goal>0&&realPct>=100){
+    _celebrateGoal(realPct,_localDate());
+  }
+}
+
+const _BLOOM_MSGS=[
+  // Primera semana (días 1–7)
+  "✨ ¡Así se empieza un gran mes! Cada meta diaria cumplida es una prueba de que cuando trabajamos juntas, todo florece. ¡Vamos por más! 💖",
+  "🌷 Los grandes resultados nacen de pequeños logros repetidos. Hoy dimos un paso más hacia nuestras metas. ¡Felicitaciones equipo Bloom!",
+  "💪 El éxito no llega al final del mes, se construye todos los días. Gracias por ponerle compromiso, energía y corazón a esta jornada.",
+  "🌸 Hoy sembramos una victoria. Sigamos cuidando cada detalle porque las grandes historias empiezan exactamente así.",
+  "💕 Qué orgullo ver cómo comenzamos el mes. La actitud de hoy es la que marcará los resultados de mañana.",
+  // Mitad del mes (días 8–22)
+  "🚀 Ya recorrimos la mitad del camino y seguimos demostrando de qué está hecho este equipo. ¡No bajemos el ritmo!",
+  "🌼 Cada meta cumplida confirma que el esfuerzo constante siempre tiene recompensa. ¡Excelente trabajo Bloom!",
+  "💖 No importa qué tan desafiante sea el mes, cuando trabajamos unidas siempre encontramos la manera de lograrlo.",
+  "✨ Hoy no solo cumplimos una meta; fortalecimos la confianza en nosotras mismas. Sigamos creciendo.",
+  "🌷 El talento abre puertas, pero la disciplina las mantiene abiertas. Gracias por dar lo mejor en cada jornada.",
+  // Última semana (días 23–fin)
+  "🔥 Estamos en la recta final y cada meta cumplida nos acerca a un cierre extraordinario. ¡No aflojemos ahora!",
+  "🌸 Todo el esfuerzo de este mes empieza a reflejarse en los resultados. Gracias por hacer que Bloom siga creciendo cada día.",
+  "💕 Los últimos días también cuentan. Muchas veces el cierre del mes define una gran historia. ¡Vamos por un final increíble!",
+  "✨ Cada venta, cada cliente feliz y cada objetivo alcanzado son el reflejo del compromiso de este gran equipo. ¡Felicitaciones!",
+  "🌷 Terminamos el día demostrando que cuando trabajamos con pasión, las metas dejan de ser un sueño y se convierten en resultados. ¡Gracias por hacer florecer a Bloom! 💖",
+];
+
+function _celebrateGoal(realPct,today){
+  try{
+    if(localStorage.getItem("bloom_celebrated_day")===today) return;
+    localStorage.setItem("bloom_celebrated_day",today);
+  }catch{}
+  const dt=new Date(today+"T12:00:00");
+  const day=dt.getDate();
+  const lastDay=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
+  if(day===lastDay){
+    _showGoalPopup(null,"Cerramos el mes demostrando que la constancia siempre florece. Gracias por hacer de Bloom un lugar donde los sueños se convierten en resultados. 💖","🌸 ¡Cerramos el mes con todo!");
+    return;
+  }
+  let pool;
+  if(day<=7) pool=_BLOOM_MSGS.slice(0,5);
+  else if(day<=22) pool=_BLOOM_MSGS.slice(5,10);
+  else pool=_BLOOM_MSGS.slice(10,15);
+  const base=pool[day%pool.length];
+  let badge=null;
+  if(realPct>110) badge="✨ ¡Día legendario! Hoy Bloom brilló más fuerte que nunca.";
+  else if(realPct>=100) badge="🌸 ¡Hoy superamos las expectativas!";
+  _showGoalPopup(badge,base);
+}
+
+function _showGoalPopup(badge,msg,title="🌸 ¡Meta del día cumplida!"){
+  const modal=document.getElementById("goalCelebrationModal");
+  if(!modal) return;
+  document.getElementById("gcTitle").textContent=title;
+  const bdg=document.getElementById("gcBadge");
+  if(badge){ bdg.textContent=badge; bdg.style.display="inline-block"; }
+  else bdg.style.display="none";
+  document.getElementById("gcMsg").textContent=msg;
+  modal.style.display="flex";
+}
+
+function closeGoalCelebration(){
+  const m=document.getElementById("goalCelebrationModal");
+  if(m) m.style.display="none";
+}
+let _previewIdx=0;
+function _previewGoalCelebration(){
+  const previews=[
+    // base semana 1–5
+    ..._BLOOM_MSGS.map((msg,i)=>({badge:null,msg,title:"🌸 ¡Meta del día cumplida!"})),
+    // badge 100–110%
+    {badge:"🌸 ¡Hoy superamos las expectativas!",msg:_BLOOM_MSGS[0],title:"🌸 ¡Meta del día cumplida!"},
+    // badge >110%
+    {badge:"✨ ¡Día legendario! Hoy Bloom brilló más fuerte que nunca.",msg:_BLOOM_MSGS[5],title:"🌸 ¡Meta del día cumplida!"},
+    // cierre de mes
+    {badge:null,msg:"Cerramos el mes demostrando que la constancia siempre florece. Gracias por hacer de Bloom un lugar donde los sueños se convierten en resultados. 💖",title:"🌸 ¡Cerramos el mes con todo!"},
+  ];
+  const p=previews[_previewIdx%previews.length];
+  _previewIdx++;
+  _showGoalPopup(p.badge,p.msg,p.title);
 }
 
 // ====================================================================
@@ -2023,6 +2292,38 @@ function openGoalPlanner(){
   document.getElementById("gpGoal").value="";
   document.getElementById("gpResult").innerHTML="";
   modal.style.display="flex";
+  _checkExistingPlan();
+}
+function _checkExistingPlan(){
+  const month=parseInt(document.getElementById("gpMonth").value);
+  const year=parseInt(document.getElementById("gpYear").value);
+  const monthKey=`${year}-${String(month).padStart(2,"0")}`;
+  document.getElementById("gpGoal").value="";
+  document.getElementById("gpResult").innerHTML="";
+  try{
+    const metas=JSON.parse(localStorage.getItem("bloom_goal_monthly")||"{}");
+    const plans=JSON.parse(localStorage.getItem("bloom_goal_plans")||"{}");
+    const savedPlan=plans[monthKey];
+    const badge=document.getElementById("gpSavedBadge");
+    let savedGoal=metas[monthKey]||0;
+    if(!savedGoal&&savedPlan) savedGoal=Object.values(savedPlan).reduce((s,v)=>s+v,0);
+    if(savedGoal&&savedPlan){
+      if(badge){
+        badge.style.display="flex";
+        document.getElementById("gpSavedBadgeText").textContent=`Plan guardado — ${money(savedGoal)}`;
+        badge._savedGoal=savedGoal; // para usarlo en cargarPlanGuardado
+      }
+    } else {
+      if(badge) badge.style.display="none";
+    }
+  }catch{}
+}
+function cargarPlanGuardado(){
+  const badge=document.getElementById("gpSavedBadge");
+  const savedGoal=badge?._savedGoal||0;
+  if(!savedGoal) return;
+  document.getElementById("gpGoal").value=savedGoal;
+  computeGoalPlan();
 }
 function closeGoalPlanner(){ document.getElementById("goalPlannerModal").style.display="none"; }
 
@@ -2198,6 +2499,11 @@ function saveMonthPlan(){
     const plans=JSON.parse(localStorage.getItem("bloom_goal_plans")||"{}");
     plans[monthKey]=dayTargets;
     localStorage.setItem("bloom_goal_plans",JSON.stringify(plans));
+    const metas=JSON.parse(localStorage.getItem("bloom_goal_monthly")||"{}");
+    metas[monthKey]=goal;
+    localStorage.setItem("bloom_goal_monthly",JSON.stringify(metas));
+    // Supabase backup — persiste aunque se limpie el caché
+    sbPatch(`pos_settings?store=eq.${C.STORE}`,{goal_plans:{plans,monthly:metas}});
   }catch{}
   loadGoalBar(); // refresca la barra del mes en curso (no pisa otro mes)
   closeGoalPlanner();
@@ -2525,7 +2831,10 @@ function _lblApplyFields(d){
   });
 }
 function _lblGetPresets(){ try{ return JSON.parse(localStorage.getItem(_LBL_PRESETS_KEY)||"[]"); }catch{ return []; } }
-function _lblSavePresets(list){ try{ localStorage.setItem(_LBL_PRESETS_KEY,JSON.stringify(list)); }catch{} }
+function _lblSavePresets(list){
+  try{ localStorage.setItem(_LBL_PRESETS_KEY,JSON.stringify(list)); }catch{}
+  sbPatch(`pos_settings?store=eq.${C.STORE}`,{label_presets:list});
+}
 
 function renderLabelPresetSelect(){
   const sel=document.getElementById("lblPresetSelect"); if(!sel) return;
@@ -2829,7 +3138,7 @@ async function loadSalesHistory(){
   const box=$("#salesHistory"); if(!box) return;
   box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Cargando…</div>';
   const q=($("#salesSearch")||{value:""}).value.trim();
-  const fields = "select=id,shopify_order_name,shopify_order_id,total,status,sale_type,created_at,customer_name,customer_doc,customer_phone,customer_email,alegra_invoice,items";
+  const fields = "select=id,shopify_order_name,shopify_order_id,total,status,sale_type,created_at,customer_name,customer_doc,customer_phone,customer_email,alegra_invoice,items,cashier_name,seller_name";
   let url=`sales?store=eq.${C.STORE}&order=created_at.desc&limit=80&${fields}`;
   if(q){
     const enc=encodeURIComponent(q);
@@ -2844,20 +3153,28 @@ async function loadSalesHistory(){
     const fecha=new Date(s.created_at).toLocaleString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
     const card=el("div","sale-card");
     const esEnvio = s.sale_type==="envios" || s.sale_type==="envíos";
+    const esShopify = s.sale_type==="shopify";
+    const tieneEtiqueta = esEnvio || esShopify;
     const cancelada = s.status==="cancelada";
     const statusBadge = cancelada?'<span style="font-size:11px;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:1px 6px;margin-left:4px">Cancelada</span>':'';
+    const canalBadge = esShopify
+      ? `<span class="material-symbols-outlined" style="font-size:13px;vertical-align:-3px;color:#96bf48">shopping_bag</span> Shopify`
+      : esEnvio
+        ? `<span class="material-symbols-outlined" style="font-size:13px;vertical-align:-3px;color:#25d366">chat</span> WhatsApp`
+        : `<span class="material-symbols-outlined" style="font-size:13px;vertical-align:-3px">storefront</span> Tienda`;
     card.innerHTML=`
       <div class="sale-card-main">
         <div>
-          <div><b>${money(s.total)}</b>${statusBadge} <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px;color:#25d366\">chat</span> WhatsApp":"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda"}</span></div>
+          <div><b>${money(s.total)}</b>${statusBadge} <span style="font-size:11px;color:var(--text-dim)">${canalBadge}</span></div>
           <div style="font-size:12px;color:var(--text-dim)">${esc(s.customer_name||"Sin cliente")}${s.customer_doc?' · '+esc(s.customer_doc):''}${s.customer_phone?' · '+esc(s.customer_phone):''} · ${fecha}</div>
           ${s.shopify_order_name?`<div style="font-size:11px;color:var(--text-dim)">${esc(s.shopify_order_name)}</div>`:''}
+          ${s.cashier_name?`<div style="font-size:11px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px">badge</span> ${esc(s.cashier_name)}${s.seller_name&&s.seller_name!==s.cashier_name?' · '+esc(s.seller_name):''}</div>`:''}
           ${s.alegra_invoice?`<div style="font-size:11px;color:#1d8a5e">✓ Factura Alegra: ${esc(s.alegra_invoice)}</div>`:""}
         </div>
         <button class="sale-menu-btn" onclick="toggleSaleMenu('${s.id}')">⋮</button>
       </div>
       <div class="sale-menu" id="saleMenu-${s.id}">
-        ${esEnvio?`<button onclick="printLabel('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">label</span> Imprimir etiqueta</button>`:""}
+        ${tieneEtiqueta?`<button onclick="printLabel('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">label</span> Imprimir etiqueta</button>`:""}
         <button onclick="invoiceAlegra('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">description</span> Crear factura Alegra</button>
         <button onclick="invoiceSiigo('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">receipt</span> Crear factura Siigo</button>
       </div>`;
