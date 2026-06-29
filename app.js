@@ -2074,7 +2074,7 @@ function renderGoalPlanResult(allDays, weights, goal, allHolidays){
     const isHol=!!d.holiday;
     const isSun=d.dw===0;
     const closed=!d.open;
-    return `<tr class="gp-row${closed?" gp-closed":""}" data-day="${d.d}" data-open="${d.open?1:0}">
+    return `<tr class="gp-row${closed?" gp-closed":""}" data-day="${d.iso}" data-open="${d.open?1:0}">
       <td style="padding:5px 8px;font-weight:600;color:var(--text-dim);font-size:12px">${d.d}</td>
       <td style="padding:5px 8px;font-size:12px">${DAYS_ES[d.dw]}</td>
       <td style="padding:5px 8px;font-size:12px;color:${isHol?"#c0392b":"var(--text)"}">${isHol?`🗓 ${d.holiday.n}`:isSun?"☀️ Domingo":""}</td>
