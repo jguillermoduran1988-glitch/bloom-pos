@@ -2161,27 +2161,72 @@ function printLabels(){
 }
 
 const _LBL_FIELDS=["lblSize","lblFont","lblMTop","lblMBottom","lblMLeft","lblMRight","lblShowStore","lblShowName","lblShowVariant","lblShowPrice","lblShowBarcode","lblFsStore","lblFsName","lblFsVariant","lblFsPrice","lblBcH"];
-function saveLabelDefaults(){
+const _LBL_PRESETS_KEY="bloom_label_presets";
+
+function _lblReadFields(){
   const d={};
   _LBL_FIELDS.forEach(id=>{
-    const el=document.getElementById(id);
-    if(!el) return;
+    const el=document.getElementById(id); if(!el) return;
     d[id]=el.type==="checkbox"?el.checked:el.value;
   });
-  try{ localStorage.setItem("bloom_label_defaults",JSON.stringify(d)); }catch{}
-  const btn=document.querySelector('[onclick="saveLabelDefaults()"]');
-  if(btn){ const orig=btn.innerHTML; btn.textContent="✓ Guardado"; setTimeout(()=>btn.innerHTML=orig,1500); }
+  return d;
+}
+function _lblApplyFields(d){
+  _LBL_FIELDS.forEach(id=>{
+    if(!(id in d)) return;
+    const el=document.getElementById(id); if(!el) return;
+    if(el.type==="checkbox") el.checked=d[id];
+    else el.value=d[id];
+  });
+}
+function _lblGetPresets(){ try{ return JSON.parse(localStorage.getItem(_LBL_PRESETS_KEY)||"[]"); }catch{ return []; } }
+function _lblSavePresets(list){ try{ localStorage.setItem(_LBL_PRESETS_KEY,JSON.stringify(list)); }catch{} }
+
+function renderLabelPresetSelect(){
+  const sel=document.getElementById("lblPresetSelect"); if(!sel) return;
+  const presets=_lblGetPresets();
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— Seleccionar diseño —</option>'+
+    presets.map((p,i)=>`<option value="${i}"${String(i)===cur?` selected`:""}>${esc(p.name)}</option>`).join('');
+}
+function saveLabelPreset(){
+  const nameEl=document.getElementById("lblPresetName"); if(!nameEl) return;
+  const name=(nameEl.value||"").trim();
+  if(!name){ nameEl.focus(); return; }
+  const presets=_lblGetPresets();
+  const existing=presets.findIndex(p=>p.name.toLowerCase()===name.toLowerCase());
+  const entry={name, fields:_lblReadFields()};
+  if(existing>=0) presets[existing]=entry;
+  else presets.push(entry);
+  _lblSavePresets(presets);
+  renderLabelPresetSelect();
+  // Seleccionar el recién guardado
+  const idx=_lblGetPresets().findIndex(p=>p.name.toLowerCase()===name.toLowerCase());
+  const sel=document.getElementById("lblPresetSelect");
+  if(sel&&idx>=0) sel.value=String(idx);
+  nameEl.value="";
+}
+function loadLabelPreset(){
+  const sel=document.getElementById("lblPresetSelect"); if(!sel||sel.value==="") return;
+  const presets=_lblGetPresets();
+  const preset=presets[parseInt(sel.value)];
+  if(preset) _lblApplyFields(preset.fields);
+}
+function deleteLabelPreset(){
+  const sel=document.getElementById("lblPresetSelect"); if(!sel||sel.value==="") return;
+  const presets=_lblGetPresets();
+  const idx=parseInt(sel.value);
+  const name=presets[idx]?.name;
+  if(!name||!confirm(`¿Eliminar el diseño "${name}"?`)) return;
+  presets.splice(idx,1);
+  _lblSavePresets(presets);
+  renderLabelPresetSelect();
 }
 function loadLabelDefaults(){
-  try{
-    const d=JSON.parse(localStorage.getItem("bloom_label_defaults")||"{}");
-    _LBL_FIELDS.forEach(id=>{
-      if(!(id in d)) return;
-      const el=document.getElementById(id); if(!el) return;
-      if(el.type==="checkbox") el.checked=d[id];
-      else el.value=d[id];
-    });
-  }catch{}
+  // Carga el primer preset si existe, para mantener compatibilidad
+  const presets=_lblGetPresets();
+  if(presets.length) _lblApplyFields(presets[0].fields);
+  renderLabelPresetSelect();
 }
 
 // Genera SKU único — verifica contra catálogo + lote actual para evitar colisiones
