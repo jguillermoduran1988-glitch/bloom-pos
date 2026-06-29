@@ -1881,17 +1881,13 @@ async function saveSettings(){
 }
 
 // ---- Meta de ventas del día ----
-function saveSalesGoal(){
-  const v=parseInt($("#setSalesGoal")?.value)||0;
-  localStorage.setItem("bloom_sales_goal", v);
-  renderGoalBar();
-}
 async function loadGoalBar(){
-  const goal=parseInt(localStorage.getItem("bloom_sales_goal"))||0;
-  if($("#setSalesGoal")) $("#setSalesGoal").value=goal||"";
   const bar=$("#goalBar"); if(bar) bar.style.display="block";
-  if(!goal){ renderGoalBar(0,0); return; }
   const today=new Date().toISOString().slice(0,10);
+  const monthKey=today.slice(0,7);
+  let goal=0;
+  try{ const plans=JSON.parse(localStorage.getItem("bloom_goal_plans")||"{}"); goal=plans[monthKey]?.[today]||0; }catch{}
+  if(!goal){ renderGoalBar(0,0); return; }
   const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00&select=total&status=eq.completada`);
   const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
   renderGoalBar(goal,total);
@@ -1904,8 +1900,8 @@ function renderGoalBar(goal,total){
   const pct=goal>0?Math.min(100,Math.round(total/goal*100)):0;
   const prog=$("#goalProgress"); if(prog) prog.style.width=pct+"%";
   const txt=$("#goalText");
-  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta — toca 📈 para planear";
-  if(prog) prog.style.background = pct>=100?"#27ae60":"var(--accent)";
+  if(txt) txt.textContent=goal>0?`${money(total)} / ${money(goal)} (${pct}%)`:"Sin meta";
+  if(prog) prog.style.background=pct>=100?"#27ae60":"var(--accent)";
 }
 
 // ====================================================================
@@ -2024,6 +2020,8 @@ async function computeGoalPlan(){
   const month=parseInt(document.getElementById("gpMonth").value);
   const year=parseInt(document.getElementById("gpYear").value);
   if(!goal||!month||!year){ alert("Ingresa meta, mes y año"); return; }
+  const now=new Date(); const planStart=new Date(year,month-1,1);
+  if(planStart<new Date(now.getFullYear(),now.getMonth(),1)){ alert("No se puede planificar un mes que ya pasó."); return; }
 
   const history=await _loadSalesHistory();
   const weights=_dayWeights(history);
@@ -2112,7 +2110,7 @@ function renderGoalPlanResult(allDays, weights, goal, allHolidays){
     </div>
     <div style="margin-top:12px;padding:10px;background:var(--accent-soft);border-radius:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
       <span>Meta mensual: <b>${money(goal)}</b></span>
-      <button onclick="applyDailyGoal()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Aplicar meta de hoy</button>
+      <button onclick="saveMonthPlan()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Guardar plan</button>
     </div>`;
 
   // Guardar estado mutable de días
@@ -2131,28 +2129,42 @@ function toggleGpDay(iso, open, goal){
     const row=document.querySelector(`tr[data-day="${d.iso}"]`);
     if(!row) return;
     const meta=d.open ? Math.round(basePerUnit*window._gpWeights[d.dw]/1000)*1000 : 0;
-    const td=row.querySelectorAll("td")[3];
-    if(td){ td.textContent=d.open?money(meta):"—"; td.style.color=d.open?"var(--accent)":"var(--text-dim)"; }
+    const tds=row.querySelectorAll("td");
+    if(tds[3]){ tds[3].textContent=d.open?money(meta):"—"; tds[3].style.color=d.open?"var(--accent)":"var(--text-dim)"; }
+    // Sincronizar checkbox de la fila con el estado real
+    const cb=row.querySelector("input[type=checkbox]");
+    if(cb) cb.checked=d.open;
+    const lbl=row.querySelector("label");
+    if(lbl){ const span=lbl.querySelector("span"); if(!span){ lbl.childNodes[lbl.childNodes.length-1].textContent=d.open?" abierto":" incluir"; } }
     row.classList.toggle("gp-closed",!d.open);
   });
   const cnt=document.getElementById("gpOpenCount");
   if(cnt) cnt.textContent=openDays.length;
 }
 
-function applyDailyGoal(){
-  if(!window._gpDays) return;
-  const today=new Date().toISOString().slice(0,10);
-  const d=window._gpDays.find(x=>x.iso===today);
-  if(!d||!d.open){ alert("Hoy está marcado como día cerrado en el plan."); return; }
+function saveMonthPlan(){
+  if(!window._gpDays||!window._gpWeights) return;
+  const goal=parseInt((document.getElementById("gpGoal").value||"").replace(/\D/g,""))||0;
+  const month=parseInt(document.getElementById("gpMonth").value);
+  const year=parseInt(document.getElementById("gpYear").value);
+  const monthKey=`${year}-${String(month).padStart(2,"0")}`;
   const openDays=window._gpDays.filter(x=>x.open);
   const totalWeight=openDays.reduce((s,x)=>s+window._gpWeights[x.dw],0)||1;
-  const goal=parseInt((document.getElementById("gpGoal").value||"").replace(/\D/g,""))||0;
   const basePerUnit=goal/totalWeight;
-  const todayGoal=Math.round(basePerUnit*window._gpWeights[d.dw]/1000)*1000;
-  localStorage.setItem("bloom_sales_goal", todayGoal);
-  renderGoalBar();
+  const dayTargets={};
+  for(const d of window._gpDays){
+    if(!d.open) continue;
+    dayTargets[d.iso]=Math.round(basePerUnit*window._gpWeights[d.dw]/1000)*1000;
+  }
+  try{
+    const plans=JSON.parse(localStorage.getItem("bloom_goal_plans")||"{}");
+    plans[monthKey]=dayTargets;
+    localStorage.setItem("bloom_goal_plans",JSON.stringify(plans));
+  }catch{}
+  loadGoalBar(); // refresca la barra del mes en curso (no pisa otro mes)
   closeGoalPlanner();
-  alert(`✓ Meta del día aplicada: ${money(todayGoal)}`);
+  const MONTHS_ES2=["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  alert(`✓ Plan de ${MONTHS_ES2[month]} ${year} guardado — ${openDays.length} días, meta ${money(goal)}`);
 }
 
 // Importar Excel histórico desde el navegador
