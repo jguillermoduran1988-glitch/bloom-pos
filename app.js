@@ -817,32 +817,61 @@ function renderPendingBadge(){
 }
 
 function saveOfflineSale(orderPayload, salePayload){
+  const ref="offline_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);
   const q=_pendingLoad();
-  q.push({ id:Date.now(), orderPayload, salePayload, ts:Date.now() });
+  // ref viaja a Shopify (como note) y a Supabase (como shopify_order_name si no hay otro)
+  q.push({ id:ref, ref, orderPayload:{...orderPayload, offline_ref:ref}, salePayload, ts:Date.now(),
+           shopify_done:false, shopify_order_id:null, shopify_order_name:null });
   _pendingSave(q);
   renderPendingBadge();
 }
 
+let _syncing=false;
 async function syncPendingSales(){
+  if(_syncing || !navigator.onLine) return;
   const q=_pendingLoad();
-  if(!q.length || !navigator.onLine) return;
+  if(!q.length) return;
+  _syncing=true;
   const badge=$("#pendingBadge");
   if(badge) badge.textContent="Sincronizando…";
+
   for(const p of [...q]){
     try{
-      let shopify={ok:false};
-      try{
-        const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p.orderPayload)});
-        shopify=await r.json();
-      }catch{}
-      const payload={...p.salePayload, shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null};
-      const r2=await sbPost("sales", payload);
-      if(r2.ok){
-        const updated=_pendingLoad().filter(x=>x.id!==p.id);
-        _pendingSave(updated);
+      // Paso 1: Shopify — solo si no se hizo ya (evita crear pedido duplicado)
+      if(!p.shopify_done){
+        try{
+          const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",
+            headers:{"Content-Type":"application/json"},body:JSON.stringify(p.orderPayload)});
+          const shopify=await r.json();
+          // Persiste el resultado parcial ANTES de continuar
+          const updated=_pendingLoad().map(x=>x.id===p.id
+            ? {...x, shopify_done:true, shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null}
+            : x);
+          _pendingSave(updated);
+          p.shopify_done=true;
+          p.shopify_order_id=shopify.order_id||null;
+          p.shopify_order_name=shopify.order_name||null;
+        }catch(e){ console.warn("shopify sync error",e); }
       }
+
+      // Paso 2: Supabase — comprueba si ya existe usando ref como shopify_order_name fallback
+      const refKey = p.shopify_order_name || p.ref;
+      const existing = await sbGet(`sales?shopify_order_name=eq.${encodeURIComponent(refKey)}&store=eq.bloom&select=id`);
+      if(!existing?.length){
+        const payload={...p.salePayload,
+          shopify_order_id: p.shopify_order_id||null,
+          shopify_order_name: refKey,
+        };
+        const r2=await sbPost("sales", payload);
+        if(!r2.ok) continue; // falla → deja en cola, reintentará
+      }
+
+      // Éxito (guardado o ya existía) → sacar de la cola
+      _pendingSave(_pendingLoad().filter(x=>x.id!==p.id));
     }catch(e){ console.warn("sync error",e); }
   }
+
+  _syncing=false;
   renderPendingBadge();
 }
 
