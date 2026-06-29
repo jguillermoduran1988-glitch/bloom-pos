@@ -330,19 +330,23 @@ export default {
 
     // -------- WhatsApp Inbox: enviar mensaje --------
     if (request.method === "POST" && url.pathname === "/wa/send") {
-      const { conversation_id, phone, body } = await request.json();
-      if (!body || !conversation_id) return Response.json({ ok: false, error: "faltan campos" }, { headers: cors });
+      const { conversation_id, phone, body, media_url, type } = await request.json();
+      if (!conversation_id) return Response.json({ ok: false, error: "faltan campos" }, { headers: cors });
+      if (!body && !media_url) return Response.json({ ok: false, error: "faltan campos" }, { headers: cors });
       const now = new Date().toISOString();
       const msgId = "out-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      const msgType = type || "text";
+      const msgBody = body || "";
       await env.bloom_wa.prepare(
-        `INSERT INTO wa_messages (id, conversation_id, direction, type, body, status, ts) VALUES (?, ?, 'outbound', 'text', ?, 'sent', ?)`
-      ).bind(msgId, conversation_id, body, now).run();
+        `INSERT INTO wa_messages (id, conversation_id, direction, type, body, media_url, status, ts) VALUES (?, ?, 'outbound', ?, ?, ?, 'sent', ?)`
+      ).bind(msgId, conversation_id, msgType, msgBody, media_url || null, now).run();
+      const lastMsg = media_url ? (msgType === "image" ? "📷 Foto" : "🎤 Nota de voz") : msgBody;
       await env.bloom_wa.prepare(
         `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, updated_at = ? WHERE id = ?`
-      ).bind(body, now, now, conversation_id).run();
+      ).bind(lastMsg, now, now, conversation_id).run();
       // Envío real cuando esté configurado WA_TOKEN
-      if (env.WA_TOKEN && env.WA_PHONE_ID && phone) {
-        await sendWhatsApp(env, phone, body).catch(() => {});
+      if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgBody) {
+        await sendWhatsApp(env, phone, msgBody).catch(() => {});
       }
       return Response.json({ ok: true, id: msgId }, { headers: cors });
     }

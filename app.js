@@ -433,14 +433,11 @@ function attachChatPhoto(){
     const up=await sbUpload("team-chat", file, (file.name.split(".").pop()||"jpg"));
     if(!up){ alert("No se pudo subir la foto"); return; }
     const now=new Date().toISOString();
-    appendMessage({body:"",media_url:up.url,media_type:"image",direction:"out",created_at:now,msg_type:"image"});
+    appendMessage({body:"",media_url:up.url,direction:"out",created_at:now,msg_type:"image"});
     const c=state.chats.get(state.active); if(c){ c.last="📷 Foto"; c.lastAt=now; renderChatList(); }
-    try{
-      await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({phone:state.active,message:up.url,store:C.STORE})});
-    }catch(e){console.error(e);}
-    await sbPost("messages",{contact_phone:state.active,store:C.STORE,direction:"out",body:"",
-      media_url:up.url,msg_type:"image"});
+    const convId=c?.id||state.active;
+    await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"image"})}).catch(()=>{});
   };
   inp.click();
 }
@@ -470,14 +467,11 @@ async function toggleChatVoice(){
       const up=await sbUpload("team-chat", blob, realExt);
       if(!up) return;
       const now=new Date().toISOString();
-      appendMessage({body:"",media_url:up.url,media_type:"audio",direction:"out",created_at:now,msg_type:"audio"});
+      appendMessage({body:"",media_url:up.url,direction:"out",created_at:now,msg_type:"audio"});
       const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
-      try{
-        await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({phone:state.active,message:up.url,store:C.STORE})});
-      }catch(e){console.error(e);}
-      await sbPost("messages",{contact_phone:state.active,store:C.STORE,direction:"out",body:"",
-        media_url:up.url,msg_type:"audio"});
+      const convId=c?.id||state.active;
+      await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"audio"})}).catch(()=>{});
     };
     _chatRecorder.start();
     btn.classList.add("rec"); btn.textContent="⏹";
