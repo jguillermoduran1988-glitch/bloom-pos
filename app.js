@@ -211,7 +211,14 @@ function msgNode(m){
     return d;
   }
   const b=el("div","msg "+(m.direction==="out"?"out":"in"));
-  b.innerHTML=waFormat(m.body)+`<div class="t">${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
+  const _t=`<div class="t">${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
+  if(m.media_type==="image"&&m.media_url){
+    b.innerHTML=`<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${_t}`;
+  }else if(m.media_type==="audio"&&m.media_url){
+    b.innerHTML=`<audio controls src="${esc(m.media_url)}"></audio>${_t}`;
+  }else{
+    b.innerHTML=waFormat(m.body)+_t;
+  }
   return b;
 }
 function renderMessages(keepScroll){
@@ -404,6 +411,80 @@ async function addNote(){
   appendMessage({body:text.trim(),direction:"out",created_at:now,msg_type:"note"});
   // Se guarda en la base como tipo 'note' — el Worker nunca la manda a WhatsApp
   await sbPost("messages",{contact_phone:phone,store:C.STORE,direction:"out",body:text.trim(),msg_type:"note"});
+}
+
+// ----- Plus menu chat de clientes -----
+function toggleChatPlusMenu(){ $("#chatPlusMenu").classList.toggle("show"); $("#chatEmojiPicker").classList.remove("show"); }
+function closeChatPlusMenu(){ $("#chatPlusMenu").classList.remove("show"); }
+function buildChatEmojiPicker(){
+  const box=$("#chatEmojiPicker"); if(!box||box.dataset.built) return;
+  box.innerHTML=EMOJIS.map(e=>`<span onclick="addChatEmoji('${e}')">${e}</span>`).join("");
+  box.dataset.built="1";
+}
+function toggleChatEmojiPicker(){ buildChatEmojiPicker(); $("#chatEmojiPicker").classList.toggle("show"); }
+function addChatEmoji(e){ const inp=$("#input"); inp.value+=e; inp.focus(); }
+
+function attachChatPhoto(){
+  if(!state.active){ alert("Selecciona un chat primero."); return; }
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept="image/*";
+  inp.onchange=async()=>{
+    const file=inp.files[0]; if(!file) return;
+    const up=await sbUpload("team-chat", file, (file.name.split(".").pop()||"jpg"));
+    if(!up){ alert("No se pudo subir la foto"); return; }
+    const now=new Date().toISOString();
+    appendMessage({body:"",media_url:up.url,media_type:"image",direction:"out",created_at:now,msg_type:"media"});
+    const c=state.chats.get(state.active); if(c){ c.last="📷 Foto"; c.lastAt=now; renderChatList(); }
+    try{
+      await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({phone:state.active,message:up.url,store:C.STORE})});
+    }catch(e){console.error(e);}
+    await sbPost("messages",{contact_phone:state.active,store:C.STORE,direction:"out",body:"",
+      media_url:up.url,media_type:"image",msg_type:"media"});
+  };
+  inp.click();
+}
+
+let _chatRecorder=null, _chatAudioChunks=[];
+async function toggleChatVoice(){
+  if(!state.active){ alert("Selecciona un chat primero."); return; }
+  const btn=$("#chatVoiceBtn");
+  if(_chatRecorder && _chatRecorder.state==="recording"){ _chatRecorder.stop(); return; }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    let mime="", ext="webm";
+    if(MediaRecorder.isTypeSupported("audio/webm")){ mime="audio/webm"; ext="webm"; }
+    else if(MediaRecorder.isTypeSupported("audio/mp4")){ mime="audio/mp4"; ext="mp4"; }
+    else if(MediaRecorder.isTypeSupported("audio/aac")){ mime="audio/aac"; ext="aac"; }
+    else{ mime=""; ext="m4a"; }
+    _chatRecorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream);
+    _chatAudioChunks=[];
+    _chatRecorder.ondataavailable=e=>{ if(e.data.size>0) _chatAudioChunks.push(e.data); };
+    _chatRecorder.onstop=async()=>{
+      btn.classList.remove("rec"); btn.textContent="🎤";
+      stream.getTracks().forEach(t=>t.stop());
+      const realType=_chatRecorder.mimeType||mime||"audio/mp4";
+      const realExt=realType.includes("webm")?"webm":realType.includes("mp4")?"mp4":realType.includes("aac")?"aac":"m4a";
+      const blob=new Blob(_chatAudioChunks,{type:realType});
+      if(blob.size===0){ alert("La grabación quedó vacía. Intenta de nuevo."); return; }
+      const up=await sbUpload("team-chat", blob, realExt);
+      if(!up) return;
+      const now=new Date().toISOString();
+      appendMessage({body:"",media_url:up.url,media_type:"audio",direction:"out",created_at:now,msg_type:"media"});
+      const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
+      try{
+        await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({phone:state.active,message:up.url,store:C.STORE})});
+      }catch(e){console.error(e);}
+      await sbPost("messages",{contact_phone:state.active,store:C.STORE,direction:"out",body:"",
+        media_url:up.url,media_type:"audio",msg_type:"media"});
+    };
+    _chatRecorder.start();
+    btn.classList.add("rec"); btn.textContent="⏹";
+  }catch(e){
+    console.error(e);
+    alert("No se pudo acceder al micrófono. Revisa el permiso en el navegador.");
+  }
 }
 
 // Detecta scroll al tope para cargar mensajes anteriores
