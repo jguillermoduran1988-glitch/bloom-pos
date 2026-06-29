@@ -1957,16 +1957,37 @@ function _colHolidays(year){
 let _bloomSalesHistory = null;
 async function _loadSalesHistory(){
   if(_bloomSalesHistory) return _bloomSalesHistory;
-  // 1. Intenta localStorage (subido por usuario)
+  // 1. Datos del POS (Supabase) — fuente primaria y siempre actualizada
   try{
-    const s=localStorage.getItem("bloom_sales_history");
-    if(s){ _bloomSalesHistory=JSON.parse(s); return _bloomSalesHistory; }
+    const rows = await sbGet(`sales?store=eq.${C.STORE}&status=eq.completada&select=created_at,total&order=created_at.asc&limit=5000`);
+    if(rows && rows.length){
+      const h={};
+      for(const r of rows){
+        const date=(r.created_at||"").slice(0,10); if(!date) continue;
+        const [yr,mo,d]=date.split("-");
+        const key=`${yr}-${mo}`;
+        if(!h[key]) h[key]={};
+        h[key][parseInt(d)]=(h[key][parseInt(d)]||0)+(r.total||0);
+      }
+      // Combinar con histórico Excel (localStorage) para tener datos anteriores al POS
+      let excelH={};
+      try{ const s=localStorage.getItem("bloom_sales_history"); if(s) excelH=JSON.parse(s); }catch{}
+      for(const [k,v] of Object.entries(excelH)){
+        if(!h[k]) h[k]={};
+        for(const [d,val] of Object.entries(v)) if(!h[k][d]) h[k][d]=val; // Excel solo llena los huecos
+      }
+      // Complementar con JSON del repo para meses anteriores al POS
+      try{
+        const rep=await fetch("./sales-history.json",{cache:"force-cache"});
+        if(rep.ok){ const jh=await rep.json(); for(const [k,v] of Object.entries(jh)) if(!h[k]) h[k]=v; }
+      }catch{}
+      _bloomSalesHistory=h; return h;
+    }
   }catch{}
-  // 2. Intenta el archivo incluido en el repo
-  try{
-    const r=await fetch("./sales-history.json",{cache:"no-store"});
-    if(r.ok){ _bloomSalesHistory=await r.json(); return _bloomSalesHistory; }
-  }catch{}
+  // 2. localStorage (Excel subido)
+  try{ const s=localStorage.getItem("bloom_sales_history"); if(s){ _bloomSalesHistory=JSON.parse(s); return _bloomSalesHistory; } }catch{}
+  // 3. JSON del repo
+  try{ const r=await fetch("./sales-history.json",{cache:"force-cache"}); if(r.ok){ _bloomSalesHistory=await r.json(); return _bloomSalesHistory; } }catch{}
   return {};
 }
 
@@ -2009,7 +2030,7 @@ async function computeGoalPlan(){
   const holidays=_colHolidays(year);
   const holidayDates=new Set(holidays.map(h=>h.d));
 
-  // Construir días del mes
+  // Construir días del mes — domingos abiertos, festivos cerrados por defecto
   const daysInMonth=new Date(year,month,0).getDate();
   const allDays=[];
   for(let d=1;d<=daysInMonth;d++){
@@ -2017,7 +2038,7 @@ async function computeGoalPlan(){
     const dw=dt.getDay();
     const iso=dt.toISOString().slice(0,10);
     const hol=holidays.find(h=>h.d===iso);
-    allDays.push({d,iso,dw,holiday:hol||null,open:dw!==0&&!hol}); // domingos y festivos cerrado por defecto
+    allDays.push({d,iso,dw,holiday:hol||null,open:!hol}); // solo festivos cerrados por defecto
   }
 
   renderGoalPlanResult(allDays, weights, goal, holidays);
@@ -2059,17 +2080,23 @@ function renderGoalPlanResult(allDays, weights, goal, allHolidays){
   }).join("");
 
   const holSection=monthHols.length
-    ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Festivos en ${MONTHS_ES2[month]} ${year}</div>
-        ${monthHols.map(h=>`<div style="font-size:13px;padding:3px 0;color:#c0392b">📅 ${h.d.slice(8)} — ${h.n}</div>`).join("")}
-        <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Puedes incluir festivos marcando la casilla en la tabla.</div>
+    ? `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;color:#991b1b;text-transform:uppercase;margin-bottom:8px">Festivos en ${MONTHS_ES2[month]} ${year} — ¿abres?</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+        ${monthHols.map(h=>`
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
+            <input type="checkbox" onchange="toggleGpDay('${h.d}',this.checked,${goal})" style="width:16px;height:16px;accent-color:var(--accent)">
+            <span style="color:#991b1b;font-weight:600">${h.d.slice(8)}</span>
+            <span style="color:var(--text)">${h.n}</span>
+          </label>`).join("")}
+        </div>
        </div>`
     : "";
 
   box.innerHTML=`
     ${holSection}
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
-      Días abiertos: <b>${openDays.length}</b> · Meta distribuida según histórico de ventas por día de semana.
+      Días abiertos: <b id="gpOpenCount">${openDays.length}</b> · Meta distribuida según histórico real del POS por día de semana.
     </div>
     <div style="overflow-x:auto">
       <table id="gpTable" style="width:100%;border-collapse:collapse;font-size:13px">
@@ -2084,7 +2111,7 @@ function renderGoalPlanResult(allDays, weights, goal, allHolidays){
       </table>
     </div>
     <div style="margin-top:12px;padding:10px;background:var(--accent-soft);border-radius:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
-      <span>Meta mensual total: <b>${money(goal)}</b></span>
+      <span>Meta mensual: <b>${money(goal)}</b></span>
       <button onclick="applyDailyGoal()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Aplicar meta de hoy</button>
     </div>`;
 
@@ -2097,7 +2124,6 @@ function toggleGpDay(iso, open, goal){
   if(!window._gpDays) return;
   const d=window._gpDays.find(x=>x.iso===iso);
   if(d) d.open=open;
-  // Recalcular y re-renderizar solo los montos sin destruir la tabla
   const openDays=window._gpDays.filter(x=>x.open);
   const totalWeight=openDays.reduce((s,x)=>s+window._gpWeights[x.dw],0)||1;
   const basePerUnit=goal/totalWeight;
@@ -2109,6 +2135,8 @@ function toggleGpDay(iso, open, goal){
     if(td){ td.textContent=d.open?money(meta):"—"; td.style.color=d.open?"var(--accent)":"var(--text-dim)"; }
     row.classList.toggle("gp-closed",!d.open);
   });
+  const cnt=document.getElementById("gpOpenCount");
+  if(cnt) cnt.textContent=openDays.length;
 }
 
 function applyDailyGoal(){
