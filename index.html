@@ -942,9 +942,14 @@
           ⚠️ Necesitas configurar la variable <b>WABA_ID</b> en el Worker (es el ID de tu cuenta de WhatsApp Business — diferente al Phone ID). Encuéntrala en Meta Business Suite → Configuración → Cuentas de WhatsApp.
         </div>
         <div id="waFlowList" style="margin:12px 0"></div>
-        <button onclick="openWaFlowEditor(null)" style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">
-          <span class="material-symbols-outlined" style="font-size:16px">add</span> Nuevo flow
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="openWaFlowEditor(null)" style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">
+            <span class="material-symbols-outlined" style="font-size:16px">add</span> Nuevo flow
+          </button>
+          <button onclick="createCatalogFlow()" style="display:inline-flex;align-items:center;gap:6px;background:#166534;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer" title="Crea un flow que muestra modelos disponibles según la talla elegida, conectado a tu inventario de Shopify">
+            <span class="material-symbols-outlined" style="font-size:16px">shopping_bag</span> Catálogo por talla (Shopify)
+          </button>
+        </div>
       </div>
 
     </div><!-- /cfgPaneChat -->

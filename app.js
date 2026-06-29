@@ -197,6 +197,14 @@ async function loadOlderMessages(){ /* paginación futura via D1 offset */ }
 
 function msgNode(m){
   // Nota privada del vendedor — NUNCA se envía al cliente
+  if(m.msg_type==="flow_reply"){
+    const d=el("div","msg-note");
+    d.style.cssText="background:#eff6ff;border-color:#bfdbfe;color:#1e40af";
+    const parts=(m.body||"").split(" · ").map(p=>{ const [k,...v]=p.split(": "); return `<b>${k}:</b> ${v.join(": ")}`; });
+    d.innerHTML=`<span style="font-size:14px;margin-right:4px">🌸</span><span style="font-weight:700">Flow completado</span><br><span style="font-size:12px">${parts.join(" &nbsp;·&nbsp; ")}</span>
+      <div class="t">${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
+    return d;
+  }
   if(m.msg_type==="note"){
     const d=el("div","msg-note");
     d.innerHTML=`<span class=\"lock\"><span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">lock</span></span> ${waFormat(m.body)}
@@ -5084,6 +5092,78 @@ const WAF_COMP_LABELS = {
   TextInput:"Campo de texto", TextArea:"Área de texto", RadioButtonsGroup:"Opción única",
   CheckboxGroup:"Varias opciones", Dropdown:"Lista desplegable", DatePicker:"Fecha",
 };
+
+// ---- Template: Catálogo de productos por talla (data_exchange) ----
+const _CATALOG_FLOW_JSON = {
+  version:"6.1",
+  data_api_version:"3.0",
+  routing_model:{
+    SCREEN_TALLA:["SCREEN_MODELOS","SCREEN_NO_STOCK"],
+    SCREEN_MODELOS:[],
+    SCREEN_NO_STOCK:[]
+  },
+  screens:[
+    {
+      id:"SCREEN_TALLA", title:"Bikinis Bloom",
+      layout:{type:"SingleColumnLayout", children:[{type:"Form",name:"flow_form",children:[
+        {type:"TextHeading",text:"Bikinis Bloom 🌸"},
+        {type:"TextBody",text:"Elige tu talla y te mostramos los modelos disponibles en este momento."},
+        {type:"RadioButtonsGroup",label:"¿Cuál es tu talla?",name:"talla",required:true,"data-source":[
+          {id:"XS",title:"XS"},{id:"S",title:"S"},{id:"M",title:"M"},
+          {id:"L",title:"L"},{id:"XL",title:"XL"},{id:"XXL",title:"XXL"}
+        ]},
+        {type:"Footer",label:"Ver modelos disponibles","on-click-action":{name:"data_exchange",payload:{talla:"${form.talla}"}}}
+      ]}]}
+    },
+    {
+      id:"SCREEN_MODELOS", title:"Modelos disponibles", terminal:true,
+      data:{
+        modelos:{type:"array",items:{type:"object",properties:{id:{type:"string"},title:{type:"string"}}},__example__:[{id:"1",title:"Bikini Azul"}]},
+        talla_sel:{type:"string",__example__:"M"}
+      },
+      layout:{type:"SingleColumnLayout",children:[{type:"Form",name:"flow_form",children:[
+        {type:"TextHeading",text:"Disponibles en tu talla 🛍️"},
+        {type:"RadioButtonsGroup",label:"Elige el modelo",name:"modelo_titulo",required:true,"data-source":"${data.modelos}"},
+        {type:"Footer",label:"Quiero este modelo","on-click-action":{name:"complete",payload:{talla:"${data.talla_sel}",modelo_id:"${form.modelo_titulo}"}}}
+      ]}]}
+    },
+    {
+      id:"SCREEN_NO_STOCK", title:"Sin disponibilidad", terminal:true,
+      data:{talla_sel:{type:"string",__example__:"M"}},
+      layout:{type:"SingleColumnLayout",children:[{type:"Form",name:"flow_form",children:[
+        {type:"TextHeading",text:"Sin stock en esa talla"},
+        {type:"TextBody",text:"No tenemos modelos disponibles en tu talla ahora. ¡Te avisamos cuando llegue! 💌"},
+        {type:"Footer",label:"Entendido","on-click-action":{name:"complete",payload:{talla:"${data.talla_sel}",modelo_id:""}}}
+      ]}]}
+    }
+  ]
+};
+
+async function createCatalogFlow(){
+  const W=C.WORKER_URL;
+  const endpointUri = W+"/wa/flows/exchange";
+  // 1. Crear el flow con endpoint_uri
+  const r1=await fetch(`${W}/wa/waflows`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:"Catálogo Bloom — Tallas",categories:["LEAD_GENERATION"],endpoint_uri:endpointUri})});
+  const d1=await r1.json();
+  if(d1.error){ alert("Error al crear: "+JSON.stringify(d1.error)); return; }
+  const flowId=d1.id;
+  // 2. Subir el JSON
+  const r2=await fetch(`${W}/wa/waflows/${flowId}/json`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({flow_json:_CATALOG_FLOW_JSON})});
+  const d2=await r2.json();
+  if(d2.success===false||d2.error){
+    const errs=(d2.validation_errors||[]).map(e=>`${e.error_type}: ${e.message}`).join("\n");
+    alert("Flow creado (ID: "+flowId+") pero el JSON tiene errores:\n"+(errs||JSON.stringify(d2))); return;
+  }
+  alert(`✅ Flow "${d1.id}" creado y JSON subido.\n\n` +
+    `Próximos pasos:\n` +
+    `1. Genera un par de claves RSA:\n   openssl genrsa -out private.pem 2048\n   openssl rsa -in private.pem -pubout -out public.pem\n\n` +
+    `2. Registra la clave pública con Meta:\n   npx wrangler secret put WA_FLOWS_PRIVATE_KEY\n   (pega el contenido de private.pem)\n\n` +
+    `3. Ve al Flow Manager de Meta y publica el flow.\n\n` +
+    `4. Desde el chat, usa el botón "Enviar" del flow para enviárselo a una cliente.`);
+  loadWaFlows();
+}
 
 // ---- Lista de flows ----
 async function loadWaFlows(){

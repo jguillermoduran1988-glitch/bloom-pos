@@ -436,6 +436,39 @@ export default {
       return Response.json({ ok:true }, { headers: cors });
     }
 
+    // -------- WhatsApp Flows: data_exchange endpoint --------
+    if (request.method === "POST" && url.pathname === "/wa/flows/exchange") {
+      if (!env.WA_FLOWS_PRIVATE_KEY) return new Response("WA_FLOWS_PRIVATE_KEY no configurada", {status:400});
+      let dec, aesKey, reqIv;
+      try {
+        const result = await _decryptFlowRequest(env, await request.json());
+        dec = result.data; aesKey = result.aesKey; reqIv = result.iv;
+      } catch(e) {
+        console.error("Flow decrypt error:", e);
+        return new Response("Decryption failed", {status:421});
+      }
+      let resp;
+      if (dec.action === "ping") {
+        resp = {data:{status:"active"}};
+      } else if (dec.action === "INIT") {
+        resp = {screen:"SCREEN_TALLA", data:{}};
+      } else if (dec.action === "data_exchange") {
+        const talla = (dec.data?.talla||"").toUpperCase().trim();
+        const all = await fetchShopify(env, "");
+        const modelos = [];
+        for (const p of all) {
+          const okVariant = p.variants.find(v => v.talla?.toUpperCase()===talla && v.stock>0);
+          if (okVariant && modelos.length < 10) modelos.push({id:String(p.id), title:p.name});
+        }
+        resp = modelos.length
+          ? {screen:"SCREEN_MODELOS", data:{modelos, talla_sel:talla}}
+          : {screen:"SCREEN_NO_STOCK", data:{talla_sel:talla}};
+      } else {
+        resp = {data:{}};
+      }
+      return Response.json(await _encryptFlowResponse(resp, aesKey, reqIv));
+    }
+
     // -------- WhatsApp Flows (proxy a Meta Graph API) --------
     const GV = "https://graph.facebook.com/v19.0";
     const noWaba = () => Response.json({error:"WABA_ID no configurado en el Worker"},{status:400,headers:cors});
@@ -447,8 +480,9 @@ export default {
         return Response.json(await r.json(), {headers:cors});
       }
       if (request.method === "POST") {
-        const {name, categories} = await request.json();
+        const {name, categories, endpoint_uri} = await request.json();
         const p = new URLSearchParams({name, categories:JSON.stringify(categories||["OTHER"]), access_token:env.WA_TOKEN});
+        if (endpoint_uri) p.append("endpoint_uri", endpoint_uri);
         const r = await fetch(`${GV}/${env.WABA_ID}/flows`, {method:"POST", body:p});
         return Response.json(await r.json(), {headers:cors});
       }
@@ -896,10 +930,15 @@ async function handleIncoming(env, msg, contact) {
   const interactive = msg.interactive;
   const interactiveReplyId = interactive?.button_reply?.id || interactive?.list_reply?.id || null;
   const interactiveTitle = interactive?.button_reply?.title || interactive?.list_reply?.title || "";
-  const text = msg.text?.body || msg.button?.text || interactiveTitle || "";
+  // Flow completion (nfm_reply cuando el cliente termina un WhatsApp Flow)
+  const flowReply = interactive?.type === "nfm_reply" ? interactive.nfm_reply : null;
+  const flowData = flowReply ? (() => { try { return JSON.parse(flowReply.response_json||"{}"); } catch{return{};} })() : null;
+  const text = flowData
+    ? Object.entries(flowData).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(" · ")
+    : msg.text?.body || msg.button?.text || interactiveTitle || "";
   const waId = msg.id;
   const now = new Date().toISOString();
-  const msgType = interactive ? "interactive" : "text";
+  const msgType = flowData ? "flow_reply" : (interactive ? "interactive" : "text");
 
   // Upsert contacto en D1
   await d1UpsertContact(env, phone, name);
@@ -1372,6 +1411,32 @@ async function fetchShopify(env, query) {
         stock: p.variants.reduce((s, v) => s + (v.inventory_quantity || 0), 0),
       };
     });
+}
+
+// ============ WhatsApp Flows — Crypto (Web Crypto API nativa de Workers) ============
+function _b64Buf(b64){ const s=atob(b64),a=new Uint8Array(s.length); for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i); return a; }
+function _bufB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function _parsePem(pem){ return _b64Buf(pem.replace(/-----[^-]+-----/g,"").replace(/\s/g,"")); }
+
+async function _decryptFlowRequest(env, body){
+  const {encrypted_aes_key, encrypted_flow_data, initial_vector} = body;
+  const privKey = await crypto.subtle.importKey(
+    "pkcs8", _parsePem(env.WA_FLOWS_PRIVATE_KEY),
+    {name:"RSA-OAEP", hash:"SHA-256"}, false, ["decrypt"]
+  );
+  const aesRaw = await crypto.subtle.decrypt({name:"RSA-OAEP"}, privKey, _b64Buf(encrypted_aes_key));
+  const aesKey = await crypto.subtle.importKey("raw", aesRaw, {name:"AES-GCM"}, false, ["decrypt","encrypt"]);
+  const iv = _b64Buf(initial_vector);
+  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv}, aesKey, _b64Buf(encrypted_flow_data));
+  return {data: JSON.parse(new TextDecoder().decode(plain)), aesKey, iv};
+}
+
+async function _encryptFlowResponse(data, aesKey, requestIv){
+  const flippedIv = new Uint8Array(requestIv.map(b => ~b & 0xff));
+  const enc = await crypto.subtle.encrypt(
+    {name:"AES-GCM", iv:flippedIv}, aesKey, new TextEncoder().encode(JSON.stringify(data))
+  );
+  return {response: _bufB64(enc), iv: _bufB64(flippedIv)};
 }
 
 // ============ Buscar cliente en Shopify por teléfono ============
