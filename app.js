@@ -1882,6 +1882,8 @@ function renderGoalBar(goal,total){
 // ====================================================================
 let _lblQueue = []; // [{name, variant, price, barcode, sku, qty}]
 
+function _lblG(id){ const e=document.getElementById(id); if(!e) return null; return e.type==="checkbox"?e.checked:(e.value||null); }
+
 function searchLabelProducts(){
   const q=($("#lblSearch")?.value||"").toLowerCase().trim();
   const box=$("#lblResults"); if(!box) return;
@@ -1892,21 +1894,25 @@ function searchLabelProducts(){
     if((p.barcode||"").toLowerCase().includes(q)) return true;
     if(p.variants) return p.variants.some(v=>(v.barcode||"").toLowerCase().includes(q)||(v.sku||"").toLowerCase().includes(q));
     return false;
-  }).slice(0,8);
+  }).slice(0,10);
   if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:8px">Sin resultados</div>'; return; }
   box.innerHTML=list.map(p=>{
     if(p.variants && p.variants.length){
-      return p.variants.map(v=>`
-        <div onclick="addLabelItem('${esc(p.name)}','${esc(v.talla||v.size||v.color||"")}',${v.price||p.price},'${esc(v.barcode||p.barcode||"")}','${esc(v.sku||p.sku||"")}')"
-          style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface)">
-          <b>${esc(p.name)}</b> <span style="color:var(--text-dim)">${esc(v.talla||v.size||v.color||"única")}</span>
-          <span style="float:right;color:var(--accent);font-weight:600">${money(v.price||p.price)}</span>
-        </div>`).join('');
+      return p.variants.map(v=>{
+        const varLabel=[v.color,v.talla||v.size].filter(Boolean).join(" / ")||"única";
+        const code=v.barcode||p.barcode||"";
+        const sku=v.sku||p.sku||"";
+        return `<div onclick="addLabelItem(${JSON.stringify(p.name)},${JSON.stringify(varLabel)},${v.price||p.price},${JSON.stringify(code)},${JSON.stringify(sku)})"
+          style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
+          <span><b>${esc(p.name)}</b> <span style="color:var(--text-dim);font-size:12px">${esc(varLabel)}</span>${code?`<span style="color:var(--text-dim);font-size:11px;margin-left:6px">${esc(code)}</span>`:''}</span>
+          <span style="color:var(--accent);font-weight:700;flex-shrink:0;margin-left:8px">${money(v.price||p.price)}</span>
+        </div>`;
+      }).join('');
     }
-    return `<div onclick="addLabelItem('${esc(p.name)}','',${p.price},'${esc(p.barcode||"")}','${esc(p.sku||"")}')"
-      style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface)">
-      <b>${esc(p.name)}</b>
-      <span style="float:right;color:var(--accent);font-weight:600">${money(p.price)}</span>
+    return `<div onclick="addLabelItem(${JSON.stringify(p.name)},'',${p.price},${JSON.stringify(p.barcode||'')},${JSON.stringify(p.sku||'')})"
+      style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--surface);display:flex;justify-content:space-between;align-items:center">
+      <span><b>${esc(p.name)}</b>${p.barcode?`<span style="color:var(--text-dim);font-size:11px;margin-left:6px">${esc(p.barcode)}</span>`:''}</span>
+      <span style="color:var(--accent);font-weight:700;margin-left:8px">${money(p.price)}</span>
     </div>`;
   }).join('');
 }
@@ -1914,109 +1920,120 @@ function searchLabelProducts(){
 function addLabelItem(name,variant,price,barcode,sku){
   _lblQueue.push({name,variant,price,barcode,sku,qty:1});
   renderLabelQueue();
-  const s=$("#lblSearch"); if(s){ s.value=""; }
+  const s=$("#lblSearch"); if(s) s.value="";
   const r=$("#lblResults"); if(r) r.innerHTML="";
 }
 function removeLabelItem(i){ _lblQueue.splice(i,1); renderLabelQueue(); }
-function setLabelQty(i,v){ _lblQueue[i].qty=Math.max(1,parseInt(v)||1); renderLabelQueue(); }
+function setLabelQty(i,v){ _lblQueue[i].qty=Math.max(1,parseInt(v)||1); }
 function clearLabelQueue(){ _lblQueue=[]; renderLabelQueue(); }
 
 function renderLabelQueue(){
   const box=$("#lblQueue"); if(!box) return;
-  if(!_lblQueue.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim)">No hay productos en cola. Busca y agrega arriba.</div>'; return; }
-  box.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px">COLA DE IMPRESIÓN (${_lblQueue.reduce((s,r)=>s+r.qty,0)} etiquetas)</div>`+
+  const total=_lblQueue.reduce((s,r)=>s+r.qty,0);
+  if(!_lblQueue.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:4px 0">No hay productos en cola — busca arriba para agregar.</div>'; return; }
+  box.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Cola de impresión · ${total} etiqueta${total!==1?"s":""}</div>`+
   _lblQueue.map((item,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;background:var(--surface);font-size:13px">
-      <span style="flex:1"><b>${esc(item.name)}</b>${item.variant?` <span style="color:var(--text-dim)">${esc(item.variant)}</span>`:''} · <span style="color:var(--accent);font-weight:600">${money(item.price)}</span></span>
-      <input type="number" min="1" value="${item.qty}" onchange="setLabelQty(${i},this.value)"
-        style="width:52px;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px;text-align:center;background:var(--bg)">
-      <button onclick="removeLabelItem(${i})" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim);padding:0 4px">×</button>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;background:var(--surface);font-size:13px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.name)}</div>
+        ${item.variant?`<div style="font-size:11px;color:var(--text-dim)">${esc(item.variant)}</div>`:''}
+        <div style="font-size:12px;color:var(--accent);font-weight:700">${money(item.price)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--text-dim)">copias</span>
+        <input type="number" min="1" value="${item.qty}" onchange="setLabelQty(${i},this.value)"
+          style="width:48px;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px;text-align:center;background:var(--bg);color:var(--text)">
+      </div>
+      <button onclick="removeLabelItem(${i})" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-dim);padding:0 2px;flex-shrink:0;line-height:1">×</button>
     </div>`).join('');
 }
 
 function printLabels(){
   if(!_lblQueue.length){ alert("Agrega productos a la cola primero"); return; }
-  const size=$("#lblSize")?.value||"58x40";
-  const showName=$("#lblShowName")?.checked!==false;
-  const showVariant=$("#lblShowVariant")?.checked!==false;
-  const showPrice=$("#lblShowPrice")?.checked!==false;
-  const showBarcode=$("#lblShowBarcode")?.checked!==false;
-  const showQr=$("#lblShowQr")?.checked||false;
-  const showStore=$("#lblShowStore")?.checked||false;
+  const size=_lblG("lblSize")||"31.75x25.4";
+  const font=_lblG("lblFont")||"Arial,sans-serif";
+  const mTop=parseFloat(_lblG("lblMTop"))||2;
+  const mBottom=parseFloat(_lblG("lblMBottom"))||2;
+  const mLeft=parseFloat(_lblG("lblMLeft"))||3;
+  const mRight=parseFloat(_lblG("lblMRight"))||3;
+  const showStore=_lblG("lblShowStore")||false;
+  const showName=_lblG("lblShowName")!==false;
+  const showVariant=_lblG("lblShowVariant")!==false;
+  const showPrice=_lblG("lblShowPrice")!==false;
+  const showBarcode=_lblG("lblShowBarcode")!==false;
+  const showQr=_lblG("lblShowQr")||false;
+  const fsStore=parseInt(_lblG("lblFsStore"))||7;
+  const fsName=parseInt(_lblG("lblFsName"))||9;
+  const fsVariant=parseInt(_lblG("lblFsVariant"))||8;
+  const fsPrice=parseInt(_lblG("lblFsPrice"))||14;
+  const bcH=parseInt(_lblG("lblBcH"))||22;
+  const qrSz=parseInt(_lblG("lblQrSz"))||36;
   const storeName=(pos.settings?.receipt_business)||"Bloom";
 
   const sizeMap={
-    "58x40":{w:"58mm",h:"40mm",cols:1,fontSize:"11px",priceSize:"15px"},
-    "80x50":{w:"80mm",h:"50mm",cols:1,fontSize:"13px",priceSize:"18px"},
-    "100x60":{w:"100mm",h:"60mm",cols:2,fontSize:"13px",priceSize:"18px"},
-    "a4":{w:"66mm",h:"36mm",cols:3,fontSize:"11px",priceSize:"14px"},
+    "31.75x25.4":{w:"31.75mm",h:"25.4mm",pageW:"31.75mm",pageH:"25.4mm",cols:1},
+    "50x30":{w:"50mm",h:"30mm",pageW:"50mm",pageH:"30mm",cols:1},
+    "58x40":{w:"58mm",h:"40mm",pageW:"58mm",pageH:"40mm",cols:1},
+    "80x50":{w:"80mm",h:"50mm",pageW:"80mm",pageH:"50mm",cols:1},
+    "100x60":{w:"100mm",h:"60mm",pageW:"210mm",pageH:"297mm",cols:2},
+    "a4":{w:"66mm",h:"36mm",pageW:"210mm",pageH:"297mm",cols:3},
   };
-  const sz=sizeMap[size]||sizeMap["58x40"];
+  const sz=sizeMap[size]||sizeMap["31.75x25.4"];
 
-  // Expand queue by qty
   const items=[];
-  for(const row of _lblQueue) for(let i=0;i<row.qty;i++) items.push(row);
+  for(const row of _lblQueue) for(let j=0;j<row.qty;j++) items.push({...row, _bcId:"bc"+Math.random().toString(36).slice(2), _qrId:"qr"+Math.random().toString(36).slice(2)});
 
-  const labelHTML=items.map(item=>{
-    const barcodeId="bc_"+Math.random().toString(36).slice(2);
-    const qrId="qr_"+Math.random().toString(36).slice(2);
-    const code=item.barcode||item.sku||"";
-    return `<div class="lbl">
-      ${showStore?`<div class="lbl-store">${esc(storeName)}</div>`:""}
-      ${showName?`<div class="lbl-name">${esc(item.name)}</div>`:""}
-      ${showVariant&&item.variant?`<div class="lbl-variant">${esc(item.variant)}</div>`:""}
-      ${showPrice?`<div class="lbl-price">${money(item.price)}</div>`:""}
-      ${showBarcode&&code?`<svg id="${barcodeId}" class="lbl-barcode"></svg>`:""}
-      ${showQr&&code?`<canvas id="${qrId}" class="lbl-qr"></canvas>`:""}
-    </div>`;
-  }).join('');
+  const labelHTML=items.map(item=>`
+    <div class="lbl">
+      ${showStore?`<div class="f-store">${esc(storeName)}</div>`:""}
+      ${showName?`<div class="f-name">${esc(item.name)}</div>`:""}
+      ${showVariant&&item.variant?`<div class="f-variant">${esc(item.variant)}</div>`:""}
+      ${showPrice?`<div class="f-price">${money(item.price)}</div>`:""}
+      ${showBarcode&&(item.barcode||item.sku)?`<svg id="${item._bcId}" class="f-bc"></svg>`:""}
+      ${showQr&&(item.barcode||item.sku)?`<canvas id="${item._qrId}" class="f-qr"></canvas>`:""}
+    </div>`).join('');
 
   const win=window.open("","_blank");
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas Bloom</title>
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas</title>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;background:#fff}
+    body{font-family:${font};background:#fff}
     .grid{display:flex;flex-wrap:wrap}
-    .lbl{width:${sz.w};height:${sz.h};border:1px dashed #ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;text-align:center;overflow:hidden;page-break-inside:avoid}
-    .lbl-store{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
-    .lbl-name{font-size:${sz.fontSize};font-weight:700;line-height:1.2;margin-bottom:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .lbl-variant{font-size:10px;color:#555;margin-bottom:2px}
-    .lbl-price{font-size:${sz.priceSize};font-weight:900;margin-bottom:3px}
-    .lbl-barcode{max-width:100%;height:28px}
-    .lbl-qr{width:40px;height:40px}
-    @media print{body{margin:0}.lbl{border-color:transparent}@page{margin:0;size:${sz.cols===1?sz.w+" "+sz.h:sz.cols===2?"210mm 297mm":"210mm 297mm"}}}
+    .lbl{width:${sz.w};height:${sz.h};border:1px dashed #bbb;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm;text-align:center;overflow:hidden;page-break-inside:avoid}
+    .f-store{font-size:${fsStore}pt;color:#666;text-transform:uppercase;letter-spacing:.8px;margin-bottom:1mm}
+    .f-name{font-size:${fsName}pt;font-weight:700;line-height:1.2;margin-bottom:.5mm;max-width:100%;word-break:break-word}
+    .f-variant{font-size:${fsVariant}pt;color:#555;margin-bottom:.5mm}
+    .f-price{font-size:${fsPrice}pt;font-weight:900;margin-bottom:1mm}
+    .f-bc{max-width:100%;height:${bcH}px;margin-bottom:1mm}
+    .f-qr{width:${qrSz}px;height:${qrSz}px}
+    @media print{
+      body{margin:0}
+      .lbl{border-color:transparent}
+      @page{margin:0;size:${sz.pageW} ${sz.pageH}}
+    }
   </style></head><body>
   <div class="grid">${labelHTML}</div>
-  <script>
-    window.onload=function(){
-      document.querySelectorAll("[id^='bc_']").forEach(el=>{
-        try{ JsBarcode(el,el.id.replace(/bc_[a-z0-9]+/,"")||"0",{format:"CODE128",displayValue:true,fontSize:8,height:28,margin:2}); }catch(e){}
-      });
-      // Init barcodes with real data via data-code attr workaround: re-generate with data
-    };
-  <\/script>
-  </body></html>`);
+  <\/body><\/html>`);
   win.document.close();
 
-  // Pass data to the new window after load
   setTimeout(()=>{
     try{
-      const svgs=win.document.querySelectorAll("[id^='bc_']");
-      const canvases=win.document.querySelectorAll("[id^='qr_']");
-      items.forEach((item,i)=>{
+      items.forEach(item=>{
         const code=item.barcode||item.sku||"";
-        if(showBarcode&&code&&svgs[i]){
-          try{ win.JsBarcode(svgs[i],code,{format:"CODE128",displayValue:true,fontSize:8,height:26,margin:1,width:1}); }catch(e){}
+        if(showBarcode&&code){
+          const svg=win.document.getElementById(item._bcId);
+          if(svg) try{ win.JsBarcode(svg,code,{format:"CODE128",displayValue:true,fontSize:7,height:bcH-4,margin:1,width:1.2}); }catch(e){}
         }
-        if(showQr&&code&&canvases[i]){
-          try{ win.QRCode.toCanvas(canvases[i],code,{width:40,margin:1},()=>{}); }catch(e){}
+        if(showQr&&code){
+          const canvas=win.document.getElementById(item._qrId);
+          if(canvas) try{ win.QRCode.toCanvas(canvas,code,{width:qrSz,margin:1},()=>{}); }catch(e){}
         }
       });
-      setTimeout(()=>win.print(),300);
-    }catch(e){ win.print(); }
-  },800);
+      setTimeout(()=>win.print(),400);
+    }catch(e){ setTimeout(()=>win.print(),800); }
+  },600);
 }
 
 // ---- Datos / estadísticas ----

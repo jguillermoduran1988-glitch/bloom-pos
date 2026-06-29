@@ -825,37 +825,85 @@
       <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">label</span> Etiquetas de precio</h3>
       <div class="desc">Diseña e imprime etiquetas para tus productos.</div>
 
-      <div class="field" style="margin-bottom:10px">
-        <label>Tamaño de etiqueta</label>
-        <select id="lblSize" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface)">
-          <option value="58x40">Térmica 58×40 mm (1 columna)</option>
-          <option value="80x50">Térmica 80×50 mm (1 columna)</option>
-          <option value="100x60">Etiqueta 10×6 cm (2 columnas)</option>
-          <option value="a4">Hoja A4 — 3 columnas × 8 filas</option>
-        </select>
+      <!-- Tamaño y tipografía -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div class="field" style="margin:0">
+          <label>Tamaño</label>
+          <select id="lblSize" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+            <option value="31.75x25.4">1.25×1 pulg — precio</option>
+            <option value="50x30">50×30 mm</option>
+            <option value="58x40">58×40 mm térmica</option>
+            <option value="80x50">80×50 mm térmica</option>
+            <option value="100x60">10×6 cm</option>
+            <option value="a4">Hoja A4 (3×8 etiq.)</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Tipografía</label>
+          <select id="lblFont" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+            <option value="Arial,sans-serif">Arial</option>
+            <option value="'Helvetica Neue',sans-serif">Helvetica</option>
+            <option value="Verdana,sans-serif">Verdana</option>
+            <option value="Georgia,serif">Georgia</option>
+            <option value="'Times New Roman',serif">Times New Roman</option>
+            <option value="'Courier New',monospace">Courier New</option>
+          </select>
+        </div>
       </div>
 
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;font-size:13px">
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowName" checked> Nombre</label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowVariant" checked> Variante</label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowPrice" checked> Precio</label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowBarcode" checked> Código de barras</label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowQr"> Código QR</label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="lblShowStore"> Nombre tienda</label>
+      <!-- Márgenes -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Márgenes internos (mm)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;font-size:12px">
+          <div><div style="color:var(--text-dim);margin-bottom:2px">Superior</div><input type="number" id="lblMTop" value="2" min="0" max="15" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:13px;background:var(--surface);color:var(--text)"></div>
+          <div><div style="color:var(--text-dim);margin-bottom:2px">Inferior</div><input type="number" id="lblMBottom" value="2" min="0" max="15" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:13px;background:var(--surface);color:var(--text)"></div>
+          <div><div style="color:var(--text-dim);margin-bottom:2px">Izquierdo</div><input type="number" id="lblMLeft" value="3" min="0" max="15" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:13px;background:var(--surface);color:var(--text)"></div>
+          <div><div style="color:var(--text-dim);margin-bottom:2px">Derecho</div><input type="number" id="lblMRight" value="3" min="0" max="15" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:13px;background:var(--surface);color:var(--text)"></div>
+        </div>
       </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <input id="lblSearch" placeholder="Buscar producto por nombre o código..." style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none" oninput="searchLabelProducts()">
+      <!-- Campos y tamaños de fuente -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Campos — activar y tamaño de fuente (pt)</div>
+        <div style="display:flex;flex-direction:column;gap:7px;font-size:13px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowStore"> Nombre tienda</label>
+            <input type="number" id="lblFsStore" value="7" min="5" max="18" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowName" checked> Nombre del producto</label>
+            <input type="number" id="lblFsName" value="9" min="5" max="24" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowVariant" checked> Variante (color + talla)</label>
+            <input type="number" id="lblFsVariant" value="8" min="5" max="18" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowPrice" checked> Precio</label>
+            <input type="number" id="lblFsPrice" value="14" min="6" max="36" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowBarcode" checked> Código de barras</label>
+            <input type="number" id="lblBcH" value="22" min="10" max="60" title="Altura barra (px)" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer"><input type="checkbox" id="lblShowQr"> Código QR</label>
+            <input type="number" id="lblQrSz" value="36" min="20" max="80" title="Tamaño QR (px)" style="width:54px;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+          </div>
+        </div>
       </div>
-      <div id="lblResults" style="margin-bottom:10px;max-height:180px;overflow-y:auto"></div>
 
-      <div id="lblQueue" style="margin-bottom:12px"></div>
+      <!-- Búsqueda de productos -->
+      <input id="lblSearch" placeholder="Buscar producto por nombre, SKU o código de barras…" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;background:var(--surface);color:var(--text)" oninput="searchLabelProducts()">
+      <div id="lblResults" style="margin-bottom:10px;max-height:200px;overflow-y:auto"></div>
+
+      <div id="lblQueue" style="margin-bottom:14px"></div>
 
       <div style="display:flex;gap:8px">
-        <button onclick="printLabels()" style="flex:1;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">
-          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">print</span> Imprimir etiquetas
+        <button onclick="printLabels()" style="flex:1;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          <span class="material-symbols-outlined" style="font-size:18px">print</span> Imprimir etiquetas
         </button>
-        <button onclick="clearLabelQueue()" style="background:none;border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px;cursor:pointer;color:var(--text-dim)">Limpiar</button>
+        <button onclick="clearLabelQueue()" style="background:none;border:1px solid var(--border);border-radius:10px;padding:13px 16px;font-size:13px;cursor:pointer;color:var(--text-dim)">Limpiar</button>
       </div>
     </div>
   </div>
