@@ -1,5 +1,5 @@
 {
-  "name": "bloom-pos",
+  "name": "bloomchat",
   "main": "worker.js",
   "compatibility_date": "2026-06-27",
   "observability": {
