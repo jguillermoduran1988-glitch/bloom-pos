@@ -1992,29 +1992,43 @@ async function saveClientEdit(){
 function importClientesFromXlsx(){
   alert("La importación masiva se hace con el script Python desde tu PC. Ya están cargados los 5.146 clientes de Shopify.");
 }
+let _salesSearchTimer=null;
+function searchSalesHistory(){ clearTimeout(_salesSearchTimer); _salesSearchTimer=setTimeout(loadSalesHistory,350); }
+
 async function loadSalesHistory(){
   const box=$("#salesHistory"); if(!box) return;
   box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Cargando…</div>';
-  const rows=await sbGet(`sales?store=eq.${C.STORE}&order=created_at.desc&limit=50`);
-  if(!rows || !rows.length){ box.innerHTML='<div style="color:var(--text-dim);font-size:13px">No hay ventas registradas.</div>'; return; }
+  const q=($("#salesSearch")||{value:""}).value.trim();
+  let url=`sales?store=eq.${C.STORE}&order=created_at.desc&limit=80`;
+  if(q){
+    const enc=encodeURIComponent(q);
+    url=`sales?store=eq.${C.STORE}&order=created_at.desc&limit=80&or=(customer_name.ilike.*${enc}*,customer_doc.ilike.*${enc}*,customer_phone.ilike.*${enc}*)`;
+  }
+  const rows=await sbGet(url);
+  if(!rows || !rows.length){ box.innerHTML='<div style="color:var(--text-dim);font-size:13px">No hay ventas para esa búsqueda.</div>'; return; }
   box.innerHTML="";
   for(const s of rows){
     const fecha=new Date(s.created_at).toLocaleString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
     const card=el("div","sale-card");
     const esEnvio = s.sale_type==="envios" || s.sale_type==="envíos";
+    const cancelada = s.status==="cancelada";
+    const statusBadge = cancelada?'<span style="font-size:11px;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:1px 6px;margin-left:4px">Cancelada</span>':'';
     card.innerHTML=`
       <div class="sale-card-main">
         <div>
-          <div><b>${money(s.total)}</b> <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">local_shipping</span> Envío":"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda"}</span></div>
-          <div style="font-size:12px;color:var(--text-dim)">${esc(s.customer_name||"Sin cliente")} · ${fecha}</div>
+          <div><b>${money(s.total)}</b>${statusBadge} <span style="font-size:11px;color:var(--text-dim)">${esEnvio?"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">local_shipping</span> Envío":"<span class=\"material-symbols-outlined\" style=\"font-size:13px;vertical-align:-3px\">storefront</span> Tienda"}</span></div>
+          <div style="font-size:12px;color:var(--text-dim)">${esc(s.customer_name||"Sin cliente")}${s.customer_doc?' · '+esc(s.customer_doc):''}${s.customer_phone?' · '+esc(s.customer_phone):''} · ${fecha}</div>
+          ${s.shopify_order_name?`<div style="font-size:11px;color:var(--text-dim)">${esc(s.shopify_order_name)}</div>`:''}
           ${s.alegra_invoice?`<div style="font-size:11px;color:#1d8a5e">✓ Factura Alegra: ${esc(s.alegra_invoice)}</div>`:""}
         </div>
         <button class="sale-menu-btn" onclick="toggleSaleMenu('${s.id}')">⋮</button>
       </div>
       <div class="sale-menu" id="saleMenu-${s.id}">
-        ${esEnvio?`<button onclick="printLabel('${s.id}')">🏷️ Imprimir etiqueta</button>`:""}
-        <button onclick="invoiceAlegra('${s.id}')">📄 Crear factura Alegra</button>
-        <button onclick="invoiceSiigo('${s.id}')">📋 Crear factura Siigo</button>
+        ${esEnvio?`<button onclick="printLabel('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">label</span> Imprimir etiqueta</button>`:""}
+        <button onclick="invoiceAlegra('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">description</span> Crear factura Alegra</button>
+        <button onclick="invoiceSiigo('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">receipt</span> Crear factura Siigo</button>
+        ${!cancelada?`<button onclick="cancelSale('${s.id}','${s.shopify_order_id||''}','${esc(s.shopify_order_name||'')}')" style="color:#b91c1c"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">cancel</span> Cancelar venta</button>`:''}
+        ${!cancelada&&s.shopify_order_id?`<button onclick="openRefundModal('${s.id}','${s.shopify_order_id}',${s.total})" style="color:#d97706"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">currency_exchange</span> Reembolso parcial</button>`:''}
       </div>`;
     box.appendChild(card);
   }
@@ -2023,6 +2037,46 @@ function toggleSaleMenu(id){
   const m=$("#saleMenu-"+id);
   document.querySelectorAll(".sale-menu.show").forEach(x=>{ if(x!==m) x.classList.remove("show"); });
   m.classList.toggle("show");
+}
+
+async function cancelSale(saleId, shopifyOrderId, orderName){
+  if(!confirm(`¿Cancelar la venta ${orderName||saleId}? Esto también cancelará el pedido en Shopify.`)) return;
+  const btn=event?.target; if(btn){btn.disabled=true;btn.textContent="Cancelando…";}
+  try{
+    if(shopifyOrderId){
+      const r=await fetch(`${C.WORKER_URL}/refund`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shopify_order_id:shopifyOrderId,full:true})});
+      const d=await r.json();
+      if(!d.ok){ alert("Error en Shopify: "+(d.error||"desconocido")); if(btn){btn.disabled=false;btn.textContent="Cancelar venta";} return; }
+    }
+    await sbPatch(`sales?id=eq.${saleId}`,{status:"cancelada"});
+    loadSalesHistory();
+  }catch(e){ alert("Error: "+e); if(btn){btn.disabled=false;btn.textContent="Cancelar venta";} }
+}
+
+let _refundCtx={};
+function openRefundModal(saleId, shopifyOrderId, total){
+  _refundCtx={saleId, shopifyOrderId, total};
+  $("#refundTotal").textContent=money(total);
+  $("#refundAmount").value="";
+  $("#refundModal").style.display="flex";
+  toggleSaleMenu(saleId);
+}
+function closeRefundModal(){ $("#refundModal").style.display="none"; }
+async function confirmPartialRefund(){
+  const amount=Number($("#refundAmount").value);
+  if(!amount||amount<=0||amount>_refundCtx.total){ alert("Monto inválido"); return; }
+  const btn=document.querySelector("#refundModal button:last-child");
+  if(btn){btn.disabled=true;btn.textContent="Procesando…";}
+  try{
+    const r=await fetch(`${C.WORKER_URL}/refund`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shopify_order_id:_refundCtx.shopifyOrderId,amount,full:false})});
+    const d=await r.json();
+    if(!d.ok){ alert("Error en Shopify: "+(d.error||"desconocido")); if(btn){btn.disabled=false;btn.textContent="Reembolsar";} return; }
+    const nuevoTotal=_refundCtx.total-amount;
+    await sbPatch(`sales?id=eq.${_refundCtx.saleId}`,{total:nuevoTotal});
+    closeRefundModal();
+    loadSalesHistory();
+    alert(`✓ Reembolso de ${money(amount)} aplicado. Nuevo total: ${money(nuevoTotal)}`);
+  }catch(e){ alert("Error: "+e); if(btn){btn.disabled=false;btn.textContent="Reembolsar";} }
 }
 async function invoiceAlegra(saleId){
   if(!confirm("¿Crear factura en Alegra (borrador) para esta venta?")) return;

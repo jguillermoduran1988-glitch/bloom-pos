@@ -849,8 +849,23 @@
     <div id="datPaneVentas" style="display:none">
       <div class="cfg-sec">
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">receipt_long</span> Historial de ventas</h3>
-        <div class="desc">Toca los 3 puntos de cada venta para facturar o imprimir etiqueta.</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="salesSearch" placeholder="Buscar por nombre, cédula o celular…" style="flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;outline:none" oninput="searchSalesHistory()">
+        </div>
         <div id="salesHistory"></div>
+      </div>
+    </div>
+
+    <!-- Modal reembolso parcial -->
+    <div id="refundModal" class="modal-overlay" style="display:none;align-items:center;justify-content:center">
+      <div class="modal-box" style="max-width:340px;width:100%;padding:24px">
+        <h3 style="margin:0 0 14px">Reembolso parcial</h3>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px">Ingresa el monto a reembolsar (total: <b id="refundTotal"></b>)</div>
+        <input id="refundAmount" type="number" placeholder="Monto a reembolsar" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 13px;font-size:15px;box-sizing:border-box;margin-bottom:14px">
+        <div style="display:flex;gap:8px">
+          <button onclick="closeRefundModal()" style="flex:1;padding:10px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer">Cancelar</button>
+          <button onclick="confirmPartialRefund()" style="flex:1;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600">Reembolsar</button>
+        </div>
       </div>
     </div>
 

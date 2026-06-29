@@ -104,6 +104,49 @@ export default {
       return Response.json(result, { headers: cors });
     }
 
+    // -------- Cancelar o reembolsar venta en Shopify --------
+    if (request.method === "POST" && url.pathname === "/refund") {
+      const { shopify_order_id, amount, full } = await request.json();
+      if (!shopify_order_id) return Response.json({ ok: false, error: "sin shopify_order_id" }, { headers: cors });
+      try {
+        if (full) {
+          // Cancelación completa
+          const r = await fetch(
+            `https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}/cancel.json`,
+            { method: "POST", headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" }, body: "{}" }
+          );
+          const d = await r.json();
+          if (!r.ok) return Response.json({ ok: false, error: JSON.stringify(d) }, { headers: cors });
+          return Response.json({ ok: true, cancelled: true }, { headers: cors });
+        } else {
+          // Reembolso parcial — primero obtenemos la transacción original
+          const txR = await fetch(
+            `https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}/transactions.json`,
+            { headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN } }
+          );
+          const txData = await txR.json();
+          const saleTx = (txData.transactions || []).find(t => t.kind === "sale" && t.status === "success");
+          if (!saleTx) return Response.json({ ok: false, error: "no se encontró transacción de venta" }, { headers: cors });
+          const refundBody = {
+            refund: {
+              currency: "COP",
+              notify: false,
+              transactions: [{ parent_id: saleTx.id, amount: String(amount), kind: "refund", gateway: saleTx.gateway }],
+            },
+          };
+          const rr = await fetch(
+            `https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}/refunds.json`,
+            { method: "POST", headers: { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" }, body: JSON.stringify(refundBody) }
+          );
+          const rd = await rr.json();
+          if (!rr.ok) return Response.json({ ok: false, error: JSON.stringify(rd) }, { headers: cors });
+          return Response.json({ ok: true, refund_id: rd.refund?.id }, { headers: cors });
+        }
+      } catch (e) {
+        return Response.json({ ok: false, error: e.message }, { headers: cors });
+      }
+    }
+
     return new Response("Not found", { status: 404 });
   },
 };
