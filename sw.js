@@ -1,4 +1,4 @@
-const CACHE="bloom-v74";
+const CACHE="bloom-v80";
 const PUSH_LATEST_URL="https://bloom-push.jguillermoduran1988.workers.dev/push/latest?store=bloom";
 const SHELL=["./index.html","./app.js","./config.js","./push-client.js","./manifest.json","./colombia.js","./logo-bloom.svg","./icon-192.png","./icon-512.png"];
 
@@ -18,6 +18,16 @@ self.addEventListener("fetch",e=>{
 
   if(e.request.mode==="navigate"){
     e.respondWith(fetch(e.request).catch(()=>caches.match("./index.html")));
+    return;
+  }
+
+  // Network-first para JS/HTML: siempre intenta red primero, caché como fallback offline
+  if(u.pathname.endsWith(".js")||u.pathname.endsWith(".html")){
+    e.respondWith(fetch(e.request).then(r=>{
+      const clone=r.clone();
+      caches.open(CACHE).then(c=>c.put(e.request,clone));
+      return r;
+    }).catch(()=>caches.match(e.request)));
     return;
   }
 
