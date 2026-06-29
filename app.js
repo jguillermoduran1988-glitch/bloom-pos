@@ -1438,7 +1438,12 @@ function renderPosCatalog(){
     }
     return false;
   };
-  const list = pos.catalog.filter(p=>match(p));
+  const list = pos.catalog.filter(p=>{
+    if(!match(p)) return false;
+    // Ocultar solo si todo está completamente agotado
+    if(p.variants && p.variants.length) return p.variants.some(v=>v.stock>0);
+    return p.stock>0;
+  });
   for(const p of list){
     const card=el("div","pos-card");
     const img=p.image?`<img src="${esc(p.image)}">`:(p.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>");
