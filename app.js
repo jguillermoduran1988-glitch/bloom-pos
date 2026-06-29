@@ -2109,7 +2109,7 @@ function toggleExCreate(open){
 
 function _resetExForm(){
   _exCtx = { saleId:null, shopifyOrderId:null, orderName:null, items:[], customer:{}, reason:'cambio', replacement:[], returnSel:{}, chargePayment:null };
-  ["exOrderSearch","exNotes","exProductSearch","exBarcodeInput"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+  ["exOrderSearch","exNotes","exProductSearch"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
   ["exOrderResults","exOrderSelected","exReturnItems","exProductResults","exSelectedReplacement","exPriceSummary"].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=""; });
   const payBtns = document.getElementById("exPaymentBtns"); if(payBtns) payBtns.dataset.built="0";
   const paySection = document.getElementById("exPaymentSection"); if(paySection) paySection.style.display="none";
@@ -2203,68 +2203,60 @@ function exQty(key, delta){
   updateExSummary();
 }
 
-// ---- Pistola de barras ----
-async function scanExBarcode(){
-  const input = document.getElementById("exBarcodeInput");
+// ---- Buscador unificado (pistola Enter + texto) ----
+async function scanExReplacement(){
+  const input = document.getElementById("exProductSearch");
   const code = (input.value || "").trim();
   if(!code) return;
-  input.value = "";
 
-  // Asegurar catálogo cargado
-  if(!pos.catalog.length){
-    input.placeholder = "Cargando catálogo…";
-    await fetchProducts();
-    input.placeholder = "Apunta el pistolero aquí y escanea — Enter para agregar";
-  }
+  if(!pos.catalog.length) await fetchProducts();
 
-  const c = code.toLowerCase();
-  let found = null;
-  for(const p of pos.catalog){
-    for(const v of (p.variants||[])){
-      if((v.sku && v.sku.toLowerCase()===c) || (v.barcode && v.barcode.toLowerCase()===c)){
-        found = { name:p.name, variant:[v.color,v.talla].filter(Boolean).join(" / "), price:v.price, qty:1, sku:v.sku||null, variant_id:v.variant_id };
-        break;
-      }
-    }
-    if(found) break;
-  }
-
-  if(found){ addExReplacement(found); }
-  else {
-    const box = document.getElementById("exProductResults");
-    box.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:6px">Código no encontrado: ${esc(code)}</div>`;
-    setTimeout(()=>{ if(box.textContent.includes(code)) box.innerHTML=""; }, 3000);
+  const found = findProductByCode(code);
+  if(found){
+    const p = found.product;
+    const v = found.variant_id ? p.variants?.find(x=>String(x.variant_id)===String(found.variant_id)) : p.variants?.[0];
+    addExReplacement({ name:p.name, variant:[v?.color,v?.talla].filter(Boolean).join(" / "), price:v?.price||p.price, qty:1, sku:v?.sku||null, variant_id:v?.variant_id||null });
+    input.value = "";
+    document.getElementById("exProductResults").innerHTML = "";
+  } else {
+    // Si no es código exacto, buscar por texto y mostrar resultados
+    searchExchangeProduct();
   }
 }
 
-// ---- Búsqueda manual de productos ----
 let _exSearchTimer = null;
 function searchExchangeProduct(){
   clearTimeout(_exSearchTimer);
   _exSearchTimer = setTimeout(async () => {
-    const q = document.getElementById("exProductSearch").value.trim();
+    const q = (document.getElementById("exProductSearch").value || "").toLowerCase().trim();
     const box = document.getElementById("exProductResults");
     if(q.length < 2){ box.innerHTML=""; return; }
-    const products = await fetch(`${C.WORKER_URL}/products?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]);
-    box.innerHTML = "";
-    let shown = 0;
-    for(const p of products){
-      if(shown >= 15) break;
-      const variants = p.variants && p.variants.length > 1 ? p.variants : [null];
-      for(const v of variants){
-        if(shown >= 15) break;
-        const varLabel = v ? [v.color, v.talla].filter(Boolean).join(" / ") : (p.variant||"");
-        const price = v ? v.price : p.price;
-        const item = { name: p.name, variant: varLabel, price, qty:1, sku: v?.sku||p.sku||null, variant_id: v?.variant_id||null };
-        const div = document.createElement("div");
-        div.className = "ex-product-result";
-        div.innerHTML = `<span>${esc(p.name)}${varLabel?` <span style="color:var(--text-dim);font-size:12px">${esc(varLabel)}</span>`:""}</span><b>${money(price)}</b>`;
-        div.onclick = () => { addExReplacement(item); document.getElementById("exProductSearch").value=""; box.innerHTML=""; };
-        box.appendChild(div);
-        shown++;
+
+    if(!pos.catalog.length) await fetchProducts();
+
+    const results = [];
+    for(const p of pos.catalog){
+      const nameMatch = p.name && p.name.toLowerCase().includes(q);
+      for(const v of (p.variants||[{price:p.price,sku:null,barcode:null,variant_id:null,color:null,talla:null}])){
+        const skuMatch = v.sku && String(v.sku).toLowerCase().includes(q);
+        const bcMatch  = v.barcode && String(v.barcode).toLowerCase().includes(q);
+        if(nameMatch || skuMatch || bcMatch){
+          results.push({ name:p.name, variant:[v.color,v.talla].filter(Boolean).join(" / "), price:v.price||p.price, qty:1, sku:v.sku||null, variant_id:v.variant_id||null });
+        }
       }
+      if(results.length >= 20) break;
     }
-  }, 300);
+
+    box.innerHTML = "";
+    for(const item of results.slice(0,20)){
+      const div = document.createElement("div");
+      div.className = "ex-product-result";
+      div.innerHTML = `<span>${esc(item.name)}${item.variant?` <span style="color:var(--text-dim);font-size:12px">${esc(item.variant)}</span>`:""}</span><b>${money(item.price)}</b>`;
+      div.onclick = () => { addExReplacement(item); document.getElementById("exProductSearch").value=""; box.innerHTML=""; };
+      box.appendChild(div);
+    }
+    if(!results.length) box.innerHTML = `<div style="font-size:12px;color:var(--text-dim);padding:6px">Sin resultados</div>`;
+  }, 250);
 }
 
 // ---- Agregar producto al reemplazo ----
@@ -2310,7 +2302,7 @@ function renderExReplacements(){
 
 function setExPayment(method){
   _exCtx.chargePayment = method;
-  document.querySelectorAll(".ex-pay-btn").forEach(b=>b.classList.toggle("on", b.dataset.pm===method));
+  document.querySelectorAll(".ex-pay-btn").forEach(b=>b.classList.toggle("active", b.dataset.pm===method));
 }
 
 function updateExSummary(){
