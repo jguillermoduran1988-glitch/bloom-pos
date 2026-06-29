@@ -212,9 +212,9 @@ function msgNode(m){
   }
   const b=el("div","msg "+(m.direction==="out"?"out":"in"));
   const _t=`<div class="t">${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
-  if(m.media_type==="image"&&m.media_url){
+  if((m.msg_type==="image"||m.media_type==="image")&&m.media_url){
     b.innerHTML=`<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${_t}`;
-  }else if(m.media_type==="audio"&&m.media_url){
+  }else if((m.msg_type==="audio"||m.media_type==="audio")&&m.media_url){
     b.innerHTML=`<audio controls src="${esc(m.media_url)}"></audio>${_t}`;
   }else{
     b.innerHTML=waFormat(m.body)+_t;
@@ -433,14 +433,14 @@ function attachChatPhoto(){
     const up=await sbUpload("team-chat", file, (file.name.split(".").pop()||"jpg"));
     if(!up){ alert("No se pudo subir la foto"); return; }
     const now=new Date().toISOString();
-    appendMessage({body:"",media_url:up.url,media_type:"image",direction:"out",created_at:now,msg_type:"media"});
+    appendMessage({body:"",media_url:up.url,media_type:"image",direction:"out",created_at:now,msg_type:"image"});
     const c=state.chats.get(state.active); if(c){ c.last="📷 Foto"; c.lastAt=now; renderChatList(); }
     try{
       await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({phone:state.active,message:up.url,store:C.STORE})});
     }catch(e){console.error(e);}
     await sbPost("messages",{contact_phone:state.active,store:C.STORE,direction:"out",body:"",
-      media_url:up.url,media_type:"image",msg_type:"media"});
+      media_url:up.url,msg_type:"image"});
   };
   inp.click();
 }
@@ -470,14 +470,14 @@ async function toggleChatVoice(){
       const up=await sbUpload("team-chat", blob, realExt);
       if(!up) return;
       const now=new Date().toISOString();
-      appendMessage({body:"",media_url:up.url,media_type:"audio",direction:"out",created_at:now,msg_type:"media"});
+      appendMessage({body:"",media_url:up.url,media_type:"audio",direction:"out",created_at:now,msg_type:"audio"});
       const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
       try{
         await fetch(`${C.WORKER_URL}/send`,{method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({phone:state.active,message:up.url,store:C.STORE})});
       }catch(e){console.error(e);}
       await sbPost("messages",{contact_phone:state.active,store:C.STORE,direction:"out",body:"",
-        media_url:up.url,media_type:"audio",msg_type:"media"});
+        media_url:up.url,msg_type:"audio"});
     };
     _chatRecorder.start();
     btn.classList.add("rec"); btn.textContent="⏹";
