@@ -2444,10 +2444,13 @@ async function confirmExchange(){
     const replTotal = (_exCtx.replacement||[]).reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
     const paymentsNote = (_exCtx.chargePayments||[]).filter(p=>p.method).map(p=>`${p.method}: ${money(p.amount)}`).join(", ");
 
+    const chargePaymentMethod = (_exCtx.chargePayments||[]).filter(p=>p.method).map(p=>`${p.method} $${p.amount}`).join(" + ") || null;
     const r = await fetch(`${C.WORKER_URL}/exchange`, { method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ shopify_order_id:_exCtx.shopifyOrderId, original_order_name:_exCtx.orderName,
         returned_items:retItems, replacement:_exCtx.reason!=='devolucion'?_exCtx.replacement:[],
-        customer:_exCtx.customer||{}, reason:_exCtx.reason, notes }) });
+        customer:_exCtx.customer||{}, reason:_exCtx.reason, notes,
+        refund_amount: retTotal,
+        charge_payment: chargePaymentMethod }) });
     const d = await r.json();
     if(!d.ok){ alert("Error en Shopify: "+(d.error||"desconocido")); btn.disabled=false; btn.textContent="Confirmar"; return; }
 
