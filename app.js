@@ -1281,7 +1281,11 @@ function openPaymentModal(){
   renderPayRows();
   $("#paymentModal").classList.add("show");
 }
-function closePaymentModal(){ $("#paymentModal").classList.remove("show"); }
+function closePaymentModal(){
+  $("#paymentModal").classList.remove("show");
+  // Si el pago no fue confirmado, limpiar para evitar "(revisar)" falso
+  if(!$("#btnPayment")?.classList.contains("done")) pos.splitPayments=[];
+}
 function savePaymentModal(){
   const total=cartTotal();
   const sum=pos.splitPayments.reduce((s,p)=>s+(p.amount||0),0);
