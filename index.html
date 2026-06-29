@@ -549,6 +549,10 @@
       </div>
     </div>
     <div class="cart pos-cart">
+      <div id="offlineBanner" style="display:none;background:#f59e0b;color:#fff;text-align:center;padding:5px 12px;font-size:12px;font-weight:600;border-radius:6px 6px 0 0">
+        <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">wifi_off</span>
+        Sin conexión — las ventas se guardan y envían al reconectar
+      </div>
       <div class="cart-head">
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">shopping_cart</span> Venta</h3>
         <div style="display:flex;align-items:center;gap:8px">
@@ -556,6 +560,10 @@
           <button class="cashier-btn" id="cashierBtn" onclick="openCashierPick()"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">face_3</span> Cajero</button>
           <span id="cartCount" style="font-size:13px;color:var(--text-dim)">0 items</span>
         </div>
+      </div>
+      <div id="pendingBanner" style="display:none;padding:4px 14px;background:var(--accent-soft);font-size:12px;color:var(--accent-dark);display:flex;justify-content:space-between;align-items:center">
+        <span><span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">sync</span> <span id="pendingBadge" style="display:none"></span></span>
+        <button onclick="syncPendingSales()" style="font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer">Sincronizar</button>
       </div>
       <div class="cart-type">
         <button class="on" id="typeTienda" onclick="setSaleType('tienda')"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">storefront</span> Tienda</button>

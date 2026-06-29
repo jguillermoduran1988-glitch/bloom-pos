@@ -443,9 +443,17 @@ function closePicker(){$("#overlay").classList.remove("show");}
 async function fetchProducts(){
   try{
     const r=await fetch(`${C.WORKER_URL}/products?store=${C.STORE}`);
-    if(r.ok){const d=await r.json(); if(d.length)return d;}
+    if(r.ok){
+      const d=await r.json();
+      if(d.length){
+        try{ localStorage.setItem("bloom_catalog_cache", JSON.stringify(d)); }catch{}
+        return d;
+      }
+    }
   }catch(e){}
-  return C.DEMO_PRODUCTS; // fallback demo
+  // Fallback: caché local (offline)
+  try{ const c=JSON.parse(localStorage.getItem("bloom_catalog_cache")||"[]"); if(c.length) return c; }catch{}
+  return C.DEMO_PRODUCTS;
 }
 function allSizes(){const s=new Set();picker.products.forEach(p=>(p.sizes||[]).forEach(x=>s.add(x)));return [...s];}
 function renderSizes(){
@@ -578,7 +586,8 @@ async function initPos(){
   pos.catalog = await fetchProducts();
   await loadUsers(); await loadPayments(); await loadSettings();
   renderPosCatalog(); renderSellerSelect(); renderPayGrid(); renderCart();
-  renderCashierBtn(); renderHoldsBtn();
+  renderCashierBtn(); renderHoldsBtn(); renderOfflineUI();
+  if(navigator.onLine) syncPendingSales();
   initDeptos();
   checkCustomOrderAlerts();
   initBarcodeInput();
@@ -785,6 +794,60 @@ function deleteHold(i){
   renderHoldsBtn();
   renderHoldsPanel();
 }
+
+// ===== VENTAS OFFLINE =====
+function _pendingLoad(){ try{ return JSON.parse(localStorage.getItem("bloom_pending_sales")||"[]"); }catch{ return []; } }
+function _pendingSave(q){ localStorage.setItem("bloom_pending_sales", JSON.stringify(q)); }
+
+function renderOfflineUI(){
+  const offline=!navigator.onLine;
+  let banner=$("#offlineBanner");
+  if(banner){ banner.style.display=offline?"block":"none"; }
+  renderPendingBadge();
+}
+
+function renderPendingBadge(){
+  const n=_pendingLoad().length;
+  const badge=$("#pendingBadge");
+  const banner=$("#pendingBanner");
+  if(badge){ badge.style.display=n?"inline":"none"; badge.textContent=`${n} venta${n!==1?"s":""} por sincronizar`; }
+  if(banner){ banner.style.display=n?"flex":"none"; }
+}
+
+function saveOfflineSale(orderPayload, salePayload){
+  const q=_pendingLoad();
+  q.push({ id:Date.now(), orderPayload, salePayload, ts:Date.now() });
+  _pendingSave(q);
+  renderPendingBadge();
+}
+
+async function syncPendingSales(){
+  const q=_pendingLoad();
+  if(!q.length || !navigator.onLine) return;
+  const badge=$("#pendingBadge");
+  if(badge) badge.textContent="Sincronizando…";
+  for(const p of [...q]){
+    try{
+      let shopify={ok:false};
+      try{
+        const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p.orderPayload)});
+        shopify=await r.json();
+      }catch{}
+      const payload={...p.salePayload, shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null};
+      const r2=await sbPost("sales", payload);
+      if(r2.ok){
+        const updated=_pendingLoad().filter(x=>x.id!==p.id);
+        _pendingSave(updated);
+      }
+    }catch(e){ console.warn("sync error",e); }
+  }
+  renderPendingBadge();
+}
+
+// Escucha cambios de conectividad
+window.addEventListener("online",  ()=>{ renderOfflineUI(); syncPendingSales(); });
+window.addEventListener("offline", ()=>{ renderOfflineUI(); });
+
 function openCashierPick(){
   const box=$("#cashierPickList"); box.innerHTML="";
   if(!pos.cashiers.length){
@@ -1599,7 +1662,7 @@ async function confirmSale(){
   const paymentStr = pos.splitPayments.map(p=>`${p.method} ${money(p.amount)}`).join(" + ");
   const paymentMethods = pos.splitPayments.map(p=>p.method).join(", ");
 
-  const order={
+  const orderPayload={
     items:pos.cart.map(i=>({variant_id:i.variant_id,qty:i.qty,price:i.price,name:i.name,variant:i.variant||null,barcode:i.barcode||null,sku:i.sku||null,note:i.note||""})),
     payment:paymentStr, sale_type:pos.saleType,
     payment_detail:pos.splitPayments.map(p=>({method:p.method,amount:p.amount})),
@@ -1608,29 +1671,40 @@ async function confirmSale(){
     discount: desc>0 ? {type:pos.discount.type, value:pos.discount.value, amount:desc} : null,
     customer,
     billing: pos.billing||null,
-    draft: pos.settings?.shopify_draft !== false,  // por defecto borrador hasta desactivar
+    draft: pos.settings?.shopify_draft !== false,
   };
-  let shopify={ok:false};
-  try{
-    const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(order)});
-    shopify=await r.json();
-  }catch(e){console.error(e);}
-  const saleResp = await sbPost("sales",{
-    shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null,
+  const salePayload={
     seller_id:seller?.id||null, seller_name:seller?.name||"—",
     customer_phone:customer.phone||null, customer_name:customer.full_name||null,
     customer_doc:customer.doc||null, customer_doc_type:customer.doc_type||null,
     customer_email:customer.email||null, customer_address:customer.address||null,
     customer_depto:customer.depto||null, customer_city:customer.city||null,
-    billing_empresa: pos.billing? true : false,
-    billing_detail: pos.billing || null,
-    cashier_id: pos.cashier?.id || null, cashier_name: pos.cashier?.name || null,
+    billing_empresa: pos.billing? true : false, billing_detail: pos.billing||null,
+    cashier_id:pos.cashier?.id||null, cashier_name:pos.cashier?.name||null,
     sale_type:pos.saleType, payment_method:paymentMethods,
     payment_method_id: pos.splitPayments.length===1 ? (pos.splitPayments[0].id||null) : null,
     payment_detail:pos.splitPayments.map(p=>({method:p.method,id:p.id||null,amount:p.amount})),
     discount_type:pos.discount.type||null, discount_value:pos.discount.value||0, discount_amount:desc,
-    items:order.items, subtotal:sub, total:total,
+    items:orderPayload.items, subtotal:sub, total:cartTotal(),
     status:"completada", store:C.STORE,
+  };
+
+  // Sin internet → encolar y confirmar localmente
+  if(!navigator.onLine){
+    saveOfflineSale(orderPayload, salePayload);
+    btn.textContent="✓ Guardada (sin conexión)";
+    setTimeout(()=>{ clearPosCart(); btn.textContent="Registrar venta"; btn.disabled=false; },1800);
+    return;
+  }
+
+  let shopify={ok:false};
+  try{
+    const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(orderPayload)});
+    shopify=await r.json();
+  }catch(e){console.error(e);}
+  const saleResp = await sbPost("sales",{
+    shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null,
+    ...salePayload,
   });
   if(!saleResp.ok){
     const errTxt = await saleResp.text().catch(()=> "");
