@@ -916,9 +916,15 @@
           <!-- Razón -->
           <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">TIPO</div>
           <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-            <button id="exReason-cambio"    onclick="setExReason('cambio')"    class="ex-reason-btn active">↔ Cambio</button>
-            <button id="exReason-garantia"  onclick="setExReason('garantia')"  class="ex-reason-btn">🛡 Garantía</button>
-            <button id="exReason-devolucion" onclick="setExReason('devolucion')" class="ex-reason-btn">↩ Devolución</button>
+            <button id="exReason-cambio"      onclick="setExReason('cambio')"      class="ex-reason-btn active">↔ Cambio</button>
+            <button id="exReason-garantia"    onclick="setExReason('garantia')"    class="ex-reason-btn">🛡 Garantía</button>
+            <button id="exReason-devolucion"  onclick="setExReason('devolucion')"  class="ex-reason-btn">↩ Devolución</button>
+            <button id="exReason-cancelacion" onclick="setExReason('cancelacion')" class="ex-reason-btn" style="color:#b91c1c">✕ Cancelación</button>
+          </div>
+
+          <!-- Aviso cancelación -->
+          <div id="exCancelNotice" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px;font-size:13px;color:#991b1b;margin-bottom:14px">
+            ⚠️ Se cancelará el pedido completo en Shopify. Esta acción no se puede deshacer.
           </div>
 
           <!-- Búsqueda de pedido -->
@@ -930,7 +936,14 @@
           <!-- Ítems a devolver (aparece al seleccionar pedido) -->
           <div id="exReturnSection" style="display:none">
             <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">¿QUÉ DEVUELVE?</div>
-            <div id="exReturnItems" style="margin-bottom:16px"></div>
+            <div id="exReturnItems" style="margin-bottom:10px"></div>
+
+            <!-- Monto parcial (solo devolución) -->
+            <div id="exPartialSection" style="display:none;margin-bottom:16px">
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">Monto a reembolsar (editable para devolución parcial)</div>
+              <input id="exRefundAmount" type="number" min="0" placeholder="0" oninput="this.dataset.userSet=1;updateExSummary()"
+                style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;background:var(--surface);color:var(--text)">
+            </div>
 
             <!-- Reemplazo (oculto en devolución) -->
             <div id="exReplacementSection">
@@ -950,10 +963,11 @@
               <div id="exSelectedReplacement" style="margin-bottom:12px"></div>
             </div>
 
-            <!-- Medio de pago para excedente (aparece si el cliente debe pagar diferencia) -->
+            <!-- Medio de pago para excedente -->
             <div id="exPaymentSection" style="display:none;margin-bottom:14px">
               <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px">¿CÓMO PAGA LA DIFERENCIA?</div>
-              <div id="exPaymentBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+              <div id="exPaymentRows"></div>
+              <button onclick="addExPaymentRow()" style="font-size:13px;padding:6px 14px;border:1px dashed var(--border);background:none;border-radius:8px;cursor:pointer;color:var(--text-dim);margin-top:2px">+ Agregar medio</button>
             </div>
 
             <!-- Notas -->
@@ -975,6 +989,7 @@
           <button onclick="filterExchanges('cambio',this)">Cambios</button>
           <button onclick="filterExchanges('garantia',this)">Garantías</button>
           <button onclick="filterExchanges('devolucion',this)">Devoluciones</button>
+          <button onclick="filterExchanges('cancelacion',this)">Cancelaciones</button>
         </div>
         <div id="exchangesList"></div>
       </div>

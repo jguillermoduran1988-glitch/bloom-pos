@@ -2082,8 +2082,6 @@ async function loadSalesHistory(){
         ${esEnvio?`<button onclick="printLabel('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">label</span> Imprimir etiqueta</button>`:""}
         <button onclick="invoiceAlegra('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">description</span> Crear factura Alegra</button>
         <button onclick="invoiceSiigo('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">receipt</span> Crear factura Siigo</button>
-        ${!cancelada?`<button onclick="cancelSale('${s.id}','${s.shopify_order_id||''}','${esc(s.shopify_order_name||'')}')" style="color:#b91c1c"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">cancel</span> Cancelar venta</button>`:''}
-        ${!cancelada&&s.shopify_order_id?`<button onclick="openRefundModal('${s.id}','${s.shopify_order_id}',${s.total})" style="color:#d97706"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">currency_exchange</span> Reembolso parcial</button>`:''}
       </div>`;
     box.appendChild(card);
   }
@@ -2108,11 +2106,11 @@ function toggleExCreate(open){
 }
 
 function _resetExForm(){
-  _exCtx = { saleId:null, shopifyOrderId:null, orderName:null, items:[], customer:{}, reason:'cambio', replacement:[], returnSel:{}, chargePayment:null };
-  ["exOrderSearch","exNotes","exProductSearch"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
-  ["exOrderResults","exOrderSelected","exReturnItems","exProductResults","exSelectedReplacement","exPriceSummary"].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=""; });
-  const payBtns = document.getElementById("exPaymentBtns"); if(payBtns) payBtns.dataset.built="0";
-  const paySection = document.getElementById("exPaymentSection"); if(paySection) paySection.style.display="none";
+  _exCtx = { saleId:null, shopifyOrderId:null, orderName:null, items:[], customer:{}, reason:'cambio', replacement:[], returnSel:{}, chargePayments:[] };
+  ["exOrderSearch","exNotes","exProductSearch","exRefundAmount"].forEach(id=>{ const el=document.getElementById(id); if(el){ el.value=""; delete el.dataset.userSet; } });
+  ["exOrderResults","exOrderSelected","exReturnItems","exProductResults","exSelectedReplacement","exPriceSummary","exPaymentRows"].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=""; });
+  ["exPaymentSection","exPartialSection","exCancelNotice"].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
+  document.getElementById("exReplacementSection").style.display = "";
   document.getElementById("exReturnSection").style.display = "none";
   document.querySelectorAll(".ex-reason-btn").forEach(b=>b.classList.remove("active"));
   document.getElementById("exReason-cambio")?.classList.add("active");
@@ -2162,10 +2160,22 @@ function selectExOrder(s){
 
 function setExReason(r){
   _exCtx.reason = r;
+  _exCtx.chargePayments = [];
   document.querySelectorAll(".ex-reason-btn").forEach(b => b.classList.remove("active"));
-  $("#exReason-"+r)?.classList.add("active");
-  $("#exReplacementSection").style.display = r === 'devolucion' ? 'none' : '';
-  if(r === 'devolucion'){ _exCtx.replacement = []; $("#exSelectedReplacement").innerHTML=""; }
+  document.getElementById("exReason-"+r)?.classList.add("active");
+
+  const isCancel = r === 'cancelacion';
+  const isDev    = r === 'devolucion';
+
+  document.getElementById("exCancelNotice").style.display     = isCancel ? '' : 'none';
+  document.getElementById("exReturnSection").style.display    = isCancel ? 'none' : (_exCtx.saleId ? '' : 'none');
+  document.getElementById("exReplacementSection").style.display = (isCancel || isDev) ? 'none' : '';
+  document.getElementById("exPartialSection").style.display   = isDev ? '' : 'none';
+
+  if(isDev || isCancel){ _exCtx.replacement = []; renderExReplacements(); }
+  if(!isDev){ const inp = document.getElementById("exRefundAmount"); if(inp) inp.value = ""; }
+
+  renderExPaymentRows();
   updateExSummary();
 }
 
@@ -2300,102 +2310,158 @@ function renderExReplacements(){
     </div>`).join("");
 }
 
-function setExPayment(method){
-  _exCtx.chargePayment = method;
-  document.querySelectorAll(".ex-pay-btn").forEach(b=>b.classList.toggle("active", b.dataset.pm===method));
+// ---- Filas de medio de pago para la diferencia ----
+function renderExPaymentRows(){
+  const box = document.getElementById("exPaymentRows"); if(!box) return;
+  if(!pos.payments?.length){ box.innerHTML='<div style="font-size:12px;color:var(--text-dim)">Cargando medios…</div>'; return; }
+  const pms = pos.payments.filter(p=>/shopify/i.test(p.name)===false);
+  const opts = pms.map(p=>`<option value="${esc(p.name)}">${p.icon||''} ${esc(p.name)}</option>`).join('');
+  box.innerHTML = (_exCtx.chargePayments||[]).map((row,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select onchange="exPayRowMethod(${i},this.value)"
+        style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+        <option value="">— Medio —</option>
+        ${pms.map(p=>`<option value="${esc(p.name)}" ${row.method===p.name?'selected':''}>${p.icon||''} ${esc(p.name)}</option>`).join('')}
+      </select>
+      <input type="number" min="0" value="${row.amount||''}" placeholder="$0"
+        oninput="exPayRowAmount(${i},this.value)"
+        style="width:110px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+      <button onclick="removeExPaymentRow(${i})"
+        style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim);padding:0 4px;flex-shrink:0">×</button>
+    </div>`).join('');
 }
+function addExPaymentRow(){
+  if(!_exCtx.chargePayments) _exCtx.chargePayments = [];
+  _exCtx.chargePayments.push({ method:'', amount:0 });
+  renderExPaymentRows();
+}
+function removeExPaymentRow(i){ _exCtx.chargePayments.splice(i,1); renderExPaymentRows(); }
+function exPayRowMethod(i,v){ _exCtx.chargePayments[i].method = v; }
+function exPayRowAmount(i,v){ _exCtx.chargePayments[i].amount = parseFloat(v)||0; updateExSummary(); }
 
 function updateExSummary(){
+  const r = _exCtx.reason;
+  const summary = document.getElementById("exPriceSummary");
+  const paySection = document.getElementById("exPaymentSection");
+
+  if(r === 'cancelacion'){
+    if(summary) summary.innerHTML = '';
+    if(paySection) paySection.style.display = 'none';
+    return;
+  }
+
   const retItems = Object.entries(_exCtx.returnSel)
     .filter(([,v])=>v.checked)
-    .map(([key,v])=>{
-      const item = (_exCtx.items||[]).find(i=>(i.sku||i.name)===key);
-      return item ? { ...item, qty: v.qty } : null;
-    }).filter(Boolean);
+    .map(([key,v])=>{ const item=(_exCtx.items||[]).find(i=>(i.sku||i.name)===key); return item?{...item,qty:v.qty}:null; })
+    .filter(Boolean);
 
-  const retTotal = retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
-  const replTotal = _exCtx.reason !== 'devolucion'
-    ? (_exCtx.replacement||[]).reduce((s,i)=>s+Number(i.price)*(i.qty||1),0)
-    : 0;
+  let retTotal = retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+
+  // Devolución: usar monto editado si existe
+  if(r === 'devolucion'){
+    const inp = document.getElementById("exRefundAmount");
+    if(inp){
+      if(!inp.dataset.userSet) inp.value = retTotal > 0 ? retTotal : '';
+      const custom = parseFloat(inp.value);
+      if(!isNaN(custom)) retTotal = custom;
+    }
+  }
+
+  const replTotal = (r !== 'devolucion')
+    ? (_exCtx.replacement||[]).reduce((s,i)=>s+Number(i.price)*(i.qty||1),0) : 0;
   const diff = replTotal - retTotal;
 
-  let html = `<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Reembolso por devolución</span><b style="color:#1d8a5e">${money(retTotal)}</b></div>`;
-  if(_exCtx.reason !== 'devolucion'){
+  // Resumen
+  let html = `<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Reembolso devolución</span><b style="color:#1d8a5e">${money(retTotal)}</b></div>`;
+  if(r !== 'devolucion'){
     html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Valor reemplazo</span><b>${money(replTotal)}</b></div>`;
-    if(diff > 0) html += `<div style="display:flex;justify-content:space-between;font-weight:600"><span>Cliente paga diferencia</span><b style="color:#d97706">${money(diff)}</b></div>`;
-    else if(diff < 0) html += `<div style="display:flex;justify-content:space-between;font-weight:600"><span>Nota crédito para cliente</span><b style="color:#1d8a5e">${money(Math.abs(diff))}</b></div>`;
-    else html += `<div style="color:#1d8a5e;font-weight:600">Sin cobro adicional</div>`;
+    if(diff > 0)      html += `<div style="display:flex;justify-content:space-between;font-weight:600"><span>Cliente paga diferencia</span><b style="color:#d97706">${money(diff)}</b></div>`;
+    else if(diff < 0) html += `<div style="display:flex;justify-content:space-between;font-weight:600"><span>Saldo a favor del cliente</span><b style="color:#1d8a5e">${money(Math.abs(diff))}</b></div>`;
+    else              html += `<div style="color:#1d8a5e;font-weight:600">Sin cobro adicional</div>`;
   }
-  document.getElementById("exPriceSummary").innerHTML = html;
+  if(summary) summary.innerHTML = html;
 
-  // Mostrar medio de pago solo si hay excedente a cobrar
-  const paySection = document.getElementById("exPaymentSection");
-  const payBtns = document.getElementById("exPaymentBtns");
-  if(paySection && payBtns){
+  // Sección de pago: mostrar si hay diferencia a cobrar
+  if(paySection){
     if(diff > 0){
-      paySection.style.display = "";
-      if(!payBtns.children.length || payBtns.dataset.built !== "1"){
-        const pms = (pos.payments||[]).filter(p=>/shopify/i.test(p.name)===false);
-        payBtns.innerHTML = pms.map(p=>`<button class="ex-pay-btn ex-reason-btn" data-pm="${esc(p.name)}" onclick="setExPayment('${esc(p.name)}')">${p.icon||""} ${esc(p.name)}</button>`).join("");
-        payBtns.dataset.built = "1";
+      paySection.style.display = '';
+      if(!_exCtx.chargePayments?.length){
+        _exCtx.chargePayments = [{ method:'', amount: diff }];
+        renderExPaymentRows();
+      } else {
+        // Actualizar monto del último si solo hay uno
+        const rows = document.getElementById("exPaymentRows");
+        if(rows && _exCtx.chargePayments.length === 1){
+          const amtInput = rows.querySelector('input[type=number]');
+          if(amtInput && !amtInput.dataset.userEdited) amtInput.value = diff;
+          _exCtx.chargePayments[0].amount = diff;
+        }
       }
     } else {
-      paySection.style.display = "none";
-      _exCtx.chargePayment = null;
+      paySection.style.display = 'none';
+      _exCtx.chargePayments = [];
     }
   }
 }
 
 async function confirmExchange(){
-  const retItems = Object.entries(_exCtx.returnSel)
-    .filter(([,v])=>v.checked)
-    .map(([key,v])=>{
-      const item = (_exCtx.items||[]).find(i=>(i.sku||i.name)===key);
-      return item ? { ...item, qty: v.qty } : null;
-    }).filter(Boolean);
-
-  if(!retItems.length){ alert("Selecciona al menos un ítem a devolver."); return; }
-  if(_exCtx.reason !== 'devolucion' && !_exCtx.replacement.length){ alert("Selecciona el producto de reemplazo."); return; }
-
-  const btn = $("#exConfirmBtn");
+  if(!_exCtx.saleId){ alert("Selecciona un pedido primero."); return; }
+  const btn = document.getElementById("exConfirmBtn");
   btn.disabled = true; btn.textContent = "Procesando…";
+  const notes = document.getElementById("exNotes")?.value.trim() || "";
 
   try {
-    const payload = {
-      shopify_order_id: _exCtx.shopifyOrderId,
-      original_order_name: _exCtx.orderName,
-      returned_items: retItems,
-      replacement: _exCtx.reason !== 'devolucion' ? _exCtx.replacement : [],
-      customer: _exCtx.customer || {},
-      reason: _exCtx.reason,
-      notes: $("#exNotes").value.trim(),
-    };
+    // ── Cancelación completa ──
+    if(_exCtx.reason === 'cancelacion'){
+      if(!confirm(`¿Cancelar el pedido ${_exCtx.orderName}? Esta acción no se puede deshacer.`)){ btn.disabled=false; btn.textContent="Confirmar"; return; }
+      const r = await fetch(`${C.WORKER_URL}/refund`, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ shopify_order_id: _exCtx.shopifyOrderId, full: true }) });
+      const d = await r.json();
+      if(!d.ok){ alert("Error: "+(d.error||"desconocido")); btn.disabled=false; btn.textContent="Confirmar"; return; }
+      await sbPatch(`sales?id=eq.${_exCtx.saleId}`, { status:"cancelada" });
+      await sbPost("exchanges", { store:C.STORE, original_sale_id:_exCtx.saleId, original_order_name:_exCtx.orderName, reason:'cancelacion', status:'completado', notes });
+      toggleExCreate(false);
+      alert(`✓ Pedido ${_exCtx.orderName} cancelado.`);
+      loadExchangesTab();
+      return;
+    }
 
-    const r = await fetch(`${C.WORKER_URL}/exchange`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
-    const d = await r.json();
-    if(!d.ok){ alert("Error en Shopify: "+(d.error||"desconocido")); btn.disabled=false; btn.textContent="Confirmar cambio"; return; }
+    // ── Cambio / Garantía / Devolución ──
+    const retItems = Object.entries(_exCtx.returnSel)
+      .filter(([,v])=>v.checked)
+      .map(([key,v])=>{ const item=(_exCtx.items||[]).find(i=>(i.sku||i.name)===key); return item?{...item,qty:v.qty}:null; })
+      .filter(Boolean);
 
-    const retTotal = retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+    if(!retItems.length && _exCtx.reason !== 'devolucion'){ alert("Selecciona al menos un ítem a devolver."); btn.disabled=false; btn.textContent="Confirmar"; return; }
+    if(_exCtx.reason !== 'devolucion' && !_exCtx.replacement.length){ alert("Selecciona el producto de reemplazo."); btn.disabled=false; btn.textContent="Confirmar"; return; }
+
+    // Monto real de reembolso (puede ser parcial)
+    const calcRetTotal = retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+    const refundAmtInp = document.getElementById("exRefundAmount");
+    const retTotal = (_exCtx.reason==='devolucion' && refundAmtInp && refundAmtInp.value)
+      ? (parseFloat(refundAmtInp.value)||calcRetTotal) : calcRetTotal;
+
     const replTotal = (_exCtx.replacement||[]).reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+    const paymentsNote = (_exCtx.chargePayments||[]).filter(p=>p.method).map(p=>`${p.method}: ${money(p.amount)}`).join(", ");
+
+    const r = await fetch(`${C.WORKER_URL}/exchange`, { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ shopify_order_id:_exCtx.shopifyOrderId, original_order_name:_exCtx.orderName,
+        returned_items:retItems, replacement:_exCtx.reason!=='devolucion'?_exCtx.replacement:[],
+        customer:_exCtx.customer||{}, reason:_exCtx.reason, notes }) });
+    const d = await r.json();
+    if(!d.ok){ alert("Error en Shopify: "+(d.error||"desconocido")); btn.disabled=false; btn.textContent="Confirmar"; return; }
 
     await sbPost("exchanges", {
-      store: C.STORE,
-      original_sale_id: _exCtx.saleId,
-      original_order_name: _exCtx.orderName,
-      new_order_name: d.new_order_name || null,
-      new_shopify_order_id: d.new_order_id || null,
-      returned_items: retItems,
-      replacement_items: _exCtx.replacement,
-      refund_amount: retTotal,
-      charge_amount: Math.max(0, replTotal - retTotal),
-      reason: _exCtx.reason,
-      notes: [document.getElementById("exNotes")?.value.trim(), _exCtx.chargePayment ? `Pago diferencia: ${_exCtx.chargePayment}` : ""].filter(Boolean).join(" | "),
+      store:C.STORE, original_sale_id:_exCtx.saleId, original_order_name:_exCtx.orderName,
+      new_order_name:d.new_order_name||null, new_shopify_order_id:d.new_order_id||null,
+      returned_items:retItems, replacement_items:_exCtx.replacement,
+      refund_amount:retTotal, charge_amount:Math.max(0,replTotal-retTotal),
+      reason:_exCtx.reason, status:'completado',
+      notes:[notes, paymentsNote].filter(Boolean).join(" | "),
     });
 
     toggleExCreate(false);
-    const msg = d.new_order_name
-      ? `✓ Cambio procesado. Nuevo pedido: ${d.new_order_name}`
-      : `✓ Devolución procesada. Reembolso: ${money(retTotal)}`;
+    const msg = d.new_order_name ? `✓ Cambio procesado. Nuevo pedido: ${d.new_order_name}` : `✓ Devolución procesada. Reembolso: ${money(retTotal)}`;
     alert(msg);
     loadExchangesTab();
   } catch(e){
