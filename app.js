@@ -212,7 +212,7 @@ async function openChat(phone){
   fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
 }
-function closeChat(){document.body.classList.remove("chat-open");state.active=null;$("#panel").classList.add("hidden");}
+function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");}
 
 // ---------- Mensajes (desde D1 vía worker) ----------
 async function loadMessages(phone){
@@ -243,7 +243,7 @@ function msgNode(m){
   }
   if(m.msg_type==="note"){
     const d=el("div","msg-note");
-    d.innerHTML=`<span class=\"lock\"><span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">lock</span></span> ${waFormat(m.body)}
+    d.innerHTML=`<span class=\"lock\"><span class=\"material-symbols-outlined\" style=\"font-size:14px;vertical-align:-3px\">sticky_note_2</span></span> ${waFormat(m.body)}
       <div class="t">nota interna · ${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
     return d;
   }
@@ -297,7 +297,13 @@ function appendMessage(m){
 }
 
 // ---------- Panel derecho ----------
-function togglePanel(){$("#panel").classList.toggle("hidden");}
+function togglePanel(){
+  if(window.innerWidth<=720){
+    document.body.classList.toggle("panel-open");
+  } else {
+    $("#panel").classList.toggle("hidden");
+  }
+}
 function renderPanel(){
   const c=state.chats.get(state.active); if(!c)return;
   $("#pAv").textContent=initials(c.name);
