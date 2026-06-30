@@ -11,5 +11,13 @@
       "database_name": "bloom-wa",
       "database_id": "9f398288-159e-46e5-9ebf-8ff290155d14"
     }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BLOOM_HUB", "class_name": "BloomHub" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["BloomHub"] }
   ]
 }

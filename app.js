@@ -3889,40 +3889,34 @@ async function initTeam(){
   startTeamPolling();
 }
 
-// ---------- Polling WhatsApp chats ----------
-let _waPoll=null;
+// ---------- WebSocket en tiempo real para chats WhatsApp ----------
+let _waSocket=null, _waSocketRetry=null;
 function startWaPolling(){
-  if(_waPoll) clearInterval(_waPoll);
-  _waPoll=setInterval(async()=>{
-    if(getCurrentScreen()!=="chats") return;
-    // Refresca lista de conversaciones
-    const rows=await fetch(`${C.WORKER_URL}/wa/conversations`).then(r=>r.json()).catch(()=>[]);
-    let changed=false;
-    for(const conv of rows){
-      const existing=state.chats.get(conv.phone);
-      const newUnread=conv.unread_count||0;
-      const newLast=conv.last_message||"";
-      if(!existing || existing.unread!==newUnread || existing.last!==newLast){
-        state.chats.set(conv.phone,{
-          phone:conv.phone, id:conv.id,
-          name:conv.contact_name||conv.phone,
-          stage:conv.stage||"nueva",
-          pipeline_id:conv.pipeline_id||null,
-          tags: typeof conv.contact_tags==="string" ? JSON.parse(conv.contact_tags||"[]") : (conv.contact_tags||[]),
-          ref_source_type:null, ref_headline:null, ref_body:null, ref_media_url:null,
-          last:newLast, lastAt:conv.last_message_at||conv.updated_at,
-          unread:state.active===conv.phone ? 0 : newUnread,
-          status:conv.status||"open",
-        });
-        changed=true;
-      }
-    }
-    if(changed) renderChatList();
-    // Si hay un chat abierto, refresca sus mensajes
-    if(state.active){
-      const convId=state.chats.get(state.active)?.id||state.active;
-      const msgs=await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}/messages`).then(r=>r.json()).catch(()=>[]);
-      if(msgs.length!==state.messages.length){
+  _connectWaSocket();
+}
+function _connectWaSocket(){
+  if(_waSocketRetry){ clearTimeout(_waSocketRetry); _waSocketRetry=null; }
+  const wsUrl=C.WORKER_URL.replace(/^https?/,"wss")+"/ws";
+  try {
+    _waSocket=new WebSocket(wsUrl);
+  } catch(e){ _waSocketRetry=setTimeout(_connectWaSocket,5000); return; }
+
+  _waSocket.onmessage=async(e)=>{
+    let data; try{ data=JSON.parse(e.data); }catch{ return; }
+    if(data.type==="new_message"){
+      const phone=data.phone;
+      // Actualiza o crea conversación en estado local
+      const existing=state.chats.get(phone);
+      state.chats.set(phone,{
+        ...(existing||{phone,name:phone,stage:"nueva",pipeline_id:null,tags:[],ref_source_type:null,ref_headline:null,ref_body:null,ref_media_url:null,status:"open"}),
+        last:data.body||"", lastAt:data.ts||new Date().toISOString(),
+        unread: state.active===phone ? 0 : ((existing?.unread||0)+1),
+      });
+      renderChatList();
+      // Si el chat está abierto, carga el mensaje nuevo
+      if(state.active===phone){
+        const convId=state.chats.get(phone)?.id||phone;
+        const msgs=await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}/messages`).then(r=>r.json()).catch(()=>[]);
         state.messages=msgs.map(m=>({
           body:m.body||"", direction:m.direction==="outbound"?"out":"in",
           created_at:m.ts||m.created_at, msg_type:m.type||"text", media_url:m.media_url||null,
@@ -3930,7 +3924,9 @@ function startWaPolling(){
         renderMessages();
       }
     }
-  }, 5000);
+  };
+  _waSocket.onclose=()=>{ _waSocketRetry=setTimeout(_connectWaSocket,4000); };
+  _waSocket.onerror=()=>{ _waSocket.close(); };
 }
 
 // Carga automática: refresca mientras estés en el chat (cada 3s)

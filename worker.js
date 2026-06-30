@@ -25,6 +25,13 @@ export default {
       return new Response("Forbidden", { status: 403 });
     }
 
+    // -------- WebSocket en tiempo real --------
+    if (url.pathname === "/ws") {
+      const id = env.BLOOM_HUB.idFromName("bloom");
+      const stub = env.BLOOM_HUB.get(id);
+      return stub.fetch(request);
+    }
+
     // -------- Mensajes entrantes --------
     if (request.method === "POST" && url.pathname === "/webhook") {
       const body = await request.json();
@@ -975,6 +982,17 @@ async function handleIncoming(env, msg, contact) {
 
   // Bot: procesar respuesta
   await handleBotInput(env, convId, phone, text, interactiveReplyId, !existing, contact);
+
+  // Notificar a los clientes WebSocket conectados
+  try {
+    const id = env.BLOOM_HUB.idFromName("bloom");
+    const stub = env.BLOOM_HUB.get(id);
+    await stub.fetch(new Request("https://internal/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "new_message", phone: convId, body: text, ts: now }),
+    }));
+  } catch(e) {}
 }
 
 // ============ Ejecución del bot ============
@@ -1667,5 +1685,40 @@ async function findOrCreatePosCustomer(env, { email, phone, name, address, city,
   if (!cr.ok) return null;
   const created = await cr.json();
   return created?.[0]?.id || null;
+}
+
+// ============ Durable Object: WebSocket hub en tiempo real ============
+export class BloomHub {
+  constructor(state) {
+    this.state = state;
+    this.sockets = new Set();
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/ws") {
+      if (request.headers.get("Upgrade") !== "websocket")
+        return new Response("Expected websocket", { status: 426 });
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      server.accept();
+      this.sockets.add(server);
+      server.addEventListener("close", () => this.sockets.delete(server));
+      server.addEventListener("error", () => this.sockets.delete(server));
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (url.pathname === "/broadcast" && request.method === "POST") {
+      const data = await request.json();
+      const msg = JSON.stringify(data);
+      for (const ws of [...this.sockets]) {
+        try { ws.send(msg); } catch(e) { this.sockets.delete(ws); }
+      }
+      return new Response("OK");
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
 }
 
