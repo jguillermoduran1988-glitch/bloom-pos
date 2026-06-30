@@ -123,18 +123,30 @@ function currentPipeline(){ return state.pipelines.find(p=>p.id===state.activePi
 // ============================================================
 let _boardMode=false;
 
+function _closeBoardMobile(){
+  const board=$("#kanbanBoard");
+  const sidebar=document.querySelector(".sidebar");
+  if(board) board.style.cssText="display:none";
+  if(sidebar){ sidebar.style.display=""; sidebar.style.visibility=""; }
+  document.body.classList.remove("board-open","chat-open","panel-open");
+  state.active=null;
+  const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+}
+
 function toggleBoardView(){
   _boardMode=!_boardMode;
   const btn=$("#boardToggleBtn");
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
   if(window.innerWidth<=720){
-    document.body.classList.toggle("board-open",_boardMode);
     if(_boardMode){
+      const sidebar=document.querySelector(".sidebar");
+      if(sidebar) sidebar.style.display="none";
+      const board=$("#kanbanBoard");
+      if(board) board.style.cssText="display:flex;position:fixed;top:0;left:0;right:0;bottom:56px;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)";
+      document.body.classList.add("board-open");
       history.pushState({kanban:true},"");
     } else {
-      document.body.classList.remove("chat-open","panel-open");
-      state.active=null;
-      const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+      _closeBoardMobile();
     }
   } else {
     $("#kanbanBoard").classList.toggle("show",_boardMode);
@@ -147,9 +159,7 @@ window.addEventListener("popstate",(e)=>{
     _boardMode=false;
     const btn=$("#boardToggleBtn");
     if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
-    document.body.classList.remove("board-open","chat-open","panel-open");
-    state.active=null;
-    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+    _closeBoardMobile();
   } else if(state.active && window.innerWidth<=720){
     state.active=null;
     document.body.classList.remove("chat-open","panel-open");
@@ -1299,13 +1309,17 @@ function switchScreen(name){
   // Cerrar kanban siempre que se cambie pantalla
   if(_boardMode){
     _boardMode=false;
-    document.body.classList.remove("board-open");
-    $("#kanbanBoard").classList.remove("show");
-    const btn=$("#boardToggleBtn");
-    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
-    document.body.classList.remove("chat-open","panel-open");
-    state.active=null;
-    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+    if(window.innerWidth<=720){
+      _closeBoardMobile();
+    } else {
+      document.body.classList.remove("board-open");
+      $("#kanbanBoard").classList.remove("show");
+      const btn=$("#boardToggleBtn");
+      if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
+      document.body.classList.remove("chat-open","panel-open");
+      state.active=null;
+      const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+    }
   }
   ["chats","pos","equipo","datos","config"].forEach(s=>{
     document.getElementById("screen-"+s).classList.toggle("active", s===name);
