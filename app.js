@@ -1345,6 +1345,12 @@ function switchScreen(name){
       const pan=$("#panel"); if(pan) pan.classList.add("hidden");
     }
   }
+  // En móvil: al cambiar de pantalla siempre limpiar chat-open para que la lista de chats sea visible al volver
+  if(window.innerWidth<=720){
+    document.body.classList.remove("chat-open","panel-open");
+    state.active=null;
+    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+  }
   ["chats","pos","equipo","datos","config"].forEach(s=>{
     const el=document.getElementById("screen-"+s);
     const nav=document.getElementById("nav-"+s);
@@ -1352,7 +1358,7 @@ function switchScreen(name){
     el.style.display=s===name?(s==="chats"||s==="pos"?"grid":"block"):"none";
     if(nav) nav.classList.toggle("on", s===name);
   });
-  if(name==="chats" && !pos.sellers?.length) loadSellers();
+  if(name==="chats"){ renderChatList(); if(!pos.sellers?.length) loadSellers(); }
   if(name==="pos" && !pos._posReady) initPos();
   if(name==="config"){
     if(!pos.currentUser?.is_master){ alert("Solo el master puede acceder a la configuración."); switchScreen("pos"); return; }
