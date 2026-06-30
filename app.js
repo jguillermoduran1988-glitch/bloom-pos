@@ -1153,10 +1153,12 @@ function expandCommand(text){
 // ---------- Selector de productos ----------
 let picker={size:null,selected:new Set(),products:[]};
 async function openPicker(){
-  picker.selected.clear(); picker.size=null;
+  picker.selected.clear(); picker.size=null; picker.products=[];
+  $("#overlay").classList.add("show");
+  const grid=$("#prodGrid");
+  grid.innerHTML=`<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--text-dim);font-size:13px"><span class="material-symbols-outlined" style="font-size:28px;display:block;margin-bottom:8px;opacity:.5">inventory_2</span>Cargando productos…</div>`;
   picker.products=await fetchProducts();
   renderSizes(); renderProducts(); updateSendBtn();
-  $("#overlay").classList.add("show");
 }
 function closePicker(){$("#overlay").classList.remove("show");}
 async function fetchProducts(){
@@ -1185,7 +1187,10 @@ function renderSizes(){
 }
 function renderProducts(){
   const grid=$("#prodGrid");grid.innerHTML="";
-  const list=picker.products.filter(p=>p.stock>0&&(!picker.size||(p.sizes||[]).includes(picker.size)));
+  const q=($("#pickerSearch")?.value||"").trim().toLowerCase();
+  const list=picker.products.filter(p=>p.stock>0
+    &&(!picker.size||(p.sizes||[]).includes(picker.size))
+    &&(!q||p.name.toLowerCase().includes(q)));
   for(const p of list){
     const card=el("div","pc"+(picker.selected.has(p.id)?" on":""));
     const stk=p.stock<=2?`<span class="low">${p.stock} disp.</span>`:`<span class="ok">${p.stock} stock</span>`;
@@ -1270,12 +1275,15 @@ const pos = { catalog:[], cart:[], saleType:"tienda", payment:null, sellers:[], 
 
 // ---- Cambio de pantalla ----
 function switchScreen(name){
-  // Cerrar kanban si estaba activo al cambiar pantalla
-  if(_boardMode && name!=="chats"){
+  // Cerrar kanban siempre que se cambie pantalla (incluye volver a chats desde el nav)
+  if(_boardMode){
     _boardMode=false;
     $("#kanbanBoard").classList.remove("show");
     const btn=$("#boardToggleBtn");
     if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
+    document.body.classList.remove("chat-open","panel-open");
+    state.active=null;
+    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
   }
   ["chats","pos","equipo","datos","config"].forEach(s=>{
     document.getElementById("screen-"+s).classList.toggle("active", s===name);
@@ -4861,6 +4869,7 @@ function loginUser(u){
   try{ localStorage.setItem("bloom_current_user_id", u.id); }catch(e){}
   $("#loginModal").style.display = "none";
   _loginPending = null;
+  renderChatList(); // actualiza resaltado de conversaciones propias
 }
 
 function skipLogin(){

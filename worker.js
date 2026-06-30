@@ -1610,6 +1610,7 @@ async function fetchShopify(env, query) {
           sku: v.sku || null,
         })),
         stock: p.variants.reduce((s, v) => s + (v.inventory_quantity || 0), 0),
+        sizes: [...new Set(p.variants.map(v => getOpt(v, tallaPos)).filter(Boolean))],
       };
     });
 }

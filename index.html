@@ -147,7 +147,7 @@
   .chat-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border);border-left:3px solid transparent}
   .chat-item:active,.chat-item.sel{background:var(--surface-2)}
-  .chat-item.my-conv{border-left-color:var(--accent);background:linear-gradient(to right,var(--accent-soft)08,transparent 48px)}
+  .chat-item.my-conv{border-left-color:var(--accent);background:rgba(196,154,75,0.07)}
   .av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--accent)}
   .av-wrap{position:relative;flex-shrink:0;display:inline-flex}
   .av-wrap .av{flex-shrink:0}
@@ -690,6 +690,9 @@
   <div class="overlay" id="overlay">
     <div class="sheet">
       <div class="sheet-head"><h3>Enviar productos</h3><button class="iconbtn" onclick="closePicker()">✕</button></div>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <input id="pickerSearch" placeholder="Buscar producto…" oninput="renderProducts()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
+      </div>
       <div class="sizes" id="sizeRow"></div>
       <div class="prod-grid" id="prodGrid"></div>
       <div class="sheet-foot"><button class="btn-primary" id="sendProdBtn" disabled onclick="sendProducts()">Enviar 0 productos</button></div>
