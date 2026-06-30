@@ -358,6 +358,7 @@ async function loadMessages(phone){
     created_at: m.ts||m.created_at,
     msg_type: m.type||"text",
     media_url: m.media_url||null,
+    status: m.status||"sent",
   }));
   renderMessages();
 }
@@ -4654,6 +4655,7 @@ function _connectWaSocket(){
         state.messages=msgs.map(m=>({
           body:m.body||"", direction:m.direction==="outbound"?"out":"in",
           created_at:m.ts||m.created_at, msg_type:m.type||"text", media_url:m.media_url||null,
+          status:m.status||"sent",
         }));
         renderMessages();
       }
