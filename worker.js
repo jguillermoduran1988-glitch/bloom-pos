@@ -559,6 +559,21 @@ export default {
 
     return new Response("Not found", { status: 404 });
   },
+
+  // Cron: limpieza automática cada domingo a las 3am UTC
+  async scheduled(event, env) {
+    const days = 90; // conservar mensajes de los últimos 90 días
+    const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+    // Borrar mensajes viejos (excepto notas internas)
+    await env.bloom_wa.prepare(
+      `DELETE FROM wa_messages WHERE ts < ? AND type != 'note'`
+    ).bind(cutoff).run();
+    // Limpiar conversaciones sin mensajes recientes y sin notas
+    await env.bloom_wa.prepare(
+      `DELETE FROM wa_conversations WHERE last_message_at < ? AND id NOT IN (SELECT DISTINCT conversation_id FROM wa_messages)`
+    ).bind(cutoff).run();
+    console.log(`Limpieza completada: mensajes anteriores a ${cutoff} eliminados`);
+  },
 };
 
 // ============ Crear factura en Alegra ============
@@ -949,12 +964,16 @@ async function _uploadWaMedia(env, mediaId, mimeType) {
       headers: { Authorization: `Bearer ${env.WA_TOKEN}` }
     }).then(r => r.json());
     if (!info.url) return null;
-    // 2. Descargar el archivo
+    // 2. Descargar el archivo (máx 15 MB)
     const blob = await fetch(info.url, {
       headers: { Authorization: `Bearer ${env.WA_TOKEN}` }
     });
     if (!blob.ok) return null;
+    const maxBytes = 15 * 1024 * 1024;
+    const contentLength = parseInt(blob.headers.get("content-length") || "0");
+    if (contentLength > maxBytes) return null;
     const buffer = await blob.arrayBuffer();
+    if (buffer.byteLength > maxBytes) return null;
     // 3. Determinar extensión y clave
     const ext = mimeType?.split("/")?.[1]?.split(";")?.[0]?.replace("mpeg","mp3") || "bin";
     const key = `wa/${Date.now()}-${mediaId.slice(-8)}.${ext}`;
