@@ -193,6 +193,7 @@
   .kb-card-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
   .kb-seller{font-size:10px;color:var(--accent-dark);background:var(--accent-soft);border-radius:20px;padding:1px 6px;font-weight:600;display:flex;align-items:center;gap:2px}
   .kb-unread{background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:20px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px;margin-left:auto}
+  .kb-tag{font-size:10px;background:var(--border);color:var(--text-dim);border-radius:20px;padding:1px 6px;font-weight:500}
   .kb-ref{font-size:10px;border-radius:20px;padding:1px 6px;font-weight:600}
   .kb-ref.ad{background:#fde68a;color:#92400e}
   .kb-ref.org{background:#ede9fe;color:#5b21b6}
@@ -557,7 +558,6 @@
         <button class="iconbtn" id="boardToggleBtn" title="Vista tablero" onclick="toggleBoardView()"><span class="material-symbols-outlined" style="font-size:18px">view_kanban</span></button>
         <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')"><span class="material-symbols-outlined" style="font-size:18px">point_of_sale</span></button>
         <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')"><span class="material-symbols-outlined" style="font-size:18px">analytics</span></button>
-        <button class="iconbtn" title="Configuración" onclick="switchScreen('config')"><span class="material-symbols-outlined" style="font-size:18px">settings</span></button>
         <div class="conn"><span class="dot" id="connDot"></span><span id="connText">…</span></div>
       </div>
     </div>

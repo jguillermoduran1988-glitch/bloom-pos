@@ -156,16 +156,23 @@ function renderBoard(){
     const body=col.querySelector(".kb-col-body");
     for(const c of cards){
       const card=el("div","kb-card");
+      // Ocultar notas internas como último mensaje visible
+      const lastVisible=c.last?.startsWith("Tomó ")||c.last?.startsWith("Conversación liberada")||c.last?.startsWith("Liberó ")?"":c.last;
+      const tagChips=(c.tags||[]).slice(0,2).map(t=>`<span class="kb-tag">${esc(t)}</span>`).join("");
       card.innerHTML=`
         <div class="kb-card-top">
           <div class="av-wrap"><div class="av av-sm">${initials(c.name)}</div>${platBadge(c.platform)}</div>
-          <span class="kb-card-name">${esc(c.name)}</span>
+          <div style="flex:1;min-width:0">
+            <div class="kb-card-name">${esc(c.name)}</div>
+            <div style="font-size:10px;color:var(--text-dim)">+${esc(c.phone)}</div>
+          </div>
           <span class="kb-card-time">${timeLabel(c.lastAt)}</span>
         </div>
-        <div class="kb-card-prev">${esc(c.last||"—")}</div>
+        ${lastVisible?`<div class="kb-card-prev">${esc(lastVisible)}</div>`:""}
         <div class="kb-card-foot">
           ${c.assigned_to?`<span class="kb-seller"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:-2px">person</span> ${esc(c.assigned_to)}</span>`:""}
           ${refBadge(c)}
+          ${tagChips}
           ${c.unread?`<span class="kb-unread">${c.unread}</span>`:""}
         </div>`;
       card.onclick=()=>{toggleBoardView();openChat(c.phone);};
