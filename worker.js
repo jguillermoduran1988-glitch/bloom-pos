@@ -885,6 +885,8 @@ async function createShopifyOrder(env, o) {
       ? { variant_id: it.variant_id, quantity: it.qty }
       : { title: it.name, price: String(it.price), quantity: it.qty };
     if (it.note) li.properties = [{ name: "Observación", value: it.note }];
+    const lineTax = +(it.price * it.qty * 19 / 119).toFixed(2);
+    li.tax_lines = [{ title: "IVA", rate: 0.19, price: String(lineTax) }];
     return li;
   });
 
