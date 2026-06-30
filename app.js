@@ -257,9 +257,14 @@ function msgNode(m){
   const b=el("div","msg "+(m.direction==="out"?"out":"in"));
   const _t=`<div class="t">${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
   if((m.msg_type==="image"||m.media_type==="image")&&m.media_url){
-    b.innerHTML=`<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${_t}`;
+    const cap=m.body&&m.body!=="📷 Foto"?`<div style="font-size:13px;margin-top:4px">${esc(m.body)}</div>`:"";
+    b.innerHTML=`<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${cap}${_t}`;
+  }else if(m.msg_type==="video"&&m.media_url){
+    b.innerHTML=`<video controls src="${esc(m.media_url)}" style="max-width:100%;border-radius:8px"></video>${_t}`;
   }else if((m.msg_type==="audio"||m.media_type==="audio")&&m.media_url){
     b.innerHTML=`<audio controls src="${esc(m.media_url)}"></audio>${_t}`;
+  }else if(m.msg_type==="document"&&m.media_url){
+    b.innerHTML=`<a href="${esc(m.media_url)}" target="_blank" style="display:flex;align-items:center;gap:6px;color:#2563eb"><span class="material-symbols-outlined">description</span>${esc(m.body||"Documento")}</a>${_t}`;
   }else{
     b.innerHTML=waFormat(m.body)+_t;
   }

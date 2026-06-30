@@ -362,9 +362,17 @@ export default {
       await env.bloom_wa.prepare(
         `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, updated_at = ? WHERE id = ?`
       ).bind(lastMsg, now, now, conversation_id).run();
-      // Envío real cuando esté configurado WA_TOKEN
-      if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgBody) {
-        await sendWhatsApp(env, phone, msgBody).catch(() => {});
+      // Envío real a WhatsApp
+      if (env.WA_TOKEN && env.WA_PHONE_ID && phone) {
+        if (media_url && msgType === "image") {
+          await sendWhatsAppMedia(env, phone, "image", media_url, msgBody).catch(() => {});
+        } else if (media_url && msgType === "audio") {
+          await sendWhatsAppMedia(env, phone, "audio", media_url).catch(() => {});
+        } else if (media_url && msgType === "video") {
+          await sendWhatsAppMedia(env, phone, "video", media_url, msgBody).catch(() => {});
+        } else if (msgBody) {
+          await sendWhatsApp(env, phone, msgBody).catch(() => {});
+        }
       }
       return Response.json({ ok: true, id: msgId }, { headers: cors });
     }
@@ -562,7 +570,7 @@ export default {
 
   // Cron: limpieza automática cada domingo a las 3am UTC
   async scheduled(event, env) {
-    const days = 90; // conservar mensajes de los últimos 90 días
+    const days = 60; // conservar mensajes de los últimos 60 días
     const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
     // Borrar mensajes viejos (excepto notas internas)
     await env.bloom_wa.prepare(
@@ -1454,6 +1462,23 @@ async function resolvePaymentMethodId(env, gatewayName) {
 }
 
 // ============ Enviar a WhatsApp ============
+async function sendWhatsAppMedia(env, phone, type, url, caption) {
+  const mediaObj = { link: url };
+  if (caption) mediaObj.caption = caption;
+  const res = await fetch(
+    `https://graph.facebook.com/v19.0/${env.WA_PHONE_ID}/messages`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp", to: phone,
+        type, [type]: mediaObj,
+      }),
+    }
+  );
+  return res.json();
+}
+
 async function sendWhatsApp(env, phone, message) {
   const res = await fetch(
     `https://graph.facebook.com/v19.0/${env.WA_PHONE_ID}/messages`,
