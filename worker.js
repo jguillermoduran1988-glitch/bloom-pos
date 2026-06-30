@@ -373,8 +373,8 @@ export default {
       ).bind(msgId, conversation_id, msgType, msgBody, media_url || null, now).run();
       const lastMsg = media_url ? (msgType === "image" ? "📷 Foto" : "🎤 Nota de voz") : msgBody;
       await env.bloom_wa.prepare(
-        `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, updated_at = ? WHERE id = ?`
-      ).bind(lastMsg, now, now, conversation_id).run();
+        `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, last_direction = ?, updated_at = ? WHERE id = ?`
+      ).bind(lastMsg, now, msgType==="note"?"":"outbound", now, conversation_id).run();
       // Envío real a WhatsApp (notas internas no se envían al cliente)
       if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgType !== "note") {
         if (media_url && msgType === "image") {
@@ -584,21 +584,67 @@ export default {
     return new Response("Not found", { status: 404 });
   },
 
-  // Cron: limpieza automática cada domingo a las 3am UTC
+  // Cron: runs every hour
   async scheduled(event, env) {
-    const days = 60; // conservar mensajes de los últimos 60 días
-    const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
-    // Borrar mensajes viejos (excepto notas internas)
-    await env.bloom_wa.prepare(
-      `DELETE FROM wa_messages WHERE ts < ? AND type != 'note'`
-    ).bind(cutoff).run();
-    // Limpiar conversaciones sin mensajes recientes y sin notas
-    await env.bloom_wa.prepare(
-      `DELETE FROM wa_conversations WHERE last_message_at < ? AND id NOT IN (SELECT DISTINCT conversation_id FROM wa_messages)`
-    ).bind(cutoff).run();
-    console.log(`Limpieza completada: mensajes anteriores a ${cutoff} eliminados`);
+    const now = new Date();
+    // Seguimiento automático (cada hora)
+    await runFollowups(env);
+    // Limpieza semanal (domingos a las 3am UTC)
+    if (now.getUTCDay() === 0 && now.getUTCHours() === 3) {
+      const days = 60;
+      const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+      await env.bloom_wa.prepare(`DELETE FROM wa_messages WHERE ts < ? AND type != 'note'`).bind(cutoff).run();
+      await env.bloom_wa.prepare(`DELETE FROM wa_conversations WHERE last_message_at < ? AND id NOT IN (SELECT DISTINCT conversation_id FROM wa_messages)`).bind(cutoff).run();
+      console.log(`Limpieza completada: mensajes anteriores a ${cutoff} eliminados`);
+    }
   },
 };
+
+// ============ Seguimiento automático ============
+async function runFollowups(env) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
+  const sbHeaders = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` };
+  // Obtener chat_config desde pos_settings
+  const cfgResp = await fetch(`${env.SUPABASE_URL}/rest/v1/pos_settings?store=eq.bloom&select=chat_config&limit=1`, { headers: sbHeaders }).catch(() => null);
+  if (!cfgResp?.ok) return;
+  const cfgRows = await cfgResp.json().catch(() => null);
+  const followups = cfgRows?.[0]?.chat_config?.followups;
+  if (!Array.isArray(followups) || !followups.length) return;
+  const now = new Date().toISOString();
+  for (const rule of followups) {
+    if (!rule.enabled || !rule.pipeline_id || !rule.stage || !rule.message || !rule.delay_hours) continue;
+    const cutoff = new Date(Date.now() - rule.delay_hours * 3600 * 1000).toISOString();
+    // Buscar conversaciones abiertas en esa etapa donde el último mensaje fue nuestro y fue hace más de delay_hours
+    const convs = await env.bloom_wa.prepare(`
+      SELECT c.id, c.phone, wc.name FROM wa_conversations c
+      LEFT JOIN wa_contacts wc ON wc.phone = c.phone
+      WHERE c.status = 'open'
+        AND c.pipeline_id = ?
+        AND c.stage = ?
+        AND c.last_direction = 'outbound'
+        AND c.last_message_at < ?
+    `).bind(String(rule.pipeline_id), rule.stage, cutoff).all().catch(() => null);
+    if (!convs?.results?.length) continue;
+    for (const conv of convs.results) {
+      const firstName = (conv.name || conv.phone).split(" ")[0];
+      const msg = rule.message.replace(/\{nombre\}/g, firstName);
+      // Enviar por WhatsApp
+      if (env.WA_TOKEN && env.WA_PHONE_ID) {
+        await fetch(`https://graph.facebook.com/v20.0/${env.WA_PHONE_ID}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, type: "text", text: { body: msg } })
+        }).catch(() => {});
+      }
+      // Guardar en D1 y actualizar conversación
+      const msgId = "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+      await env.bloom_wa.prepare(`INSERT INTO wa_messages (id,conversation_id,direction,type,body,status,ts) VALUES (?,?,'outbound','text',?,'sent',?)`)
+        .bind(msgId, conv.id, msg, now).run().catch(() => {});
+      await env.bloom_wa.prepare(`UPDATE wa_conversations SET last_message=?,last_message_at=?,last_direction='outbound',updated_at=? WHERE id=?`)
+        .bind(msg, now, now, conv.id).run().catch(() => {});
+    }
+  }
+}
 
 // ============ Crear factura en Alegra ============
 const ALEGRA_BASE = "https://api.alegra.com/api/v1";
@@ -1090,7 +1136,7 @@ async function handleIncoming(env, msg, contact) {
   } else {
     // Reabrir conversaciones archivadas si el cliente escribe de nuevo
     await env.bloom_wa.prepare(
-      `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, unread_count = unread_count + 1, updated_at = ?, status = 'open' WHERE id = ?`
+      `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, last_direction = 'inbound', unread_count = unread_count + 1, updated_at = ?, status = 'open' WHERE id = ?`
     ).bind(text, now, now, convId).run();
   }
 

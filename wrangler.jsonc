@@ -22,5 +22,8 @@
   },
   "migrations": [
     { "tag": "v1", "new_classes": ["BloomHub"] }
-  ]
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
 }

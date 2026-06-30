@@ -1090,6 +1090,16 @@
         </div>
       </div>
 
+      <div class="cfg-sec" style="margin-top:16px">
+        <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">schedule_send</span> Seguimiento automático</h3>
+        <div class="desc">Envía un mensaje si el cliente no responde después de que tú le escribiste. Requiere desplegar el Worker.</div>
+        <div id="cfgFollowupList" style="margin-bottom:12px"></div>
+        <div id="cfgFollowupForm" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:none"></div>
+        <button onclick="openFollowupForm(null)" style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
+          <span class="material-symbols-outlined" style="font-size:16px">add</span> Nueva regla
+        </button>
+      </div>
+
     </div><!-- /cfgPaneChat -->
   </div>
 </div>

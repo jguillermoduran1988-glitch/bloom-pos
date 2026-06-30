@@ -96,7 +96,10 @@ async function loadPipelines(){
     const r = await sbPost("pipelines",{name:"Ventas",stages:["nueva","interesada","cotizada","pagada"],store:C.STORE});
     rows = await r.json();
   }
-  state.pipelines = rows.map(p=>({...p, stages: typeof p.stages==="string"?JSON.parse(p.stages):p.stages}));
+  state.pipelines = rows.map(p=>({...p,
+    stages: typeof p.stages==="string"?JSON.parse(p.stages):p.stages,
+    stage_colors: typeof p.stage_colors==="string"?JSON.parse(p.stage_colors||"{}"):p.stage_colors||{}
+  }));
   state.activePipeline = state.pipelines[0].id;
   renderPipeTabs();
 }
@@ -152,7 +155,8 @@ function renderBoard(){
     const refBadge=c=>c.ref_source_type==="ad"
       ?`<span class="kb-ref ad"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:-2px">campaign</span> pauta</span>`
       :c.ref_source_type?`<span class="kb-ref org"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:-2px">photo_camera</span> historia</span>`:"";
-    col.innerHTML=`<div class="kb-col-head"><span class="kb-col-name">${esc(stage)}</span><span class="kb-col-ct">${cards.length}</span></div><div class="kb-col-body"></div>`;
+    const stCol=stageColor(pipe,stage);
+    col.innerHTML=`<div class="kb-col-head" style="border-top:3px solid ${stCol}"><span class="kb-col-name" style="color:${stCol}">${esc(stage)}</span><span class="kb-col-ct">${cards.length}</span></div><div class="kb-col-body"></div>`;
     const body=col.querySelector(".kb-col-body");
     for(const c of cards){
       const card=el("div","kb-card");
@@ -581,8 +585,9 @@ function renderStages(c){
   $("#pPipeName").textContent=pipe.name;
   const box=$("#pStages"); box.innerHTML="";
   for(const st of pipe.stages){
+    const col=stageColor(pipe,st);
     const row=el("div","st-row"+(st===c.stage?" on":""));
-    row.innerHTML=`<span class="st-dot"></span><span class="st-label">${esc(st)}</span>${st===c.stage?"✓":""}`;
+    row.innerHTML=`<span class="st-dot" style="background:${col}"></span><span class="st-label">${esc(st)}</span>${st===c.stage?`<span style="color:${col};font-weight:700">✓</span>`:""}`;
     row.onclick=()=>setStage(st);
     box.appendChild(row);
   }
@@ -613,10 +618,13 @@ async function movePipeline(){
 }
 
 // ---------- Modal crear/editar embudo ----------
-let editingStages=[];
+const _STAGE_PAL=["#6366f1","#f59e0b","#22c55e","#3b82f6","#ec4899","#8b5cf6","#14b8a6","#f97316"];
+function stageColor(pipe,stage){return (pipe?.stage_colors||{})[stage]||_STAGE_PAL[((pipe?.stages||[]).indexOf(stage))%_STAGE_PAL.length]||"#6366f1";}
+let editingStages=[], editingStageColors=[];
 function openPipeModal(){
   _editingPipeId=null;
   editingStages=["nueva","interesada","pagada"];
+  editingStageColors=["#6366f1","#f59e0b","#22c55e"];
   $("#pipeModalTitle").textContent="Nuevo embudo";
   $("#pipeNameInput").value="";
   renderStageEdit();
@@ -627,24 +635,30 @@ function renderStageEdit(){
   const box=$("#stageEditList"); box.innerHTML="";
   editingStages.forEach((s,i)=>{
     const row=el("div","stage-edit");
+    const clr=el("input"); clr.type="color";
+    clr.value=editingStageColors[i]||_STAGE_PAL[i%_STAGE_PAL.length];
+    clr.style="width:30px;height:30px;border:none;border-radius:6px;cursor:pointer;padding:2px;background:none;flex-shrink:0";
+    clr.oninput=e=>editingStageColors[i]=e.target.value;
     const inp=el("input"); inp.value=s; inp.oninput=e=>editingStages[i]=e.target.value;
-    const del=el("button"); del.textContent="✕"; del.onclick=()=>{editingStages.splice(i,1);renderStageEdit();};
-    row.appendChild(inp); row.appendChild(del); box.appendChild(row);
+    const del=el("button"); del.textContent="✕"; del.onclick=()=>{editingStages.splice(i,1);editingStageColors.splice(i,1);renderStageEdit();};
+    row.appendChild(clr); row.appendChild(inp); row.appendChild(del); box.appendChild(row);
   });
 }
-function addStageRow(){editingStages.push("");renderStageEdit();}
+function addStageRow(){editingStages.push("");editingStageColors.push(_STAGE_PAL[editingStages.length%_STAGE_PAL.length]);renderStageEdit();}
 async function savePipeline(){
   const name=$("#pipeNameInput").value.trim();
   const stages=editingStages.map(s=>s.trim()).filter(Boolean);
   if(!name||!stages.length){alert("Pon un nombre y al menos una etapa");return;}
+  const stage_colors={};
+  stages.forEach((s,i)=>{if(editingStageColors[i])stage_colors[s]=editingStageColors[i];});
   if(_editingPipeId){
-    await sbPatch(`pipelines?id=eq.${_editingPipeId}`,{name,stages});
+    await sbPatch(`pipelines?id=eq.${_editingPipeId}`,{name,stages,stage_colors});
     const p=state.pipelines.find(x=>String(x.id)===String(_editingPipeId));
-    if(p){p.name=name;p.stages=stages;}
+    if(p){p.name=name;p.stages=stages;p.stage_colors=stage_colors;}
   } else {
-    const r=await sbPost("pipelines",{name,stages,store:C.STORE,position:state.pipelines.length});
+    const r=await sbPost("pipelines",{name,stages,stage_colors,store:C.STORE,position:state.pipelines.length});
     const created=(await r.json())[0];
-    created.stages=stages;
+    created.stages=stages; created.stage_colors=stage_colors;
     state.pipelines.push(created);
   }
   _editingPipeId=null;
@@ -1052,7 +1066,7 @@ function renderCfgPipelines(){
   for(const p of state.pipelines){
     const row = document.createElement("div");
     row.style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px";
-    const stages = (p.stages||[]).map(s=>`<span style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-size:11px">${esc(s)}</span>`).join(" ");
+    const stages = (p.stages||[]).map(s=>{const c=stageColor(p,s);return `<span style="background:${c}22;border:1px solid ${c}66;color:${c};border-radius:5px;padding:2px 7px;font-size:11px;font-weight:600">${esc(s)}</span>`;}).join(" ");
     row.innerHTML=`<div style="flex:1"><div style="font-weight:600;font-size:14px;margin-bottom:4px">${esc(p.name)}</div><div style="display:flex;gap:4px;flex-wrap:wrap">${stages}</div></div>`;
     const editBtn = document.createElement("button");
     editBtn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">edit</span>';
@@ -1070,6 +1084,7 @@ let _editingPipeId = null;
 function openEditPipeModal(p){
   _editingPipeId = p ? p.id : null;
   editingStages = p ? [...(p.stages||[])] : ["nueva","interesada","pagada"];
+  editingStageColors = p ? (p.stages||[]).map((s,i)=>(p.stage_colors||{})[s]||_STAGE_PAL[i%_STAGE_PAL.length]) : ["#6366f1","#f59e0b","#22c55e"];
   document.getElementById("pipeModalTitle").textContent = p ? "Editar embudo" : "Nuevo embudo";
   document.getElementById("pipeNameInput").value = p ? p.name : "";
   renderStageEdit();
@@ -2587,15 +2602,124 @@ function renderChatConfig(){
   const cfg=pos.chatConfig||{};
   const cb=$("#cfgAutoTagRecompra"); if(cb) cb.checked=cfg.recompra_enabled!==false;
   const ti=$("#cfgRecompraTag"); if(ti) ti.value=cfg.recompra_tag||"recompra";
+  renderFollowupRules();
+  const ff=$("#cfgFollowupForm"); if(ff) ff.style.display="none";
 }
 async function saveChatConfig(){
   const enabled=$("#cfgAutoTagRecompra")?.checked!==false;
   const tag=($("#cfgRecompraTag")?.value||"recompra").trim()||"recompra";
   pos.chatConfig={...pos.chatConfig, recompra_enabled:enabled, recompra_tag:tag};
-  // recompra_tag===false signals disabled in loadCustomerRecord
   if(!enabled) pos.chatConfig.recompra_tag=false;
   await sbPatch(`pos_settings?store=eq.${C.STORE}`,{chat_config:pos.chatConfig});
 }
+
+// ---- Seguimiento automático ----
+let _fuEditing=null; // índice de la regla en edición, null=nueva
+function renderFollowupRules(){
+  const box=$("#cfgFollowupList"); if(!box) return;
+  const rules=(pos.chatConfig?.followups)||[];
+  box.innerHTML="";
+  if(!rules.length){box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Sin reglas configuradas.</div>';return;}
+  rules.forEach((r,i)=>{
+    const pipe=state.pipelines.find(p=>String(p.id)===String(r.pipeline_id));
+    const stCol=pipe?stageColor(pipe,r.stage):"#6366f1";
+    const delay=r.delay_hours>=24?`${r.delay_hours/24} día${r.delay_hours>=48?"s":""}`:`${r.delay_hours} h`;
+    const row=document.createElement("div");
+    row.style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px";
+    row.innerHTML=`
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="background:${stCol}22;color:${stCol};border:1px solid ${stCol}66;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:600">${esc(pipe?.name||"?")} · ${esc(r.stage)}</span>
+          <span style="font-size:11px;color:var(--text-dim)">sin respuesta ${delay}</span>
+          ${!r.enabled?`<span style="font-size:10px;color:#b91c1c;background:#fee2e2;border-radius:4px;padding:1px 5px">pausado</span>`:""}
+        </div>
+        <div style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${esc(r.message)}</div>
+      </div>
+      <button onclick="editFollowupRule(${i})" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 8px;cursor:pointer;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">edit</span></button>
+      <button onclick="deleteFollowupRule(${i})" style="background:none;border:1px solid #fca5a5;border-radius:7px;padding:5px 8px;cursor:pointer;color:#b91c1c"><span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">delete</span></button>`;
+    box.appendChild(row);
+  });
+}
+function _fuPipeOptions(selId){
+  return state.pipelines.map(p=>`<option value="${p.id}"${String(p.id)===String(selId)?` selected`:""}>${esc(p.name)}</option>`).join("");
+}
+function _fuStageOptions(pipeId,selStage){
+  const pipe=state.pipelines.find(p=>String(p.id)===String(pipeId));
+  return (pipe?.stages||[]).map(s=>`<option value="${s}"${s===selStage?` selected`:""}>${esc(s)}</option>`).join("");
+}
+function openFollowupForm(idx){
+  _fuEditing=idx;
+  const rules=(pos.chatConfig?.followups)||[];
+  const r=idx!=null?rules[idx]:{enabled:true,pipeline_id:state.pipelines[0]?.id,stage:state.pipelines[0]?.stages[0],delay_hours:24,message:""};
+  const form=$("#cfgFollowupForm"); if(!form) return;
+  form.style.display="";
+  const firstPipeId=r.pipeline_id||state.pipelines[0]?.id;
+  form.innerHTML=`
+    <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">${idx!=null?"Editar regla":"Nueva regla"}</div>
+    <label class="emp-toggle"><input type="checkbox" id="fuEnabled"${r.enabled?" checked":""}><span>Regla activa</span></label>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1">
+        <label style="font-size:12px;color:var(--text-dim)">Embudo</label>
+        <select id="fuPipe" onchange="fuUpdateStages()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;margin-top:4px">
+          ${_fuPipeOptions(firstPipeId)}
+        </select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:12px;color:var(--text-dim)">Etapa</label>
+        <select id="fuStage" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;margin-top:4px">
+          ${_fuStageOptions(firstPipeId,r.stage)}
+        </select>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;color:var(--text-dim)">Enviar si no responde después de</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <input id="fuDelayN" type="number" min="1" max="168" value="${r.delay_hours>=24?r.delay_hours/24:r.delay_hours}" style="width:80px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+        <select id="fuDelayU" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+          <option value="h"${r.delay_hours<24?" selected":""}>horas</option>
+          <option value="d"${r.delay_hours>=24?" selected":""}>días</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;color:var(--text-dim)">Mensaje (usa {nombre})</label>
+      <textarea id="fuMsg" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:80px;font-family:inherit;margin-top:4px;box-sizing:border-box">${esc(r.message)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="saveFollowupRule()" style="flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer">Guardar</button>
+      <button onclick="cancelFollowupForm()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer;color:var(--text-dim)">Cancelar</button>
+    </div>`;
+}
+function fuUpdateStages(){
+  const pipeId=$("#fuPipe")?.value;
+  const sel=$("#fuStage"); if(!sel) return;
+  sel.innerHTML=_fuStageOptions(pipeId,"");
+}
+function cancelFollowupForm(){const f=$("#cfgFollowupForm");if(f)f.style.display="none";_fuEditing=null;}
+async function saveFollowupRule(){
+  const pipeId=$("#fuPipe")?.value;
+  const stage=$("#fuStage")?.value;
+  const n=parseInt($("#fuDelayN")?.value)||1;
+  const unit=$("#fuDelayU")?.value;
+  const delay_hours=unit==="d"?n*24:n;
+  const message=($("#fuMsg")?.value||"").trim();
+  if(!pipeId||!stage||!message){alert("Completa todos los campos");return;}
+  const rule={enabled:$("#fuEnabled")?.checked!==false,pipeline_id:pipeId,stage,delay_hours,message};
+  const rules=[...(pos.chatConfig?.followups||[])];
+  if(_fuEditing!=null) rules[_fuEditing]=rule; else rules.push(rule);
+  pos.chatConfig={...pos.chatConfig, followups:rules};
+  await sbPatch(`pos_settings?store=eq.${C.STORE}`,{chat_config:pos.chatConfig});
+  cancelFollowupForm(); renderFollowupRules();
+}
+async function deleteFollowupRule(i){
+  if(!confirm("¿Eliminar esta regla?")) return;
+  const rules=[...(pos.chatConfig?.followups||[])];
+  rules.splice(i,1);
+  pos.chatConfig={...pos.chatConfig, followups:rules};
+  await sbPatch(`pos_settings?store=eq.${C.STORE}`,{chat_config:pos.chatConfig});
+  renderFollowupRules();
+}
+function editFollowupRule(i){openFollowupForm(i);}
 async function saveSettings(){
   const g=(id)=>{const e=$("#"+id); return e ? (e.type==="checkbox"? e.checked : e.value.trim()) : null;};
   const patch={
