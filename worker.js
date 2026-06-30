@@ -25,6 +25,16 @@ export default {
       return new Response("Forbidden", { status: 403 });
     }
 
+    // -------- Servir archivos de R2 --------
+    if (request.method === "GET" && url.pathname.startsWith("/media/")) {
+      const key = decodeURIComponent(url.pathname.slice(7));
+      const obj = await env.bloom_media.get(key);
+      if (!obj) return new Response("Not found", { status: 404 });
+      const headers = new Headers({ ...cors, "Cache-Control": "public, max-age=31536000" });
+      if (obj.httpMetadata?.contentType) headers.set("Content-Type", obj.httpMetadata.contentType);
+      return new Response(obj.body, { headers });
+    }
+
     // -------- WebSocket en tiempo real --------
     if (url.pathname === "/ws") {
       const id = env.BLOOM_HUB.idFromName("bloom");
@@ -931,7 +941,7 @@ async function createShopifyOrder(env, o) {
   return { ok: true, order_id: String(data.order.id), order_name: data.order.name };
 }
 
-// ============ Descargar media de WhatsApp y subir a Supabase ============
+// ============ Descargar media de WhatsApp y subir a R2 ============
 async function _uploadWaMedia(env, mediaId, mimeType) {
   try {
     // 1. Obtener URL de descarga de Meta
@@ -945,21 +955,12 @@ async function _uploadWaMedia(env, mediaId, mimeType) {
     });
     if (!blob.ok) return null;
     const buffer = await blob.arrayBuffer();
-    // 3. Determinar extensión
-    const ext = mimeType?.split("/")?.[1]?.split(";")?.[0] || "bin";
-    const filename = `wa-media/${Date.now()}-${mediaId.slice(-6)}.${ext}`;
-    // 4. Subir a Supabase Storage (bucket team-chat)
-    const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/team-chat/${filename}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-        "Content-Type": mimeType || "application/octet-stream",
-        "x-upsert": "true",
-      },
-      body: buffer,
-    });
-    if (!up.ok) return null;
-    return `${env.SUPABASE_URL}/storage/v1/object/public/team-chat/${filename}`;
+    // 3. Determinar extensión y clave
+    const ext = mimeType?.split("/")?.[1]?.split(";")?.[0]?.replace("mpeg","mp3") || "bin";
+    const key = `wa/${Date.now()}-${mediaId.slice(-8)}.${ext}`;
+    // 4. Subir a R2
+    await env.bloom_media.put(key, buffer, { httpMetadata: { contentType: mimeType || "application/octet-stream" } });
+    return `https://bloomchat.jguillermoduran1988.workers.dev/media/${key}`;
   } catch(e) { return null; }
 }
 

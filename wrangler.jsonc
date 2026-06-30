@@ -12,6 +12,9 @@
       "database_id": "9f398288-159e-46e5-9ebf-8ff290155d14"
     }
   ],
+  "r2_buckets": [
+    { "binding": "bloom_media", "bucket_name": "bloom-media" }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "BLOOM_HUB", "class_name": "BloomHub" }
