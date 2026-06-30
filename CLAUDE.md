@@ -147,7 +147,27 @@ Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 - Archivos (fotos/audio) se suben a Supabase Storage y la URL se guarda en D1
 - SW cache en `bloom-v91`
 
-### 2026-06-30 — Lo que SE HIZO (funciona)
+### 2026-06-30 — Sesión 2 (tarde)
+
+#### Fix: cliente no se vinculaba al pedido POS en Shopify
+- **Causa raíz 1**: `findOrCreateShopifyCustomer` enviaba `addresses` con `province: "Atlántico"` (nombre); Shopify espera código ISO → 422 → creación fallaba silenciosamente → `null`
+- **Causa raíz 2**: La búsqueda usaba `customers/search.json` (fuzzy, poco confiable); cambiado a `customers.json?email=xxx` y `customers.json?phone=+57xxx` (lookup exacto)
+- **Causa raíz 3**: Fallback en `createShopifyOrder` usaba `phone` sin prefijo E.164 → Shopify lo ignoraba
+- **Fix aplicado**: eliminados `addresses` de creación, lookup exacto por email/teléfono, retry en 422, phone formateado como `+57XXXXXXXXXX`, actualización de nombre siempre al encontrar cliente existente
+- El Worker requiere deploy manual en Cloudflare (`worker.js` actualizado en GitHub)
+
+#### Feat: borrar cliente desde Datos → Clientes
+- Botón **🗑 Borrar** en el footer del modal de editar cliente (estilo `.modal-del`, rojo suave)
+- Pide confirmación; si el cliente tiene compras avisa cuántas y aclara que las ventas NO se borran
+- Las ventas en `sales` usan columnas planas (customer_name, email, etc.) — no hay FK, borrar cliente no afecta historial
+
+#### Limpieza ventas de prueba (2026-06-30)
+- Eliminadas 9 ventas de prueba de Supabase (D11–D19, clientes Lina Narvaez y Guillermo Duran)
+- Draft orders D11–D19 en Shopify pendientes de borrar manualmente (Shopify admin → Pedidos preliminares)
+
+---
+
+### 2026-06-30 — Sesión 1 (mañana) — Lo que SE HIZO (funciona)
 
 #### Borde completo en conversaciones asignadas
 - `.chat-item.my-conv` y `.kb-card.my-conv`: ahora tienen `outline:2px solid var(--accent)` en los 4 lados (antes era solo borde izquierdo + fondo)
