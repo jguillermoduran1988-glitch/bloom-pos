@@ -165,6 +165,26 @@ Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 - Eliminadas 9 ventas de prueba de Supabase (D11–D19, clientes Lina Narvaez y Guillermo Duran)
 - Draft orders D11–D19 en Shopify pendientes de borrar manualmente (Shopify admin → Pedidos preliminares)
 
+#### Fix pedidos POS en Shopify
+- `fulfillment_status: "fulfilled"` para todos los pedidos POS (no solo tienda)
+- `tax_lines` con IVA 19% (`precio × 19/119`) en cada line_item — Shopify no lo calcula automáticamente en pedidos creados por API
+- `price` explícito en items con `variant_id` — sin esto Shopify usa el precio de catálogo actual, no el precio cobrado
+
+#### Fix módulo de cambios (Datos → Cambios)
+- Precio de reembolso ahora usa el `total` pagado real (proporcional), no el precio de catálogo del item
+- Worker retorna error claro si el pedido no existe en Shopify (antes daba "Not Found" críptico)
+- Ventas creadas como draft order antiguas no se pueden cambiar desde el módulo (Shopify no las tiene como pedidos reales)
+
+#### Fix WhatsApp webhook — migración D1 pendiente
+- **Síntoma**: mensajes de WhatsApp no llegaban, error en logs: `D1_ERROR: no such column: last_direction: SQLITE_ERROR`
+- **Causa**: el worker usaba la columna `last_direction` en `wa_conversations` pero nunca se había ejecutado la migración
+- **Fix**: ejecutar vía API de Cloudflare D1:
+  ```sql
+  ALTER TABLE wa_conversations ADD COLUMN last_direction TEXT DEFAULT 'outbound'
+  ```
+- **Lección**: cada vez que el worker use una columna nueva en D1, ejecutar la migración ANTES de desplegar el worker
+- Se puede ejecutar con el token Cloudflare guardado en memoria (`reference_cloudflare_token.md`)
+
 ---
 
 ### 2026-06-30 — Sesión 1 (mañana) — Lo que SE HIZO (funciona)
