@@ -375,8 +375,8 @@ export default {
       await env.bloom_wa.prepare(
         `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, updated_at = ? WHERE id = ?`
       ).bind(lastMsg, now, now, conversation_id).run();
-      // Envío real a WhatsApp
-      if (env.WA_TOKEN && env.WA_PHONE_ID && phone) {
+      // Envío real a WhatsApp (notas internas no se envían al cliente)
+      if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgType !== "note") {
         if (media_url && msgType === "image") {
           await sendWhatsAppMedia(env, phone, "image", media_url, msgBody).catch(() => {});
         } else if (media_url && msgType === "audio") {

@@ -148,6 +148,12 @@
   .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border)}
   .chat-item:active,.chat-item.sel{background:var(--surface-2)}
   .av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--accent)}
+  .av-wrap{position:relative;flex-shrink:0;display:inline-flex}
+  .av-wrap .av{flex-shrink:0}
+  .av-plat{position:absolute;bottom:-1px;right:-1px;width:16px;height:16px;border-radius:50%;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);line-height:1}
+  .av-plat.wa{background:#25D366;color:#fff}
+  .av-plat.ig{background:radial-gradient(circle at 30% 110%,#fd5 5%,#f97316 30%,#e1306c 60%,#833ab4 90%);color:#fff}
+  .av-plat.fb{background:#1877F2;color:#fff}
   .ci-body{flex:1;min-width:0}
   .ci-top{display:flex;justify-content:space-between;align-items:baseline}
   .ci-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -536,7 +542,7 @@
     </div>
     <div class="chat-head" id="chatHead" style="display:none">
       <button class="ch-back" onclick="closeChat()">‹</button>
-      <div class="av" id="headAv"></div>
+      <div class="av-wrap"><div class="av" id="headAv"></div><span class="av-plat wa" id="headAvPlat"></span></div>
       <div class="ch-info"><div class="ch-name" id="headName"></div><div class="ch-sub" id="headSub"></div></div>
       <button class="iconbtn" title="Nota interna" onclick="addNote()"><span class="material-symbols-outlined" style="font-size:17px">sticky_note_2</span></button>
       <button class="iconbtn" title="Ver ficha" onclick="togglePanel()"><span class="material-symbols-outlined" style="font-size:17px">menu_open</span></button>
@@ -565,7 +571,7 @@
     <div class="panel-mobile-head"><button class="ch-back" onclick="togglePanel()">‹</button><span style="font-size:14px;font-weight:600">Ficha del cliente</span></div>
     <div class="p-sec">
       <div class="p-client">
-        <div class="av" id="pAv"></div>
+        <div class="av-wrap"><div class="av" id="pAv"></div><span class="av-plat wa" id="pAvPlat"></span></div>
         <div><div class="p-cname" id="pName"></div><div class="p-csub" id="pPhone"></div></div>
       </div>
     </div>

@@ -144,8 +144,9 @@ function renderChatList(){
     let refBadge="";
     if(c.ref_source_type==="ad") refBadge=`<span class=\"ref-badge ad\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">campaign</span> pauta</span>`;
     else if(c.ref_source_type) refBadge=`<span class=\"ref-badge\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">photo_camera</span> historia</span>`;
+    const platClass=c.platform==="instagram"?"ig":c.platform==="facebook"?"fb":"wa";
     item.innerHTML=`
-      <div class="av">${initials(c.name)}</div>
+      <div class="av-wrap"><div class="av">${initials(c.name)}</div><span class="av-plat ${platClass}" title="WhatsApp"></span></div>
       <div class="ci-body">
         <div class="ci-top"><span class="ci-name">${esc(c.name)}</span><span class="ci-time">${timeLabel(c.lastAt)}</span></div>
         <div class="ci-prev">${esc(c.last||"—")}</div>
@@ -206,6 +207,8 @@ async function openChat(phone){
   ["chatHead","msgs","qrBar","composer"].forEach(id=>$("#"+id).style.display=
     id==="msgs"||id==="qrBar"||id==="composer"?(id==="msgs"?"flex":"flex"):"flex");
   $("#headAv").textContent=initials(c.name);
+  const _plat=c.platform==="instagram"?"ig":c.platform==="facebook"?"fb":"wa";
+  const _hPlat=$("#headAvPlat"); if(_hPlat){_hPlat.className=`av-plat ${_plat}`;}
   $("#headName").textContent=c.name;
   $("#headSub").textContent="+"+phone;
   renderChatList(); renderPanel();
