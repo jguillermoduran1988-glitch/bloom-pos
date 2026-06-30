@@ -145,9 +145,10 @@
   .search input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:9px 13px;color:var(--text);font-size:14px;outline:none}
   .search input:focus{border-color:var(--accent)}
   .chat-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border);border-left:3px solid transparent}
+  .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border)}
   .chat-item:active,.chat-item.sel{background:var(--surface-2)}
-  .chat-item.my-conv{border-left-color:var(--accent);background:rgba(196,154,75,0.07)}
+  .chat-item.my-conv{outline:2px solid var(--accent);outline-offset:-2px}
+  .kb-card.my-conv{outline:2px solid var(--accent);outline-offset:-2px}
   .av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--accent)}
   .av-wrap{position:relative;flex-shrink:0;display:inline-flex}
   .av-wrap .av{flex-shrink:0}

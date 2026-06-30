@@ -128,19 +128,35 @@ function toggleBoardView(){
   const btn=$("#boardToggleBtn");
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
   if(window.innerWidth<=720){
-    // Móvil: body class + position:fixed (más confiable que position:absolute en el grid)
     document.body.classList.toggle("board-open",_boardMode);
-    if(!_boardMode){
+    if(_boardMode){
+      history.pushState({kanban:true},"");
+    } else {
       document.body.classList.remove("chat-open","panel-open");
       state.active=null;
       const pan=$("#panel"); if(pan) pan.classList.add("hidden");
     }
   } else {
-    // Desktop: position:absolute dentro del screen
     $("#kanbanBoard").classList.toggle("show",_boardMode);
   }
   if(_boardMode) renderBoard();
 }
+
+window.addEventListener("popstate",(e)=>{
+  if(_boardMode){
+    _boardMode=false;
+    const btn=$("#boardToggleBtn");
+    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
+    document.body.classList.remove("board-open","chat-open","panel-open");
+    state.active=null;
+    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+  } else if(state.active && window.innerWidth<=720){
+    state.active=null;
+    document.body.classList.remove("chat-open","panel-open");
+    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+    renderChatList();
+  }
+});
 
 function renderBoard(){
   const pipe=currentPipeline(); if(!pipe) return;
@@ -169,7 +185,8 @@ function renderBoard(){
     col.innerHTML=`<div class="kb-col-head" style="border-top:3px solid ${stCol}"><span class="kb-col-name" style="color:${stCol}">${esc(stage)}</span><span class="kb-col-ct">${cards.length}</span></div><div class="kb-col-body"></div>`;
     const body=col.querySelector(".kb-col-body");
     for(const c of cards){
-      const card=el("div","kb-card");
+      const isMyCard=pos.currentUser?.name && c.assigned_to===pos.currentUser.name;
+      const card=el("div","kb-card"+(isMyCard?" my-conv":""));
       // Ocultar notas internas como último mensaje visible
       const lastVisible=c.last?.startsWith("Tomó ")||c.last?.startsWith("Conversación liberada")||c.last?.startsWith("Liberó ")?"":c.last;
       const tagChips=(c.tags||[]).slice(0,2).map(t=>`<span class="kb-tag">${esc(t)}</span>`).join("");
