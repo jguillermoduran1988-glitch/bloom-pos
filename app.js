@@ -117,7 +117,7 @@ async function loadChats(){
       stage:conv.stage||"nueva",
       pipeline_id:conv.pipeline_id||null,
       tags: typeof conv.contact_tags==="string" ? JSON.parse(conv.contact_tags||"[]") : (conv.contact_tags||[]),
-      ref_source_type:null, ref_headline:null, ref_body:null, ref_media_url:null,
+      ref_source_type:conv.ref_source_type||null, ref_headline:null, ref_body:null, ref_media_url:null,
       last:conv.last_message||"", lastAt:conv.last_message_at||conv.updated_at,
       unread:conv.unread_count||0, status:conv.status||"open",
     });
@@ -160,6 +160,41 @@ function renderChatList(){
   list.appendChild(frag);
 }
 
+// ---------- Ventana de atención ----------
+function getWindowStatus(c){
+  if(!c?.lastAt) return {open:false, hours:0};
+  const last=new Date(c.lastAt);
+  const hours=(Date.now()-last)/3600000;
+  const limit=c.ref_source_type==="ad" ? 72 : 24;
+  const left=limit-hours;
+  return {open:left>0, hoursLeft:left, limit};
+}
+function renderWindowBanner(phone){
+  const c=state.chats.get(phone);
+  const w=getWindowStatus(c);
+  const banner=$("#windowBanner");
+  const composer=$("#composer");
+  const input=$("#chatInput");
+  const sendBtn=$("#sendBtn");
+  if(!banner) return;
+  if(w.open){
+    const h=Math.floor(w.hoursLeft);
+    const m=Math.floor((w.hoursLeft-h)*60);
+    const label=h>0?`${h}h ${m}m`:`${m} min`;
+    banner.style.cssText="display:flex;align-items:center;gap:6px;padding:4px 12px;font-size:11px;background:#f0fdf4;color:#166534;border-bottom:1px solid #bbf7d0";
+    banner.innerHTML=`<span class="material-symbols-outlined" style="font-size:14px">schedule</span>Ventana abierta · ${w.limit}h · Cierra en <b>${label}</b>`;
+    if(input) input.disabled=false;
+    if(sendBtn) sendBtn.disabled=false;
+    if(composer) composer.style.opacity="1";
+  } else {
+    banner.style.cssText="display:flex;align-items:center;gap:6px;padding:6px 12px;font-size:11px;background:#fef2f2;color:#991b1b;border-bottom:1px solid #fecaca";
+    banner.innerHTML=`<span class="material-symbols-outlined" style="font-size:14px">timer_off</span><b>Ventana vencida</b> · Solo puedes enviar plantillas de WhatsApp`;
+    if(input){ input.disabled=true; input.placeholder="Ventana cerrada — usa una plantilla"; }
+    if(sendBtn) sendBtn.disabled=true;
+    if(composer) composer.style.opacity="0.6";
+  }
+}
+
 // ---------- Abrir chat ----------
 async function openChat(phone){
   state.active=phone;
@@ -172,6 +207,7 @@ async function openChat(phone){
   $("#headName").textContent=c.name;
   $("#headSub").textContent="+"+phone;
   renderChatList(); renderPanel();
+  renderWindowBanner(phone);
   const _convId=state.chats.get(phone)?.id||phone;
   fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
@@ -395,7 +431,7 @@ async function savePipeline(){
 
 // ---------- Enviar ----------
 async function sendCurrent(){
-  const input=$("#input"); let text=input.value.trim();
+  const input=$("#chatInput"); let text=input.value.trim();
   if(!text||!state.active)return;
   input.value=""; autoGrow();
   await dispatch(text);
@@ -431,7 +467,7 @@ function buildChatEmojiPicker(){
   box.dataset.built="1";
 }
 function toggleChatEmojiPicker(){ buildChatEmojiPicker(); $("#chatEmojiPicker").classList.toggle("show"); }
-function addChatEmoji(e){ const inp=$("#input"); inp.value+=e; inp.focus(); }
+function addChatEmoji(e){ const inp=$("#chatInput"); inp.value+=e; inp.focus(); }
 
 function attachChatPhoto(){
   if(!state.active){ alert("Selecciona un chat primero."); return; }
@@ -752,12 +788,12 @@ async function onIncoming(m){
 function setConn(on){$("#connDot").classList.toggle("on",on);$("#connText").textContent=on?"en línea":"reconectando…";}
 
 // ---------- UI misc ----------
-function autoGrow(){const t=$("#input");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,100)+"px";}
-$("#input").addEventListener("input",autoGrow);
-$("#input").addEventListener("keydown",e=>{
+function autoGrow(){const t=$("#chatInput");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,100)+"px";}
+$("#chatInput").addEventListener("input",autoGrow);
+$("#chatInput").addEventListener("keydown",e=>{
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();
-    const raw=$("#input").value.trim();
-    $("#input").value=expandCommand(raw); sendCurrent();}
+    const raw=$("#chatInput").value.trim();
+    $("#chatInput").value=expandCommand(raw); sendCurrent();}
 });
 let searchTimer;
 $("#searchBox").addEventListener("input",e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.search=e.target.value;renderChatList();},180);});
@@ -3913,6 +3949,8 @@ function _connectWaSocket(){
         unread: state.active===phone ? 0 : ((existing?.unread||0)+1),
       });
       renderChatList();
+      // Actualiza banner de ventana si el chat está abierto
+      if(state.active===phone) renderWindowBanner(phone);
       // Si el chat está abierto, carga el mensaje nuevo
       if(state.active===phone){
         const convId=state.chats.get(phone)?.id||phone;

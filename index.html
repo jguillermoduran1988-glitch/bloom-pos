@@ -519,10 +519,11 @@
     </div>
     <div class="msgs" id="msgs" style="display:none"></div>
     <div class="qr-bar" id="qrBar" style="display:none"></div>
+    <div id="windowBanner" style="display:none"></div>
     <div class="composer" id="composer" style="display:none">
       <button class="team-plus" id="chatPlusBtn" onclick="toggleChatPlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
-      <textarea id="input" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
-      <button class="send" onclick="sendCurrent()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
+      <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
+      <button class="send" id="sendBtn" onclick="sendCurrent()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
     </div>
     <div id="chatPlusMenu" class="plus-menu">
       <button onclick="toggleChatEmojiPicker();closeChatPlusMenu()"><span class="material-symbols-outlined">add_reaction</span><span>Emojis</span></button>

@@ -307,7 +307,8 @@ export default {
         SELECT c.id, c.phone, c.status, c.assigned_to,
                c.last_message, c.last_message_at, c.unread_count, c.updated_at,
                c.pipeline_id, c.stage,
-               ct.name as contact_name, ct.email as contact_email, ct.avatar as contact_avatar, ct.tags as contact_tags
+               ct.name as contact_name, ct.email as contact_email, ct.avatar as contact_avatar, ct.tags as contact_tags,
+               ct.ref_source as ref_source_type
         FROM wa_conversations c
         LEFT JOIN wa_contacts ct ON ct.phone = c.phone
         WHERE c.store = ? ${whereStatus}
