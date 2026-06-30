@@ -147,4 +147,110 @@ Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 - Archivos (fotos/audio) se suben a Supabase Storage y la URL se guarda en D1
 - SW cache en `bloom-v91`
 
+### 2026-06-30 — Lo que SE HIZO (funciona)
+
+#### Borde completo en conversaciones asignadas
+- `.chat-item.my-conv` y `.kb-card.my-conv`: ahora tienen `outline:2px solid var(--accent)` en los 4 lados (antes era solo borde izquierdo + fondo)
+- Se eliminó el fondo `rgba` de los ítems asignados
+- Kanban cards también muestran el borde dorado si `c.assigned_to === pos.currentUser.name`
+
+#### Múltiples features de sesiones anteriores (ya en producción)
+- **Panel cliente**: título "Datos cliente", muestra dirección, historial de compras con fechas
+- **Auto-tag "recompra"**: se agrega automáticamente si el cliente tiene compras; configurable en Config Chat
+- **Colores de etapa**: selector de color en el editor de embudos (`stage_colors` JSONB en Supabase `pipelines`)
+- **Automatización seguimiento**: sección en Config Chat con reglas (embudo+etapa+tiempo+mensaje), Worker corre cada hora
+- **Selector de etiquetas**: dropdown con etiquetas conocidas + crear nueva, reemplazó el input de texto
+- **Productos**: abre inmediatamente con "Cargando…" mientras carga, luego muestra resultados
+- **`sizes` en Worker**: `fetchShopify()` ahora computa el campo `sizes` por producto
+
+#### Pendiente de migración en BD (NO ejecutados aún)
+- Supabase: `ALTER TABLE pipelines ADD COLUMN IF NOT EXISTS stage_colors jsonb DEFAULT '{}';`
+- Supabase: `ALTER TABLE pos_settings ADD COLUMN IF NOT EXISTS chat_config jsonb DEFAULT '{}';`
+- D1: `ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS last_direction TEXT DEFAULT 'outbound';`
+- Worker: `npx wrangler deploy` (para el cron de seguimiento automático)
+
 ---
+
+### 2026-06-30 — Bugs PENDIENTES (no resueltos)
+
+#### 🔴 BUG 1: Kanban en móvil — botones del header desaparecen
+
+**Síntoma**: Al abrir el kanban y luego cerrarlo (tocando el mismo botón de tablero), los 3 botones que aparecen junto al logo de Bloom (tablero, POS, datos + "en línea") desaparecen. Solo queda el logo. Para recuperarlos hay que recargar la app.
+
+**Lo que debería verse**: Logo Bloom a la izquierda + botón kanban + botón POS + botón Datos + punto "en línea" a la derecha del logo. (El usuario envió screenshot de referencia mostrando el estado correcto.)
+
+**Intentos fallidos**:
+1. Quitar `chat-open` en `toggleBoardView()` → falló
+2. `switchScreen` cierra kanban → falló
+3. `body.board-open` + CSS `position:fixed` → falló
+4. `history.pushState` + listener `popstate` → falló
+5. `style.cssText` directo en JS para mostrar/ocultar sidebar y board → falló
+6. CSS classes `.kb-show` / `.kb-hidden` con `!important` → último intento, aún no confirmado por el usuario
+
+**Estado actual del código** (app.js ~línea 126):
+```javascript
+function _closeBoardMobile(){
+  $("#kanbanBoard")?.classList.remove("kb-show");
+  document.querySelector(".sidebar")?.classList.remove("kb-hidden");
+  document.body.classList.remove("board-open","chat-open","panel-open");
+  state.active=null;
+  const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+}
+function toggleBoardView(){
+  _boardMode=!_boardMode;
+  if(window.innerWidth<=720){
+    if(_boardMode){
+      document.querySelector(".sidebar")?.classList.add("kb-hidden");
+      $("#kanbanBoard")?.classList.add("kb-show");
+      document.body.classList.add("board-open");
+      history.pushState({kanban:true},"");
+    } else { _closeBoardMobile(); }
+  } else {
+    $("#kanbanBoard").classList.toggle("show",_boardMode);
+  }
+  if(_boardMode) renderBoard();
+}
+```
+
+**CSS actual** (index.html ~línea 176):
+```css
+@media(max-width:720px){
+  .sidebar.kb-hidden{display:none!important;visibility:hidden!important}
+  #kanbanBoard.kb-show{display:flex!important;position:fixed!important;top:0;left:0;right:0;bottom:56px;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)}
+}
+```
+
+**Hipótesis pendiente de investigar**: Los botones están en `.side-head` > `div` (segundo hijo). El sidebar sí aparece (logo, tabs, búsqueda, lista de chats), pero SOLO el div de botones desaparece. Esto sugiere que NO es un problema de display del sidebar completo, sino algo específico con ese div de botones. Posibles causas: (a) algún JS toca `.side-head` o su segundo hijo; (b) problema de compositing/z-index de iOS Safari con el elemento que estuvo en `position:fixed`; (c) el `#kanbanBoard` con `position:absolute;inset:0;z-index:20` (su estado CSS por defecto) cubre el header aunque tenga `display:none` de alguna forma.
+
+**Siguiente paso sugerido**: Buscar si hay algún JS que modifique `.side-head` o el div de los botones. Considerar mover `#kanbanBoard` fuera de `#screen-chats` en el HTML (hacerlo hijo directo de `<body>`) para que `position:absolute;inset:0` no afecte el layout del grid.
+
+---
+
+#### 🔴 BUG 2: Selector de productos Shopify — no carga en escritorio, se cierra en móvil
+
+**Síntoma**:
+- **Escritorio (desktop)**: Al tocar "Productos" en las acciones de la ficha de cliente, el modal se abre con "Cargando productos…" pero nunca muestra los productos.
+- **Móvil**: El modal se abre pero "se cierra" (el usuario lo percibe así — puede ser que se cierre solo, o que quede vacío/inutilizable).
+
+**Lo que se sabe**:
+- El endpoint del Worker `GET /products?store=bloom` SÍ funciona y devuelve 600 productos (313 con stock > 0).
+- CORS está configurado (`Access-Control-Allow-Origin: *`) y funciona para todos los demás endpoints.
+- El Service Worker NO intercepta peticiones a `workers.dev` (excluido explícitamente en sw.js línea 17).
+- `fetchProducts()` hace `fetch(WORKER_URL/products?store=bloom)` — si esto cuelga en el browser, nunca resuelve.
+
+**Último estado del código** (app.js ~línea 1186):
+```javascript
+async function openPicker(){
+  // muestra caché local primero si existe
+  // luego fetchProducts() con AbortController de 14s timeout
+  // si falla, usa caché o DEMO_PRODUCTS
+}
+```
+
+**Hipótesis**: Puede ser que la primera vez (sin caché local) el fetch al Worker desde el browser tarda demasiado o falla silenciosamente. En móvil, el usuario puede estar cerrando el modal manualmente al ver que está vacío/cargando.
+
+**Siguiente paso sugerido**: Agregar un mensaje de error visible si fetchProducts() no resuelve en tiempo. También vale verificar desde el browser (DevTools > Network) si la petición a /products realmente llega al Worker o se queda pendiente.
+
+---
+
+## Reglas importantes al hacer cambios
