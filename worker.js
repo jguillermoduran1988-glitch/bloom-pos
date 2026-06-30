@@ -948,7 +948,7 @@ async function createShopifyOrder(env, o) {
         first_name: cust.name || cust.full_name,
         last_name: cust.last_name || "",
         ...(cust.email ? { email: cust.email } : {}),
-        ...(cust.phone ? { phone: cust.phone } : {}),
+        ...(cust.phone ? { phone: "+57" + cust.phone.replace(/\D/g, "").slice(-10) } : {}),
       },
     } : {})),
     ...(addr ? { shipping_address: addr, billing_address: addr } : {}),
@@ -1704,26 +1704,51 @@ async function findOrCreateShopifyCustomer(env, cust) {
   }
   if (!firstName) firstName = "Cliente";
 
+  const phoneE164 = cust.phone ? ("+57" + cust.phone.replace(/\D/g, "").slice(-10)) : null;
   const newCustomer = {
     first_name: firstName,
     last_name: lastName,
     ...(cust.email ? { email: cust.email } : {}),
-    ...(cust.phone ? { phone: "+57" + cust.phone.replace(/\D/g, "").slice(-10) } : {}),
+    ...(phoneE164 ? { phone: phoneE164 } : {}),
     tags: "POS Bloom",
-    ...(cust.address ? {
-      addresses: [{
-        address1: cust.address, city: cust.city || "", province: cust.depto || "",
-        country: "Colombia", phone: cust.phone ? ("+57" + cust.phone.replace(/\D/g, "").slice(-10)) : "",
-        company: docCompany || undefined,
-        first_name: firstName, last_name: lastName,
-      }]
-    } : {}),
+    // No incluir addresses: el campo province requiere código ISO y causa 422 si se envía nombre del depto
   };
   const cr = await fetch(
     `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers.json`,
     { method: "POST", headers, body: JSON.stringify({ customer: newCustomer }) }
   );
-  if (!cr.ok) return null;
+  if (!cr.ok) {
+    const errBody = await cr.json().catch(() => null);
+    console.error("[bloom] findOrCreateShopifyCustomer create failed", cr.status, JSON.stringify(errBody));
+    // Si Shopify dice que email/phone ya existe, buscar de nuevo para obtener el ID
+    if (cr.status === 422) {
+      if (cust.email) {
+        const emailLc = cust.email.trim().toLowerCase();
+        const r2 = await fetch(
+          `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=${encodeURIComponent('email:' + emailLc)}`,
+          { headers }
+        ).catch(() => null);
+        if (r2?.ok) {
+          const d2 = await r2.json();
+          const match = (d2.customers || []).find(c => (c.email || "").trim().toLowerCase() === emailLc);
+          if (match) return match.id;
+        }
+      }
+      if (cust.phone) {
+        const last10 = cust.phone.replace(/\D/g, "").slice(-10);
+        const r3 = await fetch(
+          `https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/search.json?query=${encodeURIComponent('phone:' + last10)}`,
+          { headers }
+        ).catch(() => null);
+        if (r3?.ok) {
+          const d3 = await r3.json();
+          const match = (d3.customers || []).find(c => (c.phone || "").replace(/\D/g, "").slice(-10) === last10);
+          if (match) return match.id;
+        }
+      }
+    }
+    return null;
+  }
   const cd = await cr.json();
   return cd.customer?.id || null;
 }
