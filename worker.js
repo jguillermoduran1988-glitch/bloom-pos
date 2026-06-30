@@ -25,6 +25,19 @@ export default {
       return new Response("Forbidden", { status: 403 });
     }
 
+    // -------- Subir archivo desde el dashboard a R2 --------
+    if (request.method === "POST" && url.pathname === "/wa/upload") {
+      const form = await request.formData();
+      const file = form.get("file");
+      if (!file) return Response.json({ ok: false }, { headers: cors });
+      const buffer = await file.arrayBuffer();
+      const ext = file.name?.split(".").pop() || "bin";
+      const key = `out/${Date.now()}-${Math.random().toString(36).slice(2,6)}.${ext}`;
+      await env.bloom_media.put(key, buffer, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+      const fileUrl = `https://bloomchat.jguillermoduran1988.workers.dev/media/${key}`;
+      return Response.json({ ok: true, url: fileUrl }, { headers: cors });
+    }
+
     // -------- Servir archivos de R2 --------
     if (request.method === "GET" && url.pathname.startsWith("/media/")) {
       const key = decodeURIComponent(url.pathname.slice(7));

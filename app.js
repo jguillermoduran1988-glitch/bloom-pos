@@ -474,22 +474,84 @@ function buildChatEmojiPicker(){
 function toggleChatEmojiPicker(){ buildChatEmojiPicker(); $("#chatEmojiPicker").classList.toggle("show"); }
 function addChatEmoji(e){ const inp=$("#chatInput"); inp.value+=e; inp.focus(); }
 
+async function _compressImage(file, maxWidth=1280, quality=0.82){
+  return new Promise(resolve=>{
+    const img=new Image(), url=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      let w=img.width, h=img.height;
+      if(w>maxWidth){ h=Math.round(h*maxWidth/w); w=maxWidth; }
+      const canvas=document.createElement("canvas");
+      canvas.width=w; canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      canvas.toBlob(blob=>resolve(blob||file),"image/jpeg",quality);
+    };
+    img.onerror=()=>resolve(file);
+    img.src=url;
+  });
+}
+
+let _pendingPhoto=null;
 function attachChatPhoto(){
   if(!state.active){ alert("Selecciona un chat primero."); return; }
   const inp=document.createElement("input");
-  inp.type="file"; inp.accept="image/*";
+  inp.type="file"; inp.accept="image/*,video/*";
   inp.onchange=async()=>{
     const file=inp.files[0]; if(!file) return;
-    const up=await sbUpload("team-chat", file, (file.name.split(".").pop()||"jpg"));
-    if(!up){ alert("No se pudo subir la foto"); return; }
-    const now=new Date().toISOString();
-    appendMessage({body:"",media_url:up.url,direction:"out",created_at:now,msg_type:"image"});
-    const c=state.chats.get(state.active); if(c){ c.last="📷 Foto"; c.lastAt=now; renderChatList(); }
-    const convId=c?.id||state.active;
-    await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"image"})}).catch(()=>{});
+    const isVideo=file.type.startsWith("video/");
+    // Mostrar preview con campo de caption
+    const previewUrl=URL.createObjectURL(file);
+    _pendingPhoto={file, previewUrl, isVideo};
+    const modal=$("#chatPhotoModal");
+    const preview=$("#chatPhotoPreview");
+    if(isVideo){
+      preview.innerHTML=`<video src="${previewUrl}" style="max-width:100%;max-height:260px;border-radius:8px" controls></video>`;
+    } else {
+      preview.innerHTML=`<img src="${previewUrl}" style="max-width:100%;max-height:260px;border-radius:8px;object-fit:contain">`;
+    }
+    $("#chatPhotoCaption").value="";
+    modal.classList.add("show");
+    setTimeout(()=>$("#chatPhotoCaption").focus(),100);
   };
   inp.click();
+}
+function closeChatPhotoModal(){
+  $("#chatPhotoModal").classList.remove("show");
+  if(_pendingPhoto){ URL.revokeObjectURL(_pendingPhoto.previewUrl); _pendingPhoto=null; }
+}
+async function confirmSendChatPhoto(){
+  if(!_pendingPhoto||!state.active) return;
+  const caption=$("#chatPhotoCaption").value.trim();
+  const {file, isVideo}=_pendingPhoto;
+  closeChatPhotoModal();
+  const btn=$("#chatPhotoSendBtn");
+  if(btn){ btn.disabled=true; btn.textContent="Enviando..."; }
+  try{
+    let uploadFile=file;
+    let ext=file.name.split(".").pop()||"jpg";
+    let mime=file.type||"image/jpeg";
+    const msgType=isVideo?"video":"image";
+    // Comprimir imagen (no video)
+    if(!isVideo){
+      const compressed=await _compressImage(file);
+      uploadFile=new File([compressed],file.name,{type:"image/jpeg"});
+      ext="jpg"; mime="image/jpeg";
+    }
+    // Subir al Worker (R2)
+    const formData=new FormData();
+    formData.append("file", uploadFile, `media_${Date.now()}.${ext}`);
+    const upResp=await fetch(`${C.WORKER_URL}/wa/upload`,{method:"POST",body:formData}).then(r=>r.json()).catch(()=>null);
+    if(!upResp?.url){ alert("No se pudo subir el archivo"); return; }
+    const now=new Date().toISOString();
+    appendMessage({body:caption,media_url:upResp.url,direction:"out",created_at:now,msg_type:msgType});
+    const c=state.chats.get(state.active);
+    if(c){ c.last=isVideo?"🎬 Video":"📷 Foto"; c.lastAt=now; renderChatList(); }
+    const convId=c?.id||state.active;
+    await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({conversation_id:convId,phone:state.active,body:caption,media_url:upResp.url,type:msgType})}).catch(()=>{});
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent="Enviar"; }
+  }
 }
 
 let _chatRecorder=null, _chatAudioChunks=[];

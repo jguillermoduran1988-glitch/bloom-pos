@@ -1624,6 +1624,18 @@
 </div>
 
 <!-- ============ BOT: MODAL EDICIÓN DE PASO ============ -->
+<div id="chatPhotoModal" class="modal-bg" style="z-index:1100" onclick="if(event.target===this)closeChatPhotoModal()">
+  <div class="modal-box" style="max-width:400px;width:100%;padding:16px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:12px">Enviar imagen / video</div>
+    <div id="chatPhotoPreview" style="text-align:center;margin-bottom:12px"></div>
+    <textarea id="chatPhotoCaption" rows="2" placeholder="Escribe un pie de foto (opcional)..." style="width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px;font-size:14px;resize:none;box-sizing:border-box"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeChatPhotoModal()">Cancelar</button>
+      <button id="chatPhotoSendBtn" class="btn-pri" onclick="confirmSendChatPhoto()">Enviar</button>
+    </div>
+  </div>
+</div>
+
 <div id="botStepModal" class="modal-bg" style="z-index:1100" onclick="if(event.target===this)closeBotStepModal()">
   <div class="modal-box" style="max-width:520px;padding:20px;overflow-y:auto">
     <div style="font-weight:700;font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px" id="botStepModalTitle"></div>
