@@ -184,8 +184,11 @@
   .kb-col-name{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-dim)}
   .kb-col-ct{font-size:11px;font-weight:700;background:var(--accent-soft);color:var(--accent-dark);border-radius:20px;padding:1px 8px}
   .kb-col-body{overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:7px}
-  .kb-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 11px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+  .kb-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 11px;cursor:pointer;transition:box-shadow .15s,border-color .15s;position:relative}
   .kb-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.1);border-color:var(--accent)}
+  .kb-close{position:absolute;top:6px;right:6px;background:none;border:none;cursor:pointer;color:var(--text-dim);padding:2px;border-radius:5px;display:none;line-height:1;font-size:13px}
+  .kb-card:hover .kb-close{display:flex;align-items:center}
+  .kb-close:hover{background:#fee2e2;color:#b91c1c}
   .kb-card-top{display:flex;align-items:center;gap:7px;margin-bottom:5px}
   .kb-card-name{font-size:13px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .kb-card-time{font-size:10px;color:var(--text-dim);flex-shrink:0}
@@ -630,6 +633,7 @@
       <div class="qa">
         <button onclick="openPicker()"><span class="material-symbols-outlined" style="font-size:16px">shopping_bag</span> Productos</button>
         <button onclick="movePipeline()"><span class="material-symbols-outlined" style="font-size:16px">swap_horiz</span> Mover embudo</button>
+        <button onclick="archiveActiveConv()" style="color:#b91c1c;border-color:#fca5a5"><span class="material-symbols-outlined" style="font-size:16px">archive</span> Archivar lead</button>
       </div>
     </div>
   </aside>

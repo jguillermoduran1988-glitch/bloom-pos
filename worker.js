@@ -398,6 +398,7 @@ export default {
       if (updates.stage !== undefined) { fields.push("stage = ?"); values.push(updates.stage); }
       if (updates.pipeline_id !== undefined) { fields.push("pipeline_id = ?"); values.push(updates.pipeline_id); }
       if (updates.assigned_to !== undefined) { fields.push("assigned_to = ?"); values.push(updates.assigned_to); }
+      if (updates.status !== undefined) { fields.push("status = ?"); values.push(updates.status); }
       if (!fields.length) return Response.json({ ok: false, error: "no fields" }, { headers: cors });
       fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(convId);
       await env.bloom_wa.prepare(`UPDATE wa_conversations SET ${fields.join(", ")} WHERE id = ?`).bind(...values).run();
@@ -1085,8 +1086,9 @@ async function handleIncoming(env, msg, contact) {
       `INSERT INTO wa_conversations (id, phone, store, status, last_message, last_message_at, unread_count, updated_at) VALUES (?, ?, 'bloom', 'open', ?, ?, 1, ?)`
     ).bind(convId, phone, text, now, now).run();
   } else {
+    // Reabrir conversaciones archivadas si el cliente escribe de nuevo
     await env.bloom_wa.prepare(
-      `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, unread_count = unread_count + 1, updated_at = ? WHERE id = ?`
+      `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, unread_count = unread_count + 1, updated_at = ?, status = 'open' WHERE id = ?`
     ).bind(text, now, now, convId).run();
   }
 

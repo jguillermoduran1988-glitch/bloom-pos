@@ -159,12 +159,17 @@ function renderBoard(){
       // Ocultar notas internas como último mensaje visible
       const lastVisible=c.last?.startsWith("Tomó ")||c.last?.startsWith("Conversación liberada")||c.last?.startsWith("Liberó ")?"":c.last;
       const tagChips=(c.tags||[]).slice(0,2).map(t=>`<span class="kb-tag">${esc(t)}</span>`).join("");
+      const isHandle=c.platform==="instagram"||c.platform==="facebook";
+      const phoneDisp=(isHandle?"@":"+")+esc(c.phone);
       card.innerHTML=`
+        <button class="kb-close" onclick="event.stopPropagation();archiveConv('${esc(c.phone)}')" title="Archivar lead">
+          <span class="material-symbols-outlined" style="font-size:14px">close</span>
+        </button>
         <div class="kb-card-top">
           <div class="av-wrap"><div class="av av-sm">${initials(c.name)}</div>${platBadge(c.platform)}</div>
-          <div style="flex:1;min-width:0">
+          <div style="flex:1;min-width:0;padding-right:18px">
             <div class="kb-card-name">${esc(c.name)}</div>
-            <div style="font-size:10px;color:var(--text-dim)">+${esc(c.phone)}</div>
+            <div style="font-size:10px;color:var(--text-dim)">${phoneDisp}</div>
           </div>
           <span class="kb-card-time">${timeLabel(c.lastAt)}</span>
         </div>
@@ -392,7 +397,8 @@ function renderPanel(){
   const c=state.chats.get(state.active); if(!c)return;
   $("#pAv").textContent=initials(c.name);
   $("#pName").textContent=c.name;
-  $("#pPhone").textContent="+"+c.phone;
+  const _isHandle=c.platform==="instagram"||c.platform==="facebook";
+  $("#pPhone").textContent=(_isHandle?"@":"+")+c.phone;
   // referral
   const rdiv=$("#pReferral");
   if(c.ref_source_type){
@@ -608,6 +614,22 @@ async function freeConv(){
   const input=$("#chatInput");
   input.value="/liberar"; await sendCurrent();
 }
+
+// ---------- Archivar lead ----------
+async function archiveConv(phone){
+  const c=state.chats.get(phone);
+  if(!confirm(`¿Archivar la conversación con ${c?.name||phone}?\n\nDesaparecerá del embudo. Si el cliente escribe de nuevo, reaparecerá automáticamente.`)) return;
+  const convId=c?.id||phone;
+  state.chats.delete(phone);
+  if(state.active===phone) closeChat();
+  renderChatList();
+  if(_boardMode) renderBoard();
+  await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({status:"archived"})
+  }).catch(()=>{});
+}
+function archiveActiveConv(){ if(state.active) archiveConv(state.active); }
 
 // ---------- Autocomplete de comandos ----------
 const _BUILT_IN_CMDS=[
