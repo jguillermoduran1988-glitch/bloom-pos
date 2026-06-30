@@ -931,6 +931,38 @@ async function createShopifyOrder(env, o) {
   return { ok: true, order_id: String(data.order.id), order_name: data.order.name };
 }
 
+// ============ Descargar media de WhatsApp y subir a Supabase ============
+async function _uploadWaMedia(env, mediaId, mimeType) {
+  try {
+    // 1. Obtener URL de descarga de Meta
+    const info = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${env.WA_TOKEN}` }
+    }).then(r => r.json());
+    if (!info.url) return null;
+    // 2. Descargar el archivo
+    const blob = await fetch(info.url, {
+      headers: { Authorization: `Bearer ${env.WA_TOKEN}` }
+    });
+    if (!blob.ok) return null;
+    const buffer = await blob.arrayBuffer();
+    // 3. Determinar extensión
+    const ext = mimeType?.split("/")?.[1]?.split(";")?.[0] || "bin";
+    const filename = `wa-media/${Date.now()}-${mediaId.slice(-6)}.${ext}`;
+    // 4. Subir a Supabase Storage (bucket team-chat)
+    const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/team-chat/${filename}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        "Content-Type": mimeType || "application/octet-stream",
+        "x-upsert": "true",
+      },
+      body: buffer,
+    });
+    if (!up.ok) return null;
+    return `${env.SUPABASE_URL}/storage/v1/object/public/team-chat/${filename}`;
+  } catch(e) { return null; }
+}
+
 // ============ Procesar entrante (guarda en D1) ============
 async function handleIncoming(env, msg, contact) {
   const phone = msg.from;
@@ -941,12 +973,54 @@ async function handleIncoming(env, msg, contact) {
   // Flow completion (nfm_reply cuando el cliente termina un WhatsApp Flow)
   const flowReply = interactive?.type === "nfm_reply" ? interactive.nfm_reply : null;
   const flowData = flowReply ? (() => { try { return JSON.parse(flowReply.response_json||"{}"); } catch{return{};} })() : null;
-  const text = flowData
-    ? Object.entries(flowData).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(" · ")
-    : msg.text?.body || msg.button?.text || interactiveTitle || "";
+
+  // Detectar tipo de mensaje y extraer contenido
+  const rawType = msg.type || "text";
+  let text = "", msgType = "text", mediaUrl = null;
+
+  if (flowData) {
+    text = Object.entries(flowData).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(" · ");
+    msgType = "flow_reply";
+  } else if (interactive) {
+    text = interactiveTitle;
+    msgType = "interactive";
+  } else if (rawType === "text") {
+    text = msg.text?.body || "";
+    msgType = "text";
+  } else if (rawType === "image") {
+    text = msg.image?.caption || "📷 Foto";
+    msgType = "image";
+    mediaUrl = await _uploadWaMedia(env, msg.image.id, msg.image.mime_type);
+  } else if (rawType === "audio" || rawType === "voice") {
+    text = "🎤 Nota de voz";
+    msgType = "audio";
+    mediaUrl = await _uploadWaMedia(env, msg.audio?.id || msg.voice?.id, msg.audio?.mime_type || msg.voice?.mime_type);
+  } else if (rawType === "video") {
+    text = msg.video?.caption || "🎬 Video";
+    msgType = "video";
+    mediaUrl = await _uploadWaMedia(env, msg.video.id, msg.video.mime_type);
+  } else if (rawType === "document") {
+    text = msg.document?.filename || "📄 Documento";
+    msgType = "document";
+    mediaUrl = await _uploadWaMedia(env, msg.document.id, msg.document.mime_type);
+  } else if (rawType === "sticker") {
+    text = "🪄 Sticker";
+    msgType = "sticker";
+    mediaUrl = await _uploadWaMedia(env, msg.sticker.id, msg.sticker.mime_type);
+  } else if (rawType === "location") {
+    const loc = msg.location;
+    text = `📍 Ubicación: ${loc?.name || `${loc?.latitude},${loc?.longitude}`}`;
+    msgType = "location";
+  } else if (rawType === "button") {
+    text = msg.button?.text || "";
+    msgType = "text";
+  } else {
+    text = `[${rawType}]`;
+    msgType = "text";
+  }
+
   const waId = msg.id;
   const now = new Date().toISOString();
-  const msgType = flowData ? "flow_reply" : (interactive ? "interactive" : "text");
 
   // Upsert contacto en D1
   await d1UpsertContact(env, phone, name);
@@ -978,8 +1052,8 @@ async function handleIncoming(env, msg, contact) {
   // Guardar mensaje
   const msgId = "in-" + (waId || Date.now()) + "-" + Math.random().toString(36).slice(2, 6);
   await env.bloom_wa.prepare(
-    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, status, ts) VALUES (?, ?, ?, 'inbound', ?, ?, 'delivered', ?)`
-  ).bind(msgId, convId, waId || null, msgType, text, now).run();
+    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, media_url, status, ts) VALUES (?, ?, ?, 'inbound', ?, ?, ?, 'delivered', ?)`
+  ).bind(msgId, convId, waId || null, msgType, text, mediaUrl, now).run();
 
   // Bot: procesar respuesta
   await handleBotInput(env, convId, phone, text, interactiveReplyId, !existing, contact);
