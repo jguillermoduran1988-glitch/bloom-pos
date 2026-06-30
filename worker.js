@@ -105,8 +105,8 @@ export default {
     if (request.method === "POST" && url.pathname === "/debug-customer") {
       const body = await request.json();
       const cust = body.customer || body;
-      const id = await findOrCreateShopifyCustomer(env, cust);
-      return Response.json({ received: cust, customer_id: id }, { headers: cors });
+      const { id, err } = await findOrCreateShopifyCustomer(env, cust);
+      return Response.json({ received: cust, customer_id: id, err }, { headers: cors });
     }
 
     // -------- Buscar cliente en Shopify por teléfono --------
@@ -897,8 +897,9 @@ async function createShopifyOrder(env, o) {
   let _custDebug = null;
   if (cust.full_name || cust.name || cust.email) {
     try {
-      shopifyCustomerId = await findOrCreateShopifyCustomer(env, cust);
-      _custDebug = shopifyCustomerId ? `ok:${shopifyCustomerId}` : "null_returned";
+      const custResult = await findOrCreateShopifyCustomer(env, cust);
+      shopifyCustomerId = custResult.id;
+      _custDebug = shopifyCustomerId ? `ok:${shopifyCustomerId}` : `fail:${custResult.err}`;
     } catch (e) {
       _custDebug = `exception:${e?.message}`;
     }
@@ -1649,9 +1650,10 @@ async function _encryptFlowResponse(data, aesKey, requestIv){
 }
 
 // ============ Buscar cliente en Shopify por teléfono ============
-// Busca cliente en Shopify por email (o teléfono), si no existe lo crea. Devuelve su ID.
+// Busca cliente en Shopify por email (o teléfono), si no existe lo crea.
+// Devuelve { id, err } — id es el Shopify customer ID (número) o null si falló.
 async function findOrCreateShopifyCustomer(env, cust) {
-  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN) return null;
+  if (!env.SHOPIFY_STORE || !env.SHOPIFY_TOKEN) return { id: null, err: "no_shopify_config" };
   const headers = { "X-Shopify-Access-Token": env.SHOPIFY_TOKEN, "Content-Type": "application/json" };
 
   // 1) Busca por email primero (verificando coincidencia EXACTA)
@@ -1696,7 +1698,7 @@ async function findOrCreateShopifyCustomer(env, cust) {
         method: "PUT", headers, body: JSON.stringify({ customer: upd })
       }).catch(() => {});
     }
-    return found.id;
+    return { id: found.id, err: null };
   }
 
   // 3) No existe: créalo
@@ -1726,8 +1728,8 @@ async function findOrCreateShopifyCustomer(env, cust) {
   );
   if (!cr.ok) {
     const errBody = await cr.json().catch(() => null);
-    console.error("[bloom] findOrCreateShopifyCustomer create failed", cr.status, JSON.stringify(errBody));
-    // Si Shopify dice que email/phone ya existe, buscar de nuevo para obtener el ID
+    const errMsg = `shopify_${cr.status}:${JSON.stringify(errBody?.errors || errBody)}`;
+    // Si Shopify dice que email/phone ya existe (422), buscar de nuevo para obtener el ID
     if (cr.status === 422) {
       if (cust.email) {
         const emailLc = cust.email.trim().toLowerCase();
@@ -1738,7 +1740,7 @@ async function findOrCreateShopifyCustomer(env, cust) {
         if (r2?.ok) {
           const d2 = await r2.json();
           const match = (d2.customers || []).find(c => (c.email || "").trim().toLowerCase() === emailLc);
-          if (match) return match.id;
+          if (match) return { id: match.id, err: null };
         }
       }
       if (cust.phone) {
@@ -1750,14 +1752,14 @@ async function findOrCreateShopifyCustomer(env, cust) {
         if (r3?.ok) {
           const d3 = await r3.json();
           const match = (d3.customers || []).find(c => (c.phone || "").replace(/\D/g, "").slice(-10) === last10);
-          if (match) return match.id;
+          if (match) return { id: match.id, err: null };
         }
       }
     }
-    return null;
+    return { id: null, err: errMsg };
   }
   const cd = await cr.json();
-  return cd.customer?.id || null;
+  return { id: cd.customer?.id || null, err: cd.customer ? null : "no_id_in_response" };
 }
 
 async function findCustomer(env, phone) {
