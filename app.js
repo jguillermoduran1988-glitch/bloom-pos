@@ -1369,6 +1369,8 @@ function switchScreen(name){
   }
   if(name==="datos") initDatos();
   if(name==="equipo") initTeam();
+  // Forzar recalculo de layout igual a cuando rota el celular
+  requestAnimationFrame(()=>window.dispatchEvent(new Event("resize")));
 }
 
 // ---- Cargar vendedores y métodos de pago ----
