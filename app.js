@@ -525,6 +525,11 @@ async function loadCustomerRecord(phone){
       const fmtMoney=n=>n!=null?`$${Number(n).toLocaleString("es-CO")}`:"";
       salesDiv.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--text-dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.04em">Compras</div>`+
         sales.map(s=>`<div class="p-cust-row" style="font-size:12px"><span style="color:var(--text-dim)">${fmt(s.created_at)}</span><span style="font-weight:600">${fmtMoney(s.total)}</span></div>`).join("");
+      // Auto-etiqueta si el cliente ya ha comprado antes
+      const cfg=pos.chatConfig||{};
+      if(cfg.recompra_enabled!==false && cfg.recompra_tag!==false){
+        addTag(cfg.recompra_tag||"recompra");
+      }
     }
   }
   sec.style.display="";
@@ -2553,8 +2558,10 @@ async function loadSettings(){
   const rows=await sbGet(`pos_settings?store=eq.${C.STORE}&limit=1`);
   pos.settings = (rows && rows[0]) ? rows[0] : { store:C.STORE, shopify_draft:true, receipt_enabled:false,
     receipt_business:"Bloom", receipt_nit:"", receipt_address:"", receipt_phone:"", receipt_footer:"¡Gracias por tu compra!", iva_rate:19 };
-  // Supabase → localStorage: fuente de verdad para datos que no deben perderse con el caché
   const row=rows&&rows[0];
+  // Chat config
+  pos.chatConfig = row?.chat_config || { recompra_enabled:true, recompra_tag:"recompra" };
+  // Supabase → localStorage: fuente de verdad para datos que no deben perderse con el caché
   if(row?.goal_plans && Object.keys(row.goal_plans).length){
     if(row.goal_plans.plans) localStorage.setItem("bloom_goal_plans",JSON.stringify(row.goal_plans.plans));
     if(row.goal_plans.monthly) localStorage.setItem("bloom_goal_monthly",JSON.stringify(row.goal_plans.monthly));
@@ -2574,6 +2581,20 @@ function renderSettings(){
   set("setRcAddress", s.receipt_address);
   set("setRcFooter", s.receipt_footer);
   if($("#receiptFields")) $("#receiptFields").style.display = s.receipt_enabled ? "block":"none";
+  renderChatConfig();
+}
+function renderChatConfig(){
+  const cfg=pos.chatConfig||{};
+  const cb=$("#cfgAutoTagRecompra"); if(cb) cb.checked=cfg.recompra_enabled!==false;
+  const ti=$("#cfgRecompraTag"); if(ti) ti.value=cfg.recompra_tag||"recompra";
+}
+async function saveChatConfig(){
+  const enabled=$("#cfgAutoTagRecompra")?.checked!==false;
+  const tag=($("#cfgRecompraTag")?.value||"recompra").trim()||"recompra";
+  pos.chatConfig={...pos.chatConfig, recompra_enabled:enabled, recompra_tag:tag};
+  // recompra_tag===false signals disabled in loadCustomerRecord
+  if(!enabled) pos.chatConfig.recompra_tag=false;
+  await sbPatch(`pos_settings?store=eq.${C.STORE}`,{chat_config:pos.chatConfig});
 }
 async function saveSettings(){
   const g=(id)=>{const e=$("#"+id); return e ? (e.type==="checkbox"? e.checked : e.value.trim()) : null;};

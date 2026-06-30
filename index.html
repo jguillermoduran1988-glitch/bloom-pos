@@ -1009,6 +1009,28 @@
     <div id="cfgPaneChat" style="display:none">
 
       <div class="cfg-sec">
+        <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">auto_awesome</span> Automatizaciones</h3>
+        <div class="desc">Acciones que ocurren automáticamente al abrir un chat.</div>
+
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
+          <!-- Recompra -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <label class="emp-toggle" style="margin-bottom:8px">
+              <input type="checkbox" id="cfgAutoTagRecompra" onchange="saveChatConfig()">
+              <span style="font-weight:600">Etiquetar clientes con historial de compras</span>
+            </label>
+            <div class="desc" style="margin:0 0 10px">Si el cliente ya compró en el POS, se le agrega esta etiqueta automáticamente al abrir el chat.</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:12px;color:var(--text-dim);white-space:nowrap">Etiqueta:</label>
+              <input id="cfgRecompraTag" value="recompra" placeholder="recompra"
+                style="flex:1;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none"
+                onchange="saveChatConfig()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cfg-sec" style="margin-top:16px">
         <h3><span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px">quick_phrases</span> Comandos rápidos</h3>
         <div class="desc">Escribe <b>/comando</b> en el chat para enviar una respuesta predefinida. Usa <b>{nombre}</b> para insertar el nombre del cliente.</div>
         <div id="cfgQrList" style="margin-bottom:12px"></div>
