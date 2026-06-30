@@ -3889,7 +3889,17 @@ function closeClientEdit(){ $("#clientEditModal").classList.remove("show"); _edi
 async function deleteClient(){
   const id=$("#editClientId").value; if(!id) return;
   const nombre=$("#editClientName").value||"este cliente";
-  if(!confirm(`¿Borrar a ${nombre}?\n\nEsta acción no se puede deshacer.`)) return;
+  const email=$("#editClientEmail").value||"";
+  // Verifica si tiene compras antes de confirmar
+  let numCompras=0;
+  if(email){
+    const ventas=await sbGet(`sales?customer_email=eq.${encodeURIComponent(email)}&select=id&limit=1000`).catch(()=>[]);
+    numCompras=ventas?.length||0;
+  }
+  const aviso=numCompras>0
+    ? `⚠️ Este cliente tiene ${numCompras} compra${numCompras>1?"s":""} registrada${numCompras>1?"s":""}.\nLas ventas NO se borran, solo el registro del cliente.\n\n`
+    : "";
+  if(!confirm(`${aviso}¿Borrar a ${nombre}?\n\nEsta acción no se puede deshacer.`)) return;
   const r=await fetch(`${C.SUPABASE_URL}/rest/v1/customers?id=eq.${id}`,{
     method:"DELETE",
     headers:{"apikey":C.SUPABASE_ANON,"Authorization":"Bearer "+C.SUPABASE_ANON,"Prefer":"return=minimal"}
