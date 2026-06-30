@@ -1685,19 +1685,15 @@ async function findOrCreateShopifyCustomer(env, cust) {
     }
   }
   if (found) {
-    // Siempre asegura que tenga email y teléfono (completa lo que falte)
+    // Sincroniza datos del POS → Shopify (nombre siempre, email/teléfono si faltan)
+    const custName = cust.name || cust.full_name || "";
     const upd = { id: found.id };
-    let needsUpdate = false;
-    if (!found.email && cust.email) { upd.email = cust.email; needsUpdate = true; }
-    if (!found.phone && cust.phone) { upd.phone = "+57" + cust.phone.replace(/\D/g, "").slice(-10); needsUpdate = true; }
-    if (!found.first_name && (cust.name || cust.full_name)) {
-      upd.first_name = cust.name || cust.full_name; upd.last_name = cust.last_name || ""; needsUpdate = true;
-    }
-    if (needsUpdate) {
-      await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/${found.id}.json`, {
-        method: "PUT", headers, body: JSON.stringify({ customer: upd })
-      }).catch(() => {});
-    }
+    if (custName) { upd.first_name = custName; upd.last_name = cust.last_name || ""; }
+    if (!found.email && cust.email) upd.email = cust.email;
+    if (!found.phone && cust.phone) upd.phone = "+57" + cust.phone.replace(/\D/g, "").slice(-10);
+    await fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/customers/${found.id}.json`, {
+      method: "PUT", headers, body: JSON.stringify({ customer: upd })
+    }).catch(() => {});
     return { id: found.id, err: null };
   }
 
