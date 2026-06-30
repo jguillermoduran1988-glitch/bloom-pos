@@ -172,10 +172,9 @@
   /* ============ KANBAN BOARD ============ */
   #kanbanBoard{display:none;position:absolute;inset:0;background:var(--bg);z-index:20;flex-direction:column}
   #kanbanBoard.show{display:flex}
-  /* En móvil el kanban es position:fixed para garantizar repaint correcto */
   @media(max-width:720px){
-    body.board-open .sidebar{display:none}
-    body.board-open #kanbanBoard{display:flex;position:fixed;top:0;left:0;right:0;bottom:56px;z-index:90;overflow:hidden}
+    .sidebar.kb-hidden{display:none!important;visibility:hidden!important}
+    #kanbanBoard.kb-show{display:flex!important;position:fixed!important;top:0;left:0;right:0;bottom:56px;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)}
   }
   .kb-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
   .kb-head-title{font-weight:700;font-size:14px;white-space:nowrap}

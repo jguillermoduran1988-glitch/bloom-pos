@@ -126,8 +126,8 @@ let _boardMode=false;
 function _closeBoardMobile(){
   const board=$("#kanbanBoard");
   const sidebar=document.querySelector(".sidebar");
-  if(board) board.style.cssText="display:none";
-  if(sidebar){ sidebar.style.display=""; sidebar.style.visibility=""; }
+  if(board) board.classList.remove("kb-show");
+  if(sidebar) sidebar.classList.remove("kb-hidden");
   document.body.classList.remove("board-open","chat-open","panel-open");
   state.active=null;
   const pan=$("#panel"); if(pan) pan.classList.add("hidden");
@@ -139,10 +139,8 @@ function toggleBoardView(){
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
   if(window.innerWidth<=720){
     if(_boardMode){
-      const sidebar=document.querySelector(".sidebar");
-      if(sidebar) sidebar.style.display="none";
-      const board=$("#kanbanBoard");
-      if(board) board.style.cssText="display:flex;position:fixed;top:0;left:0;right:0;bottom:56px;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)";
+      document.querySelector(".sidebar")?.classList.add("kb-hidden");
+      $("#kanbanBoard")?.classList.add("kb-show");
       document.body.classList.add("board-open");
       history.pushState({kanban:true},"");
     } else {
@@ -1187,14 +1185,31 @@ async function openPicker(){
   picker.selected.clear(); picker.size=null; picker.products=[];
   $("#overlay").classList.add("show");
   const grid=$("#prodGrid");
-  grid.innerHTML=`<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--text-dim);font-size:13px"><span class="material-symbols-outlined" style="font-size:28px;display:block;margin-bottom:8px;opacity:.5">inventory_2</span>Cargando productos…</div>`;
-  picker.products=await fetchProducts();
-  renderSizes(); renderProducts(); updateSendBtn();
+  // Mostrar caché inmediatamente si existe
+  try{
+    const cached=JSON.parse(localStorage.getItem("bloom_catalog_cache")||"[]");
+    if(cached.length){
+      picker.products=cached;
+      renderSizes(); renderProducts(); updateSendBtn();
+    } else {
+      grid.innerHTML=`<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--text-dim);font-size:13px"><span class="material-symbols-outlined" style="font-size:28px;display:block;margin-bottom:8px;opacity:.5">inventory_2</span>Cargando productos…</div>`;
+    }
+  }catch(e){
+    grid.innerHTML=`<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--text-dim);font-size:13px">Cargando productos…</div>`;
+  }
+  // Refrescar desde red en segundo plano
+  try{
+    const fresh=await fetchProducts();
+    if(fresh?.length){ picker.products=fresh; renderSizes(); renderProducts(); updateSendBtn(); }
+  }catch(e){}
 }
 function closePicker(){$("#overlay").classList.remove("show");}
 async function fetchProducts(){
   try{
-    const r=await fetch(`${C.WORKER_URL}/products?store=${C.STORE}`);
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),14000);
+    const r=await fetch(`${C.WORKER_URL}/products?store=${C.STORE}`,{signal:ctrl.signal});
+    clearTimeout(tid);
     if(r.ok){
       const d=await r.json();
       if(d.length){
@@ -1203,7 +1218,6 @@ async function fetchProducts(){
       }
     }
   }catch(e){}
-  // Fallback: caché local (offline)
   try{ const c=JSON.parse(localStorage.getItem("bloom_catalog_cache")||"[]"); if(c.length) return c; }catch{}
   return C.DEMO_PRODUCTS;
 }
