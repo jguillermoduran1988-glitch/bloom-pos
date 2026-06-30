@@ -368,12 +368,14 @@
     .ch-back{display:block}
     .panel{width:100%}
     .panel-mobile-head{display:flex;align-items:center;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
-    /* POS / Equipo / Datos / Config son overlays fijos encima de la base de chats */
+    /* Chats es la base permanente en móvil — !important gana sobre el display:none del JS */
+    #screen-chats{display:grid !important}
+    /* POS / Equipo / Datos / Config son overlays fijos — cuando JS los activa (display:block) quedan sobre la base */
     #screen-pos,#screen-equipo,#screen-datos,#screen-config{
-      position:fixed;top:0;left:0;right:0;
+      position:fixed !important;top:0;left:0;right:0;
       bottom:calc(56px + env(safe-area-inset-bottom,0px));
       z-index:60;background:var(--bg);overflow-y:auto;
-      -webkit-overflow-scrolling:touch;height:auto
+      -webkit-overflow-scrolling:touch;height:auto !important
     }
   }
   /* ============ POS ============ */
