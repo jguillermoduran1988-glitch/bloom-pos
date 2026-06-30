@@ -158,6 +158,7 @@
   .ref-badge.ad{background:#fde9e0;color:#b5572b}
   .stage{font-size:10px;padding:1px 8px;border-radius:20px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
   .ci-unread{background:var(--accent);color:#fff;font-size:11px;font-weight:700;border-radius:20px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px}
+  .ci-seller{font-size:11px;color:var(--accent-dark);background:var(--accent-soft);border-radius:20px;padding:1px 7px;display:flex;align-items:center;gap:3px;font-weight:600}
   /* ---------- Chat ---------- */
   .chat{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;background:var(--bg)}
   .chat-head{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:11px;flex-shrink:0;background:var(--surface)}
@@ -264,6 +265,16 @@
   .btn-sec:active{transform:scale(.97)}
   .caption-ta{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;font-size:13px;resize:none;box-sizing:border-box;color:var(--text);font-family:inherit;outline:none}
   .caption-ta:focus{border-color:var(--accent)}
+  /* ---------- Command suggest ---------- */
+  .cmd-suggest{display:none;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:220px;overflow-y:auto;position:absolute;bottom:100%;left:0;right:0;border-radius:12px;margin:0 12px;box-shadow:0 -4px 20px rgba(0,0,0,.12)}
+  .cmd-suggest.show{display:flex}
+  .cmd-hdr{padding:5px 13px;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0}
+  .cmd-item{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--border);flex-shrink:0}
+  .cmd-item:last-child{border-bottom:none}
+  .cmd-item:hover,.cmd-item.sel{background:var(--accent-soft)}
+  .cmd-item .ci-c{font-weight:700;color:var(--accent);font-size:13px;min-width:100px}
+  .cmd-item .ci-d{font-size:12px;color:var(--text-dim);flex:1}
+  .cmd-item .ci-ic{font-size:16px;color:var(--accent-dark);flex-shrink:0}
   .modal h3{font-size:16px;margin-bottom:14px}
   .modal input{width:100%;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:14px;outline:none;margin-bottom:10px}
   .modal .stage-edit{display:flex;gap:6px;margin-bottom:7px;align-items:center}
@@ -533,15 +544,18 @@
     <div class="msgs" id="msgs" style="display:none"></div>
     <div class="qr-bar" id="qrBar" style="display:none"></div>
     <div id="windowBanner" style="display:none"></div>
-    <div class="composer" id="composer" style="display:none">
-      <button class="team-plus" id="chatPlusBtn" onclick="toggleChatPlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
-      <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
-      <button class="send" id="sendBtn" onclick="sendCurrent()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
-    </div>
-    <div id="chatPlusMenu" class="plus-menu">
-      <button onclick="toggleChatEmojiPicker();closeChatPlusMenu()"><span class="material-symbols-outlined">add_reaction</span><span>Emojis</span></button>
-      <button onclick="attachChatPhoto();closeChatPlusMenu()"><span class="material-symbols-outlined">photo_camera</span><span>Foto</span></button>
-      <button id="chatVoiceBtn" onclick="toggleChatVoice()"><span class="material-symbols-outlined">mic</span><span>Nota de voz</span></button>
+    <div style="position:relative;flex-shrink:0">
+      <div id="cmdSuggest" class="cmd-suggest"></div>
+      <div class="composer" id="composer" style="display:none">
+        <button class="team-plus" id="chatPlusBtn" onclick="toggleChatPlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
+        <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
+        <button class="send" id="sendBtn" onclick="sendCurrent()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
+      </div>
+      <div id="chatPlusMenu" class="plus-menu">
+        <button onclick="toggleChatEmojiPicker();closeChatPlusMenu()"><span class="material-symbols-outlined">add_reaction</span><span>Emojis</span></button>
+        <button onclick="attachChatPhoto();closeChatPlusMenu()"><span class="material-symbols-outlined">photo_camera</span><span>Foto</span></button>
+        <button id="chatVoiceBtn" onclick="toggleChatVoice()"><span class="material-symbols-outlined">mic</span><span>Nota de voz</span></button>
+      </div>
     </div>
     <div id="chatEmojiPicker" class="emoji-picker"></div>
   </main>
@@ -554,6 +568,10 @@
         <div class="av" id="pAv"></div>
         <div><div class="p-cname" id="pName"></div><div class="p-csub" id="pPhone"></div></div>
       </div>
+    </div>
+    <div class="p-sec">
+      <div class="p-title">Atendiendo</div>
+      <div id="pAssigned"></div>
     </div>
     <div class="p-sec">
       <div class="p-title">Vino de</div>

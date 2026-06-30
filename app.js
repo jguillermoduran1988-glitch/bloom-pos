@@ -120,6 +120,7 @@ async function loadChats(){
       ref_source_type:conv.ref_source_type||null, ref_headline:null, ref_body:null, ref_media_url:null,
       last:conv.last_message||"", lastAt:conv.last_message_at||conv.updated_at,
       unread:conv.unread_count||0, status:conv.status||"open",
+      assigned_to:conv.assigned_to||null,
     });
   }
   renderChatList();
@@ -151,6 +152,7 @@ function renderChatList(){
         <div class="ci-meta">
           ${refBadge}
           <span class="stage">${esc(c.stage)}</span>
+          ${c.assigned_to?`<span class="ci-seller"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px">person</span> ${esc(c.assigned_to)}</span>`:""}
           ${c.unread?`<span class="ci-unread">${c.unread}</span>`:""}
         </div>
       </div>`;
@@ -322,6 +324,18 @@ function renderPanel(){
     rdiv.innerHTML=`<div class="no-ref">Escribió directamente (sin anuncio)</div>`;
   }
   renderTags(c); renderStages(c);
+  const aDiv=$("#pAssigned");
+  if(aDiv){
+    if(c.assigned_to){
+      aDiv.innerHTML=`<div style="display:flex;align-items:center;gap:9px;padding:2px 0">
+        <div class="av" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initials(c.assigned_to)}</div>
+        <span style="font-size:13px;font-weight:600">${esc(c.assigned_to)}</span>
+        <button onclick="freeConv()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:7px;padding:3px 8px;cursor:pointer;font-size:11px;color:var(--text-dim)">Liberar</button>
+      </div>`;
+    } else {
+      aDiv.innerHTML=`<span style="color:var(--text-dim);font-size:13px">Sin asignar · usa <b>/tomo [Nombre]</b></span>`;
+    }
+  }
 }
 
 // ---------- Etiquetas ----------
@@ -444,8 +458,9 @@ async function savePipeline(){
 async function sendCurrent(){
   const input=$("#chatInput"); let text=input.value.trim();
   if(!text||!state.active)return;
-  input.value=""; autoGrow();
-  await dispatch(text);
+  input.value=""; autoGrow(); hideCmdSuggest();
+  if(await handleBuiltIn(text)) return;
+  await dispatch(expandCommand(text));
 }
 async function dispatch(text){
   const phone=state.active; const now=new Date().toISOString();
@@ -467,6 +482,108 @@ async function addNote(){
   const convId=state.chats.get(phone)?.id||phone;
   await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({conversation_id:convId,phone,body:text.trim(),type:"note"})}).catch(()=>{});
+}
+
+// ---------- Comandos built-in (/tomo, /liberar) ----------
+async function handleBuiltIn(text){
+  const phone=state.active; if(!phone) return false;
+  const lower=text.toLowerCase();
+  const now=new Date().toISOString();
+  const label=new Date(now).toLocaleString("es-CO",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
+  const convId=state.chats.get(phone)?.id||phone;
+
+  if(lower.startsWith("/tomo ")){
+    const sellerName=text.slice(6).trim(); if(!sellerName) return true;
+    const noteText=`Tomó ${sellerName} · ${label}`;
+    appendMessage({body:noteText,direction:"out",created_at:now,msg_type:"note"});
+    state.chats.get(phone).assigned_to=sellerName;
+    await Promise.all([
+      fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone,body:noteText,type:"note"})}).catch(()=>{}),
+      fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}`,{method:"PATCH",
+        headers:{"Content-Type":"application/json"},body:JSON.stringify({assigned_to:sellerName})}).catch(()=>{})
+    ]);
+    renderPanel(); renderChatList(); return true;
+  }
+
+  if(lower==="/liberar"){
+    const noteText=`Conversación liberada · ${label}`;
+    appendMessage({body:noteText,direction:"out",created_at:now,msg_type:"note"});
+    state.chats.get(phone).assigned_to=null;
+    await Promise.all([
+      fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone,body:noteText,type:"note"})}).catch(()=>{}),
+      fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}`,{method:"PATCH",
+        headers:{"Content-Type":"application/json"},body:JSON.stringify({assigned_to:null})}).catch(()=>{})
+    ]);
+    renderPanel(); renderChatList(); return true;
+  }
+
+  return false;
+}
+
+async function freeConv(){
+  const input=$("#chatInput");
+  input.value="/liberar"; await sendCurrent();
+}
+
+// ---------- Autocomplete de comandos ----------
+const _BUILT_IN_CMDS=[
+  {cmd:"/tomo",    icon:"person_add",    desc:"Tomar conversación",  seller:true},
+  {cmd:"/liberar", icon:"person_remove", desc:"Liberar conversación", seller:false},
+];
+
+function _getCmdItems(val){
+  const q=val.toLowerCase();
+  const items=[];
+  for(const b of _BUILT_IN_CMDS){
+    if(b.seller){
+      const sellers=pos.sellers||[];
+      const after=q.startsWith(b.cmd+" ")?q.slice(b.cmd.length+1):"";
+      if(q.startsWith(b.cmd.slice(0,q.length))||q.startsWith(b.cmd)){
+        for(const s of sellers){
+          if(!after||s.name.toLowerCase().startsWith(after)){
+            items.push({cmd:`${b.cmd} ${s.name}`,icon:b.icon,desc:`Asignar a ${s.name}`});
+          }
+        }
+        if(!sellers.length) items.push({cmd:b.cmd+" ",icon:b.icon,desc:"Escribe el nombre del vendedor"});
+      }
+    } else {
+      if(b.cmd.startsWith(q)) items.push({cmd:b.cmd,icon:b.icon,desc:b.desc});
+    }
+  }
+  for(const q2 of quickReplies){
+    if(q2.command.toLowerCase().startsWith(q)) items.push({cmd:q2.command,icon:"chat",desc:q2.label});
+  }
+  return items;
+}
+
+function showCmdSuggest(val){
+  if(!val||!val.startsWith("/")){hideCmdSuggest();return;}
+  const box=$("#cmdSuggest"); if(!box) return;
+  const items=_getCmdItems(val);
+  if(!items.length){hideCmdSuggest();return;}
+  box._items=items;
+  box.innerHTML=`<div class="cmd-hdr">Comandos disponibles</div>`+
+    items.map((it,i)=>`<div class="cmd-item" onclick="selectCmd(${i})">
+      <span class="material-symbols-outlined ci-ic">${it.icon}</span>
+      <span class="ci-c">${esc(it.cmd)}</span>
+      <span class="ci-d">${esc(it.desc)}</span>
+    </div>`).join("");
+  box.classList.add("show");
+}
+
+function hideCmdSuggest(){
+  const box=$("#cmdSuggest"); if(!box) return;
+  box.classList.remove("show"); box._items=null;
+}
+
+function selectCmd(i){
+  const box=$("#cmdSuggest"); const item=box?._items?.[i]; if(!item) return;
+  const inp=$("#chatInput");
+  inp.value=item.cmd; hideCmdSuggest(); inp.focus();
+  if(!item.cmd.endsWith(" ")) sendCurrent();
+  else showCmdSuggest(item.cmd);
 }
 
 // ----- Plus menu chat de clientes -----
@@ -862,11 +979,13 @@ function setConn(on){$("#connDot").classList.toggle("on",on);$("#connText").text
 
 // ---------- UI misc ----------
 function autoGrow(){const t=$("#chatInput");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,100)+"px";}
-$("#chatInput").addEventListener("input",autoGrow);
+$("#chatInput").addEventListener("input",()=>{ autoGrow(); showCmdSuggest($("#chatInput").value); });
 $("#chatInput").addEventListener("keydown",e=>{
+  if(e.key==="Escape"){hideCmdSuggest();return;}
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();
     const raw=$("#chatInput").value.trim();
-    $("#chatInput").value=expandCommand(raw); sendCurrent();}
+    if(!raw.startsWith("/")) { $("#chatInput").value=expandCommand(raw); }
+    sendCurrent();}
 });
 let searchTimer;
 $("#searchBox").addEventListener("input",e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.search=e.target.value;renderChatList();},180);});
@@ -887,6 +1006,7 @@ function switchScreen(name){
     document.getElementById("screen-"+s).style.display = s===name? (s==="chats"||s==="pos"?"grid":"block") : "none";
     const nav=document.getElementById("nav-"+s); if(nav) nav.classList.toggle("on", s===name);
   });
+  if(name==="chats" && !pos.sellers?.length) loadSellers();
   if(name==="pos" && !pos._posReady) initPos();
   if(name==="config"){
     if(!pos.currentUser?.is_master){ alert("Solo el master puede acceder a la configuración."); switchScreen("pos"); return; }
