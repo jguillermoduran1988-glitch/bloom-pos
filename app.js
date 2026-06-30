@@ -152,18 +152,24 @@ function toggleBoardView(){
   if(_boardMode) renderBoard();
 }
 
+let _inPopstate=false;
 window.addEventListener("popstate",(e)=>{
-  if(_boardMode){
-    _boardMode=false;
-    const btn=$("#boardToggleBtn");
-    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
-    _closeBoardMobile();
-  } else if(state.active && window.innerWidth<=720){
-    state.active=null;
-    document.body.classList.remove("chat-open","panel-open");
-    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
-    renderChatList();
-  }
+  _inPopstate=true;
+  try{
+    if(_boardMode){
+      _boardMode=false;
+      const btn=$("#boardToggleBtn");
+      if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
+      _closeBoardMobile();
+    } else if(state.active && window.innerWidth<=720){
+      state.active=null;
+      document.body.classList.remove("chat-open","panel-open");
+      const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+      renderChatList();
+    } else if(e.state?.screen && window.innerWidth<=720){
+      switchScreen(e.state.screen);
+    }
+  }finally{ _inPopstate=false; }
 });
 
 function renderBoard(){
@@ -327,6 +333,7 @@ function renderWindowBanner(phone){
 
 // ---------- Abrir chat ----------
 async function openChat(phone){
+  if(window.innerWidth<=720) history.pushState({screen:"chats",chat:phone},"");
   state.active=phone;
   const c=state.chats.get(phone); c.unread=0;
   document.body.classList.add("chat-open");
@@ -1322,6 +1329,7 @@ const pos = { catalog:[], cart:[], saleType:"tienda", payment:null, sellers:[], 
 
 // ---- Cambio de pantalla ----
 function switchScreen(name){
+  if(window.innerWidth<=720 && !_inPopstate) history.pushState({screen:name},"");
   // Cerrar kanban siempre que se cambie pantalla
   if(_boardMode){
     _boardMode=false;
@@ -5427,6 +5435,7 @@ async function loadReport(range){
 async function init(){
   await loadUsers();
   showLoginModal();
+  history.replaceState({screen:"chats"},"");
   await loadPipelines();
   await loadQuickReplies();
   await loadChats();
