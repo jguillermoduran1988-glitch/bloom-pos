@@ -183,6 +183,10 @@ export default {
           fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}.json?fields=line_items`, { headers: shopHeaders }),
           fetch(`https://${env.SHOPIFY_STORE}/admin/api/2024-10/orders/${shopify_order_id}/transactions.json`, { headers: shopHeaders }),
         ]);
+        if (!orderR.ok) {
+          const errBody = await orderR.json().catch(()=>({}));
+          return Response.json({ ok: false, error: `Pedido no encontrado en Shopify (${orderR.status}): ${JSON.stringify(errBody.errors||errBody)}` }, { headers: cors });
+        }
         const orderData = await orderR.json();
         const txData = await txR.json();
         const lineItems = orderData.order?.line_items || [];

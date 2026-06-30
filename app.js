@@ -4044,6 +4044,7 @@ function selectExOrder(s){
   _exCtx.shopifyOrderId = s.shopify_order_id;
   _exCtx.orderName = s.shopify_order_name;
   _exCtx.items = s.items || [];
+  _exCtx.saleTotal = Number(s.total) || 0;
   _exCtx.customer = { name: s.customer_name, phone: s.customer_phone, email: s.customer_email, doc: s.customer_doc };
   _exCtx.returnSel = {};
   document.getElementById("exReturnSection").style.display = "";
@@ -4248,7 +4249,9 @@ function updateExSummary(){
     .map(([key,v])=>{ const item=(_exCtx.items||[]).find(i=>(i.sku||i.name)===key); return item?{...item,qty:v.qty}:null; })
     .filter(Boolean);
 
-  let retTotal = retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+  const _allItemsSum = (_exCtx.items||[]).reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+  const _priceRatio = _allItemsSum > 0 && _exCtx.saleTotal > 0 ? _exCtx.saleTotal / _allItemsSum : 1;
+  let retTotal = Math.round(retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1)*_priceRatio,0));
 
   // Devolución: usar monto editado si existe
   if(r === 'devolucion'){
@@ -4328,8 +4331,10 @@ async function confirmExchange(){
     if(!retItems.length && _exCtx.reason !== 'devolucion'){ alert("Selecciona al menos un ítem a devolver."); btn.disabled=false; btn.textContent="Confirmar"; return; }
     if(_exCtx.reason !== 'devolucion' && !_exCtx.replacement.length){ alert("Selecciona el producto de reemplazo."); btn.disabled=false; btn.textContent="Confirmar"; return; }
 
-    // Monto real de reembolso (puede ser parcial)
-    const calcRetTotal = retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+    // Monto real de reembolso — usa el total pagado proporcionalmente (no el precio de catálogo)
+    const _allSum = (_exCtx.items||[]).reduce((s,i)=>s+Number(i.price)*(i.qty||1),0);
+    const _ratio = _allSum > 0 && _exCtx.saleTotal > 0 ? _exCtx.saleTotal / _allSum : 1;
+    const calcRetTotal = Math.round(retItems.reduce((s,i)=>s+Number(i.price)*(i.qty||1)*_ratio,0));
     const refundAmtInp = document.getElementById("exRefundAmount");
     const retTotal = (_exCtx.reason==='devolucion' && refundAmtInp && refundAmtInp.value)
       ? (parseFloat(refundAmtInp.value)||calcRetTotal) : calcRetTotal;
