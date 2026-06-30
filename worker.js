@@ -886,7 +886,7 @@ async function createShopifyOrder(env, o) {
 
   const line_items = o.items.map(it => {
     const li = it.variant_id
-      ? { variant_id: it.variant_id, quantity: it.qty }
+      ? { variant_id: it.variant_id, quantity: it.qty, price: String(it.price) }
       : { title: it.name, price: String(it.price), quantity: it.qty };
     if (it.note) li.properties = [{ name: "Observación", value: it.note }];
     const lineTax = +(it.price * it.qty * 19 / 119).toFixed(2);
