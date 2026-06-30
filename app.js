@@ -489,8 +489,7 @@ async function uploadContactPhoto(input){
 async function loadCustomerRecord(phone){
   const sec=$("#pCustomerSec"); if(!sec) return;
   sec.style.display="none";
-  // Intentar buscar por teléfono (con y sin + y código de país)
-  const variants=[phone, "+"+phone, phone.slice(2)]; // ej: 573001234567, +573001234567, 3001234567
+  const variants=[phone, "+"+phone, phone.slice(2)];
   let customer=null;
   for(const v of variants){
     const rows=await sbGet(`customers?phone=eq.${encodeURIComponent(v)}&limit=1`).catch(()=>null);
@@ -498,14 +497,36 @@ async function loadCustomerRecord(phone){
   }
   if(!customer) return;
   const cData=$("#pCustomerData");
+  const salesDiv=$("#pCustomerSales");
   const sub=$("#pCustomerSub");
-  if(sub) sub.textContent=`· ${esc(customer.name||"")}`;
+  if(sub) sub.textContent=`· ${esc(customer.full_name||customer.name||"")}`;
   const rows2=[];
   if(customer.email) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Email</span><span>${esc(customer.email)}</span></div>`);
-  if(customer.city||customer.department) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Ciudad</span><span>${esc([customer.city,customer.department].filter(Boolean).join(", "))}</span></div>`);
-  if(customer.document) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Doc.</span><span>${esc(customer.document)}</span></div>`);
-  if(!rows2.length) rows2.push(`<div style="font-size:12px;color:var(--text-dim)">Encontrado en el POS</div>`);
+  const loc=[customer.city,customer.depto||customer.department].filter(Boolean).join(", ");
+  if(loc) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Ciudad</span><span>${esc(loc)}</span></div>`);
+  if(customer.address) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Dirección</span><span>${esc(customer.address)}</span></div>`);
+  if(customer.doc||customer.document) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Doc.</span><span>${esc(customer.doc||customer.document)}</span></div>`);
   if(cData) cData.innerHTML=rows2.join("");
+  // Historial de compras
+  if(salesDiv){
+    salesDiv.innerHTML="";
+    let sales=[];
+    if(customer.email){
+      sales=await sbGet(`sales?customer_email=eq.${encodeURIComponent(customer.email)}&order=created_at.desc&limit=10&select=total,created_at,sale_type`).catch(()=>[]);
+    }
+    if(!sales?.length){
+      for(const v of variants){
+        const r=await sbGet(`sales?customer_phone=eq.${encodeURIComponent(v)}&order=created_at.desc&limit=10&select=total,created_at,sale_type`).catch(()=>null);
+        if(r?.length){sales=r; break;}
+      }
+    }
+    if(sales?.length){
+      const fmt=d=>new Date(d).toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"});
+      const fmtMoney=n=>n!=null?`$${Number(n).toLocaleString("es-CO")}`:"";
+      salesDiv.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--text-dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.04em">Compras</div>`+
+        sales.map(s=>`<div class="p-cust-row" style="font-size:12px"><span style="color:var(--text-dim)">${fmt(s.created_at)}</span><span style="font-weight:600">${fmtMoney(s.total)}</span></div>`).join("");
+    }
+  }
   sec.style.display="";
 }
 
