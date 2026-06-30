@@ -5439,6 +5439,25 @@ async function init(){
       if(b) b.style.display="flex";
     });
   }
+
+  // En móvil el WebSocket se cae cuando la pantalla se apaga o el navegador va a segundo plano.
+  // Al volver, reconectamos y recargamos lo que se perdió.
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible") return;
+    // Reconectar WebSocket si está cerrado
+    if (!_waSocket || _waSocket.readyState === WebSocket.CLOSED || _waSocket.readyState === WebSocket.CLOSING) {
+      _connectWaSocket();
+    }
+    // Recargar lista de chats para ver mensajes nuevos/no leídos
+    await loadChats();
+    // Si hay una conversación abierta, recargar sus mensajes
+    if (state.active) await loadMessages(state.active);
+  });
+
+  window.addEventListener("online", () => {
+    _connectWaSocket();
+    loadChats();
+  });
 }
 init();
 
