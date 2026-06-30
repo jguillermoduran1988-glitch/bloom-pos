@@ -130,6 +130,12 @@ function toggleBoardView(){
   const btn=$("#boardToggleBtn");
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
   if(_boardMode) renderBoard();
+  // En móvil al cerrar el tablero, volver siempre a la lista de chats
+  if(!_boardMode && window.innerWidth<=720){
+    document.body.classList.remove("chat-open","panel-open");
+    state.active=null;
+    $("#panel").classList.add("hidden");
+  }
 }
 
 function renderBoard(){
@@ -415,7 +421,6 @@ function renderPanel(){
   $("#pPhone").textContent=(_isHandle?"@":"+")+c.phone;
   // Edit form
   const pEN=$("#pEditName"); if(pEN) pEN.value=c.name||"";
-  const pEE=$("#pEditEmail"); if(pEE) pEE.value=c.email||"";
   const pSM=$("#pSaveMsg"); if(pSM) pSM.style.display="none";
   // Supabase customer lookup
   loadCustomerRecord(c.phone);
@@ -451,10 +456,8 @@ async function saveContactInfo(){
   const phone=state.active; if(!phone) return;
   const c=state.chats.get(phone);
   const name=($("#pEditName")?.value||"").trim()||c.name;
-  const email=($("#pEditEmail")?.value||"").trim()||null;
   const updates={};
   if(name!==c.name) updates.name=name;
-  if(email!==(c.email||null)) updates.email=email||null;
   if(!Object.keys(updates).length){
     const m=$("#pSaveMsg"); if(m){m.textContent="Sin cambios";m.style.display="";setTimeout(()=>m.style.display="none",1500);} return;
   }
@@ -462,7 +465,6 @@ async function saveContactInfo(){
     method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)
   }).catch(()=>{});
   if(updates.name){c.name=updates.name;$("#pName").textContent=c.name;renderChatList();}
-  if("email" in updates) c.email=updates.email;
   const m=$("#pSaveMsg"); if(m){m.textContent="✓ Guardado";m.style.color="#166534";m.style.display="";setTimeout(()=>m.style.display="none",2000);}
 }
 
@@ -1229,6 +1231,13 @@ const pos = { catalog:[], cart:[], saleType:"tienda", payment:null, sellers:[], 
 
 // ---- Cambio de pantalla ----
 function switchScreen(name){
+  // Cerrar kanban si estaba activo al cambiar pantalla
+  if(_boardMode && name!=="chats"){
+    _boardMode=false;
+    $("#kanbanBoard").classList.remove("show");
+    const btn=$("#boardToggleBtn");
+    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
+  }
   ["chats","pos","equipo","datos","config"].forEach(s=>{
     document.getElementById("screen-"+s).classList.toggle("active", s===name);
     document.getElementById("screen-"+s).style.display = s===name? (s==="chats"||s==="pos"?"grid":"block") : "none";

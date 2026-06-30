@@ -342,7 +342,7 @@
     body.chat-open .sidebar{display:none}
     body.chat-open .chat{display:flex}
     body.chat-open.panel-open .chat{display:none}
-    body.chat-open.panel-open .panel{display:flex;flex-direction:column;position:fixed;inset:0;z-index:50;width:100%;background:var(--surface)}
+    body.chat-open.panel-open .panel{display:flex;flex-direction:column;position:fixed;top:0;left:0;right:0;bottom:56px;z-index:50;width:100%;background:var(--surface);overflow-y:auto}
     .ch-back{display:block}
     .panel{width:100%}
     .panel-mobile-head{display:flex;align-items:center;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -629,7 +629,6 @@
       </div>
       <!-- Campos editables -->
       <div class="p-edit-row"><label class="p-edit-lbl">Nombre</label><input class="p-edit-inp" id="pEditName" type="text" placeholder="Nombre"></div>
-      <div class="p-edit-row"><label class="p-edit-lbl">Email</label><input class="p-edit-inp" id="pEditEmail" type="email" placeholder="Email (opcional)"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
         <button class="btn-pri" onclick="saveContactInfo()" style="flex:1;justify-content:center"><span class="material-symbols-outlined" style="font-size:15px">save</span> Guardar</button>
         <span id="pSaveMsg" style="font-size:12px;color:#166534;display:none">✓ Guardado</span>
