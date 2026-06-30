@@ -3886,6 +3886,21 @@ async function openClientEdit(id){
   $("#clientEditModal").classList.add("show");
 }
 function closeClientEdit(){ $("#clientEditModal").classList.remove("show"); _editClientData=null; }
+async function deleteClient(){
+  const id=$("#editClientId").value; if(!id) return;
+  const nombre=$("#editClientName").value||"este cliente";
+  if(!confirm(`¿Borrar a ${nombre}?\n\nEsta acción no se puede deshacer.`)) return;
+  const r=await fetch(`${C.SUPABASE_URL}/rest/v1/customers?id=eq.${id}`,{
+    method:"DELETE",
+    headers:{"apikey":C.SUPABASE_ANON,"Authorization":"Bearer "+C.SUPABASE_ANON,"Prefer":"return=minimal"}
+  });
+  if(r.ok||r.status===204){
+    closeClientEdit();
+    initClientesTab();
+  } else {
+    alert("No se pudo borrar el cliente. Intenta de nuevo.");
+  }
+}
 async function saveClientEdit(){
   const id=$("#editClientId").value; if(!id) return;
   const data={
