@@ -145,8 +145,9 @@
   .search input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:9px 13px;color:var(--text);font-size:14px;outline:none}
   .search input:focus{border-color:var(--accent)}
   .chat-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border)}
+  .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border);border-left:3px solid transparent}
   .chat-item:active,.chat-item.sel{background:var(--surface-2)}
+  .chat-item.my-conv{border-left-color:var(--accent);background:linear-gradient(to right,var(--accent-soft)08,transparent 48px)}
   .av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--accent)}
   .av-wrap{position:relative;flex-shrink:0;display:inline-flex}
   .av-wrap .av{flex-shrink:0}
@@ -268,6 +269,16 @@
   .tag-add{font-size:12px;padding:3px 10px;border-radius:20px;border:1px dashed var(--border);color:var(--text-dim);background:none;cursor:pointer}
   .tag-input{width:100%;margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;display:none}
   .tag-input.show{display:block}
+  .tag-picker{position:relative;margin-top:8px}
+  .tag-picker-btn{width:100%;background:var(--bg);border:1px dashed var(--border);border-radius:8px;padding:7px 10px;font-size:13px;color:var(--text-dim);text-align:left;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .tag-picker-dropdown{position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:99;max-height:220px;overflow:hidden;display:none;flex-direction:column}
+  .tag-picker-dropdown.open{display:flex}
+  .tag-picker-search{border:none;border-bottom:1px solid var(--border);padding:9px 12px;font-size:13px;outline:none;background:transparent;color:var(--text)}
+  .tag-picker-list{overflow-y:auto;flex:1}
+  .tag-picker-opt{padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .tag-picker-opt:hover{background:var(--surface-2)}
+  .tag-picker-opt.new-tag{color:var(--accent);font-weight:600}
+  .tag-picker-opt span.dot{width:8px;height:8px;border-radius:50%;background:var(--accent-soft);border:1.5px solid var(--accent);flex-shrink:0}
   .tag-sugg{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
   .tag-sugg span{font-size:11px;padding:2px 9px;border-radius:20px;background:var(--bg);border:1px solid var(--border);color:var(--text-dim);cursor:pointer}
   /* embudo */
@@ -651,8 +662,15 @@
     <div class="p-sec">
       <div class="p-title">Etiquetas</div>
       <div class="tags" id="pTags"></div>
-      <input class="tag-input" id="tagInput" placeholder="Nueva etiqueta + Enter">
-      <div class="tag-sugg" id="tagSugg"></div>
+      <div class="tag-picker" id="tagPicker">
+        <button class="tag-picker-btn" onclick="toggleTagPicker()">
+          <span class="material-symbols-outlined" style="font-size:15px">add</span> Agregar etiqueta
+        </button>
+        <div class="tag-picker-dropdown" id="tagPickerDrop">
+          <input class="tag-picker-search" id="tagPickerSearch" placeholder="Buscar o crear etiqueta…" oninput="renderTagPickerOpts()" onkeydown="tagPickerKey(event)">
+          <div class="tag-picker-list" id="tagPickerList"></div>
+        </div>
+      </div>
     </div>
     <div class="p-sec">
       <div class="p-title">Embudo: <span id="pPipeName" style="color:var(--accent)"></span></div>

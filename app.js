@@ -237,7 +237,8 @@ function renderChatList(){
   list.innerHTML="";
   const frag=document.createDocumentFragment();
   for(const c of items){
-    const item=el("div","chat-item"+(c.phone===state.active?" sel":""));
+    const isMyConv=pos.currentUser?.name && c.assigned_to===pos.currentUser.name;
+    const item=el("div","chat-item"+(c.phone===state.active?" sel":"")+(isMyConv?" my-conv":""));
     let refBadge="";
     if(c.ref_source_type==="ad") refBadge=`<span class=\"ref-badge ad\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">campaign</span> pauta</span>`;
     else if(c.ref_source_type) refBadge=`<span class=\"ref-badge\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">photo_camera</span> historia</span>`;
@@ -550,15 +551,55 @@ function renderTags(c){
     chip.querySelector(".x").onclick=()=>removeTag(t);
     box.appendChild(chip);
   }
-  const add=el("button","tag-add"); add.textContent="+ etiqueta";
-  add.onclick=()=>{const inp=$("#tagInput");inp.classList.add("show");inp.focus();};
-  box.appendChild(add);
-  // sugeridas
-  const sg=$("#tagSugg"); sg.innerHTML="";
-  for(const s of C.SUGGESTED_TAGS){
-    if((c.tags||[]).includes(s))continue;
-    const e=el("span"); e.textContent=s; e.onclick=()=>addTag(s); sg.appendChild(e);
+}
+function _allKnownTags(){
+  const s=new Set(C.SUGGESTED_TAGS||[]);
+  for(const c of state.chats.values()) (c.tags||[]).forEach(t=>s.add(t));
+  return [...s].sort();
+}
+let _tagPickerOpen=false;
+function toggleTagPicker(){
+  _tagPickerOpen=!_tagPickerOpen;
+  const drop=$("#tagPickerDrop");
+  drop.classList.toggle("open",_tagPickerOpen);
+  if(_tagPickerOpen){
+    const inp=$("#tagPickerSearch"); inp.value=""; inp.focus();
+    renderTagPickerOpts();
+    // cierra al hacer click fuera
+    setTimeout(()=>document.addEventListener("click",_closeTagPickerOutside,{once:true,capture:true}),10);
   }
+}
+function _closeTagPickerOutside(e){
+  const picker=$("#tagPicker");
+  if(picker && !picker.contains(e.target)){ _tagPickerOpen=false; $("#tagPickerDrop").classList.remove("open"); }
+  else if(_tagPickerOpen) setTimeout(()=>document.addEventListener("click",_closeTagPickerOutside,{once:true,capture:true}),10);
+}
+function renderTagPickerOpts(){
+  const q=($("#tagPickerSearch")?.value||"").trim().toLowerCase();
+  const c=state.chats.get(state.active); const cur=c?.tags||[];
+  const all=_allKnownTags().filter(t=>!cur.includes(t)&&(!q||t.toLowerCase().includes(q)));
+  const list=$("#tagPickerList"); list.innerHTML="";
+  for(const t of all){
+    const opt=el("div","tag-picker-opt");
+    opt.innerHTML=`<span class="dot"></span>${esc(t)}`;
+    opt.onclick=()=>{addTag(t);_tagPickerOpen=false;$("#tagPickerDrop").classList.remove("open");};
+    list.appendChild(opt);
+  }
+  // opción "crear nueva"
+  if(q && !all.map(t=>t.toLowerCase()).includes(q) && !cur.map(t=>t.toLowerCase()).includes(q)){
+    const opt=el("div","tag-picker-opt new-tag");
+    opt.innerHTML=`<span class="material-symbols-outlined" style="font-size:14px">add</span> Crear "<b>${esc(q)}</b>"`;
+    opt.onclick=()=>{addTag(q);_tagPickerOpen=false;$("#tagPickerDrop").classList.remove("open");};
+    list.appendChild(opt);
+  }
+  if(!all.length && !q) list.innerHTML=`<div style="padding:10px 12px;font-size:13px;color:var(--text-dim)">Escribe para crear una etiqueta</div>`;
+}
+function tagPickerKey(e){
+  if(e.key==="Enter"){
+    const q=(e.target.value||"").trim(); if(!q) return;
+    addTag(q); _tagPickerOpen=false; $("#tagPickerDrop").classList.remove("open");
+  }
+  if(e.key==="Escape"){_tagPickerOpen=false;$("#tagPickerDrop").classList.remove("open");}
 }
 async function addTag(tag){
   const c=state.chats.get(state.active);
@@ -577,9 +618,7 @@ async function removeTag(tag){
     method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
   }).catch(()=>{});
 }
-$("#tagInput").addEventListener("keydown",e=>{
-  if(e.key==="Enter"){const v=e.target.value.trim();if(v)addTag(v);e.target.value="";e.target.classList.remove("show");}
-});
+
 
 // ---------- Etapas del embudo ----------
 function renderStages(c){
