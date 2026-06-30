@@ -161,6 +161,9 @@ window.addEventListener("popstate",(e)=>{
       const btn=$("#boardToggleBtn");
       if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
       _closeBoardMobile();
+      // Quitar también la clase "show" que toggleBoardView agrega — si no, el kanban
+      // queda visible como position:absolute sin overflow:hidden y desborda horizontalmente
+      $("#kanbanBoard")?.classList.remove("show");
     } else if(state.active && window.innerWidth<=720){
       state.active=null;
       document.body.classList.remove("chat-open","panel-open");
