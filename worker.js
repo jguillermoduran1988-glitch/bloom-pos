@@ -424,6 +424,8 @@ export default {
       const fields = []; const values = [];
       if (updates.tags !== undefined) { fields.push("tags = ?"); values.push(JSON.stringify(updates.tags)); }
       if (updates.name !== undefined) { fields.push("name = ?"); values.push(updates.name); }
+      if (updates.email !== undefined) { fields.push("email = ?"); values.push(updates.email); }
+      if (updates.avatar !== undefined) { fields.push("avatar = ?"); values.push(updates.avatar); }
       if (!fields.length) return Response.json({ ok: false, error: "no fields" }, { headers: cors });
       fields.push("updated_at = ?"); values.push(new Date().toISOString()); values.push(phone);
       await env.bloom_wa.prepare(`UPDATE wa_contacts SET ${fields.join(", ")} WHERE phone = ?`).bind(...values).run();

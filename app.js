@@ -207,6 +207,7 @@ async function loadChats(){
       last:conv.last_message||"", lastAt:conv.last_message_at||conv.updated_at,
       unread:conv.unread_count||0, status:conv.status||"open",
       assigned_to:conv.assigned_to||null,
+      email:conv.contact_email||null, avatar:conv.contact_avatar||null,
     });
   }
   renderChatList();
@@ -230,8 +231,9 @@ function renderChatList(){
     let refBadge="";
     if(c.ref_source_type==="ad") refBadge=`<span class=\"ref-badge ad\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">campaign</span> pauta</span>`;
     else if(c.ref_source_type) refBadge=`<span class=\"ref-badge\"><span class=\"material-symbols-outlined\" style=\"font-size:12px;vertical-align:-3px\">photo_camera</span> historia</span>`;
+    const _avInner=c.avatar?`<img src="${esc(c.avatar)}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0">`:`<div class="av">${initials(c.name)}</div>`;
     item.innerHTML=`
-      <div class="av-wrap"><div class="av">${initials(c.name)}</div>${platBadge(c.platform)}</div>
+      <div class="av-wrap">${_avInner}${platBadge(c.platform)}</div>
       <div class="ci-body">
         <div class="ci-top"><span class="ci-name">${esc(c.name)}</span><span class="ci-time">${timeLabel(c.lastAt)}</span></div>
         <div class="ci-prev">${esc(c.last||"—")}</div>
@@ -291,7 +293,9 @@ async function openChat(phone){
   $("#emptyState").style.display="none";
   ["chatHead","msgs","qrBar","composer"].forEach(id=>$("#"+id).style.display=
     id==="msgs"||id==="qrBar"||id==="composer"?(id==="msgs"?"flex":"flex"):"flex");
-  $("#headAv").textContent=initials(c.name);
+  const _hAv=$("#headAv");
+  if(c.avatar){_hAv.innerHTML=`<img src="${esc(c.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}
+  else{_hAv.innerHTML="";_hAv.textContent=initials(c.name);}
   const _hPlat=$("#headAvPlat"); if(_hPlat){const _pc=c.platform==="instagram"?"ig":c.platform==="facebook"?"fb":"wa";_hPlat.className=`av-plat ${_pc}`;}
   $("#headName").textContent=c.name;
   $("#headSub").textContent="+"+phone;
@@ -395,10 +399,22 @@ function togglePanel(){
 }
 function renderPanel(){
   const c=state.chats.get(state.active); if(!c)return;
-  $("#pAv").textContent=initials(c.name);
+  // Avatar
+  const pAv=$("#pAv");
+  if(c.avatar){pAv.innerHTML=`<img src="${esc(c.avatar)}" style="width:54px;height:54px;border-radius:50%;object-fit:cover">`;}
+  else{pAv.innerHTML="";pAv.textContent=initials(c.name);}
+  const _pPlat=c.platform==="instagram"?"ig":c.platform==="facebook"?"fb":"wa";
+  const _pBadge=$("#pAvPlat"); if(_pBadge) _pBadge.className=`av-plat ${_pPlat}`;
+  // Info
   $("#pName").textContent=c.name;
   const _isHandle=c.platform==="instagram"||c.platform==="facebook";
   $("#pPhone").textContent=(_isHandle?"@":"+")+c.phone;
+  // Edit form
+  const pEN=$("#pEditName"); if(pEN) pEN.value=c.name||"";
+  const pEE=$("#pEditEmail"); if(pEE) pEE.value=c.email||"";
+  const pSM=$("#pSaveMsg"); if(pSM) pSM.style.display="none";
+  // Supabase customer lookup
+  loadCustomerRecord(c.phone);
   // referral
   const rdiv=$("#pReferral");
   if(c.ref_source_type){
@@ -424,6 +440,73 @@ function renderPanel(){
       aDiv.innerHTML=`<span style="color:var(--text-dim);font-size:13px">Sin asignar · usa <b>/tomo [Nombre]</b></span>`;
     }
   }
+}
+
+// ---------- Guardar ficha del contacto ----------
+async function saveContactInfo(){
+  const phone=state.active; if(!phone) return;
+  const c=state.chats.get(phone);
+  const name=($("#pEditName")?.value||"").trim()||c.name;
+  const email=($("#pEditEmail")?.value||"").trim()||null;
+  const updates={};
+  if(name!==c.name) updates.name=name;
+  if(email!==(c.email||null)) updates.email=email||null;
+  if(!Object.keys(updates).length){
+    const m=$("#pSaveMsg"); if(m){m.textContent="Sin cambios";m.style.display="";setTimeout(()=>m.style.display="none",1500);} return;
+  }
+  await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(phone)}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)
+  }).catch(()=>{});
+  if(updates.name){c.name=updates.name;$("#pName").textContent=c.name;renderChatList();}
+  if("email" in updates) c.email=updates.email;
+  const m=$("#pSaveMsg"); if(m){m.textContent="✓ Guardado";m.style.color="#166534";m.style.display="";setTimeout(()=>m.style.display="none",2000);}
+}
+
+function triggerContactPhoto(){ $("#contactPhotoInput")?.click(); }
+
+async function uploadContactPhoto(input){
+  const file=input?.files?.[0]; if(!file) return;
+  const phone=state.active; if(!phone) return;
+  const c=state.chats.get(phone);
+  const btn=document.querySelector(".p-cam-btn");
+  if(btn) btn.innerHTML=`<span class="material-symbols-outlined" style="font-size:13px;animation:pulse 1s infinite">sync</span>`;
+  try{
+    const fd=new FormData(); fd.append("file",file);
+    const r=await fetch(`${C.WORKER_URL}/wa/upload`,{method:"POST",body:fd});
+    const d=await r.json();
+    if(d.url){
+      c.avatar=d.url;
+      await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(phone)}`,{
+        method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({avatar:d.url})
+      }).catch(()=>{});
+      renderPanel(); renderChatList();
+      openChat(phone);
+    }
+  }catch(e){console.error(e);}
+  input.value="";
+}
+
+async function loadCustomerRecord(phone){
+  const sec=$("#pCustomerSec"); if(!sec) return;
+  sec.style.display="none";
+  // Intentar buscar por teléfono (con y sin + y código de país)
+  const variants=[phone, "+"+phone, phone.slice(2)]; // ej: 573001234567, +573001234567, 3001234567
+  let customer=null;
+  for(const v of variants){
+    const rows=await sbGet(`customers?phone=eq.${encodeURIComponent(v)}&limit=1`).catch(()=>null);
+    if(rows?.length){customer=rows[0]; break;}
+  }
+  if(!customer) return;
+  const cData=$("#pCustomerData");
+  const sub=$("#pCustomerSub");
+  if(sub) sub.textContent=`· ${esc(customer.name||"")}`;
+  const rows2=[];
+  if(customer.email) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Email</span><span>${esc(customer.email)}</span></div>`);
+  if(customer.city||customer.department) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Ciudad</span><span>${esc([customer.city,customer.department].filter(Boolean).join(", "))}</span></div>`);
+  if(customer.document) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Doc.</span><span>${esc(customer.document)}</span></div>`);
+  if(!rows2.length) rows2.push(`<div style="font-size:12px;color:var(--text-dim)">Encontrado en el POS</div>`);
+  if(cData) cData.innerHTML=rows2.join("");
+  sec.style.display="";
 }
 
 // ---------- Etiquetas ----------
