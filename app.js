@@ -1345,10 +1345,19 @@ function switchScreen(name){
       const pan=$("#panel"); if(pan) pan.classList.add("hidden");
     }
   }
+  const isMobile=window.innerWidth<=720;
   ["chats","pos","equipo","datos","config"].forEach(s=>{
-    document.getElementById("screen-"+s).classList.toggle("active", s===name);
-    document.getElementById("screen-"+s).style.display = s===name? (s==="chats"||s==="pos"?"grid":"block") : "none";
-    const nav=document.getElementById("nav-"+s); if(nav) nav.classList.toggle("on", s===name);
+    const el=document.getElementById("screen-"+s);
+    const nav=document.getElementById("nav-"+s);
+    el.classList.toggle("active", s===name);
+    if(isMobile){
+      // En móvil: chats es siempre la base visible; las demás pantallas son overlays fijos
+      if(s==="chats") el.style.display="grid";
+      else el.style.display=s===name?"block":"none";
+    } else {
+      el.style.display=s===name?(s==="chats"||s==="pos"?"grid":"block"):"none";
+    }
+    if(nav) nav.classList.toggle("on", s===name);
   });
   if(name==="chats" && !pos.sellers?.length) loadSellers();
   if(name==="pos" && !pos._posReady) initPos();
