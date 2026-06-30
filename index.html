@@ -44,7 +44,7 @@
     background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden}
   /* contenedor de pantallas */
   .screen{display:none;height:calc(100dvh - 56px);min-height:0}
-  .screen.active{display:grid;grid-template-rows:100%}
+  .screen.active{display:grid;grid-template-rows:100%;position:relative}
   #screen-chats{grid-template-columns:320px 1fr 280px}
   /* barra de navegación inferior */
   .navbar{position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100}
@@ -166,6 +166,36 @@
   .stage{font-size:10px;padding:1px 8px;border-radius:20px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
   .ci-unread{background:var(--accent);color:#fff;font-size:11px;font-weight:700;border-radius:20px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px}
   .ci-seller{font-size:11px;color:var(--accent-dark);background:var(--accent-soft);border-radius:20px;padding:1px 7px;display:flex;align-items:center;gap:3px;font-weight:600}
+  .av.av-sm{width:32px;height:32px;font-size:11px}
+  /* ============ KANBAN BOARD ============ */
+  #kanbanBoard{display:none;position:absolute;inset:0;background:var(--bg);z-index:20;flex-direction:column}
+  #kanbanBoard.show{display:flex}
+  .kb-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+  .kb-head-title{font-weight:700;font-size:14px;white-space:nowrap}
+  .kb-pipe-tabs{display:flex;gap:5px;overflow-x:auto;flex:1;-webkit-overflow-scrolling:touch}
+  .kb-pipe-tabs::-webkit-scrollbar{display:none}
+  .kb-ptab{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg);color:var(--text-dim);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
+  .kb-ptab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .kb-cols{display:flex;gap:10px;padding:12px 14px 12px;overflow-x:auto;flex:1;align-items:flex-start;-webkit-overflow-scrolling:touch}
+  .kb-cols::-webkit-scrollbar{height:4px}
+  .kb-cols::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  .kb-col{display:flex;flex-direction:column;width:240px;min-width:220px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;max-height:100%}
+  .kb-col-head{padding:10px 13px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface)}
+  .kb-col-name{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-dim)}
+  .kb-col-ct{font-size:11px;font-weight:700;background:var(--accent-soft);color:var(--accent-dark);border-radius:20px;padding:1px 8px}
+  .kb-col-body{overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:7px}
+  .kb-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 11px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+  .kb-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.1);border-color:var(--accent)}
+  .kb-card-top{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+  .kb-card-name{font-size:13px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kb-card-time{font-size:10px;color:var(--text-dim);flex-shrink:0}
+  .kb-card-prev{font-size:12px;color:var(--text-dim);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
+  .kb-card-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .kb-seller{font-size:10px;color:var(--accent-dark);background:var(--accent-soft);border-radius:20px;padding:1px 6px;font-weight:600;display:flex;align-items:center;gap:2px}
+  .kb-unread{background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:20px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px;margin-left:auto}
+  .kb-ref{font-size:10px;border-radius:20px;padding:1px 6px;font-weight:600}
+  .kb-ref.ad{background:#fde68a;color:#92400e}
+  .kb-ref.org{background:#ede9fe;color:#5b21b6}
   /* ---------- Chat ---------- */
   .chat{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;background:var(--bg)}
   .chat-head{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:11px;flex-shrink:0;background:var(--surface)}
@@ -524,6 +554,7 @@
     <div class="side-head">
       <div class="brand"><img src="logo-bloom.svg" alt="Bloom" style="height:36px;display:block"></div>
       <div style="display:flex;align-items:center;gap:8px">
+        <button class="iconbtn" id="boardToggleBtn" title="Vista tablero" onclick="toggleBoardView()"><span class="material-symbols-outlined" style="font-size:18px">view_kanban</span></button>
         <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')"><span class="material-symbols-outlined" style="font-size:18px">point_of_sale</span></button>
         <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')"><span class="material-symbols-outlined" style="font-size:18px">analytics</span></button>
         <button class="iconbtn" title="Configuración" onclick="switchScreen('config')"><span class="material-symbols-outlined" style="font-size:18px">settings</span></button>
@@ -627,6 +658,16 @@
       </div>
     </div>
   </div>
+  <!-- ===== KANBAN BOARD ===== -->
+  <div id="kanbanBoard">
+    <div class="kb-head">
+      <button class="iconbtn" onclick="toggleBoardView()" title="Volver a lista"><span class="material-symbols-outlined" style="font-size:18px">view_list</span></button>
+      <span class="kb-head-title" id="kbTitle">Tablero</span>
+      <div class="kb-pipe-tabs" id="kbPipeTabs"></div>
+    </div>
+    <div class="kb-cols" id="kbCols"></div>
+  </div>
+
 </div><!-- /screen-chats -->
 
 <!-- ============ PANTALLA: POS ============ -->

@@ -115,6 +115,72 @@ function renderPipeTabs(){
 
 function currentPipeline(){ return state.pipelines.find(p=>p.id===state.activePipeline); }
 
+// ============================================================
+//  VISTA TABLERO (KANBAN)
+// ============================================================
+let _boardMode=false;
+
+function toggleBoardView(){
+  _boardMode=!_boardMode;
+  const board=$("#kanbanBoard");
+  board.classList.toggle("show",_boardMode);
+  const btn=$("#boardToggleBtn");
+  if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
+  if(_boardMode) renderBoard();
+}
+
+function renderBoard(){
+  const pipe=currentPipeline(); if(!pipe) return;
+  $("#kbTitle").textContent=pipe.name;
+  // Pipeline tabs
+  const tabs=$("#kbPipeTabs"); tabs.innerHTML="";
+  for(const p of state.pipelines){
+    const t=el("button","kb-ptab"+(p.id===state.activePipeline?" on":""));
+    t.textContent=p.name;
+    t.onclick=()=>{state.activePipeline=p.id;renderPipeTabs();renderChatList();renderBoard();};
+    tabs.appendChild(t);
+  }
+  // Columns
+  const cols=$("#kbCols"); cols.innerHTML="";
+  const chats=[...state.chats.values()].filter(c=>
+    c.pipeline_id===pipe.id||(!c.pipeline_id&&pipe.id===state.pipelines[0]?.id)
+  );
+  for(const stage of (pipe.stages||[])){
+    const cards=chats.filter(c=>(c.stage||pipe.stages[0])===stage)
+      .sort((a,b)=>new Date(b.lastAt)-new Date(a.lastAt));
+    const col=el("div","kb-col");
+    const refBadge=c=>c.ref_source_type==="ad"
+      ?`<span class="kb-ref ad"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:-2px">campaign</span> pauta</span>`
+      :c.ref_source_type?`<span class="kb-ref org"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:-2px">photo_camera</span> historia</span>`:"";
+    col.innerHTML=`<div class="kb-col-head"><span class="kb-col-name">${esc(stage)}</span><span class="kb-col-ct">${cards.length}</span></div><div class="kb-col-body"></div>`;
+    const body=col.querySelector(".kb-col-body");
+    for(const c of cards){
+      const card=el("div","kb-card");
+      card.innerHTML=`
+        <div class="kb-card-top">
+          <div class="av-wrap"><div class="av av-sm">${initials(c.name)}</div>${platBadge(c.platform)}</div>
+          <span class="kb-card-name">${esc(c.name)}</span>
+          <span class="kb-card-time">${timeLabel(c.lastAt)}</span>
+        </div>
+        <div class="kb-card-prev">${esc(c.last||"—")}</div>
+        <div class="kb-card-foot">
+          ${c.assigned_to?`<span class="kb-seller"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:-2px">person</span> ${esc(c.assigned_to)}</span>`:""}
+          ${refBadge(c)}
+          ${c.unread?`<span class="kb-unread">${c.unread}</span>`:""}
+        </div>`;
+      card.onclick=()=>{toggleBoardView();openChat(c.phone);};
+      body.appendChild(card);
+    }
+    if(!cards.length){
+      const empty=el("div","");
+      empty.style.cssText="padding:16px;text-align:center;color:var(--text-dim);font-size:12px";
+      empty.textContent="Sin conversaciones";
+      body.appendChild(empty);
+    }
+    cols.appendChild(col);
+  }
+}
+
 // ---------- Chats ----------
 async function loadChats(){
   const rows = await fetch(`${C.WORKER_URL}/wa/conversations`).then(r=>r.json()).catch(()=>[]);
@@ -4151,6 +4217,7 @@ function _connectWaSocket(){
         unread: state.active===phone ? 0 : ((existing?.unread||0)+1),
       });
       renderChatList();
+      if(_boardMode) renderBoard();
       // Actualiza banner de ventana si el chat está abierto
       if(state.active===phone) renderWindowBanner(phone);
       // Si el chat está abierto, carga el mensaje nuevo
