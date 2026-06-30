@@ -894,9 +894,16 @@ async function createShopifyOrder(env, o) {
 
   // Busca o crea el cliente en Shopify y obtiene su ID (para vincularlo a la orden)
   let shopifyCustomerId = null;
+  let _custDebug = null;
   if (cust.full_name || cust.name || cust.email) {
-    try { shopifyCustomerId = await findOrCreateShopifyCustomer(env, cust); }
-    catch (e) { /* si falla, sigue sin vincular */ }
+    try {
+      shopifyCustomerId = await findOrCreateShopifyCustomer(env, cust);
+      _custDebug = shopifyCustomerId ? `ok:${shopifyCustomerId}` : "null_returned";
+    } catch (e) {
+      _custDebug = `exception:${e?.message}`;
+    }
+  } else {
+    _custDebug = "no_cust_data";
   }
 
   // Tags: POS, vendedor, cajero, y un tag por cada medio de pago
@@ -995,7 +1002,7 @@ async function createShopifyOrder(env, o) {
         );
       } catch (e) { /* si falla el correo, la venta igual se crea */ }
     }
-    return { ok: true, draft: true, order_id: String(draftId), order_name: data.draft_order.name };
+    return { ok: true, draft: true, order_id: String(draftId), order_name: data.draft_order.name, _cust: _custDebug };
   }
 
   // Orden real, pagada
@@ -1023,7 +1030,7 @@ async function createShopifyOrder(env, o) {
   );
   const data = await r.json();
   if (!r.ok) return { ok: false, error: JSON.stringify(data?.errors || data) };
-  return { ok: true, order_id: String(data.order.id), order_name: data.order.name };
+  return { ok: true, order_id: String(data.order.id), order_name: data.order.name, _cust: _custDebug };
 }
 
 // ============ Descargar media de WhatsApp y subir a R2 ============

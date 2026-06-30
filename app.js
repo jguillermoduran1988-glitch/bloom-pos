@@ -2557,6 +2557,7 @@ async function confirmSale(){
   try{
     const r=await fetch(`${C.WORKER_URL}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(orderPayload)});
     shopify=await r.json();
+    console.log("[bloom] order response:", JSON.stringify(shopify));
   }catch(e){console.error(e);}
   const saleResp = await sbPost("sales",{
     shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null,
