@@ -1008,7 +1008,7 @@ async function createShopifyOrder(env, o) {
 
   // Orden real, pagada
   order.financial_status = "paid";
-  order.fulfillment_status = isTienda ? "fulfilled" : null;
+  order.fulfillment_status = "fulfilled";
   order.inventory_behaviour = "decrement_obeying_policy";
   if (cust.email) order.send_receipt = true;
   // Descuento en orden real: usa discount_codes
