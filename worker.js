@@ -63,6 +63,7 @@ export default {
         const msg = value?.messages?.[0];
         const contact = value?.contacts?.[0];
         if (msg) await handleIncoming(env, msg, contact);
+        for (const s of (value?.statuses || [])) await handleWAStatus(env, s).catch(()=>{});
       } catch (e) { console.error(e); }
       return new Response("OK", { status: 200 });
     }
@@ -381,15 +382,18 @@ export default {
       ).bind(lastMsg, now, msgType==="note"?"":"outbound", now, conversation_id).run();
       // Envío real a WhatsApp (notas internas no se envían al cliente)
       if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgType !== "note") {
+        let waResp = null;
         if (media_url && msgType === "image") {
-          await sendWhatsAppMedia(env, phone, "image", media_url, msgBody).catch(() => {});
+          waResp = await sendWhatsAppMedia(env, phone, "image", media_url, msgBody).catch(() => null);
         } else if (media_url && msgType === "audio") {
-          await sendWhatsAppMedia(env, phone, "audio", media_url).catch(() => {});
+          waResp = await sendWhatsAppMedia(env, phone, "audio", media_url).catch(() => null);
         } else if (media_url && msgType === "video") {
-          await sendWhatsAppMedia(env, phone, "video", media_url, msgBody).catch(() => {});
+          waResp = await sendWhatsAppMedia(env, phone, "video", media_url, msgBody).catch(() => null);
         } else if (msgBody) {
-          await sendWhatsApp(env, phone, msgBody).catch(() => {});
+          waResp = await sendWhatsApp(env, phone, msgBody).catch(() => null);
         }
+        const wamid = waResp?.messages?.[0]?.id;
+        if (wamid) await env.bloom_wa.prepare(`UPDATE wa_messages SET wa_message_id=? WHERE id=?`).bind(wamid, msgId).run().catch(()=>{});
       }
       return Response.json({ ok: true, id: msgId }, { headers: cors });
     }
@@ -618,7 +622,14 @@ async function runFollowups(env) {
   for (const rule of followups) {
     if (!rule.enabled || !rule.pipeline_id || !rule.stage || !rule.message || !rule.delay_hours) continue;
     const cutoff = new Date(Date.now() - rule.delay_hours * 3600 * 1000).toISOString();
-    // Buscar conversaciones abiertas en esa etapa donde el último mensaje fue nuestro y fue hace más de delay_hours
+    const trigger = rule.status_trigger || "any";
+    // Filtro por estado del último mensaje saliente
+    const statusFilters = {
+      sent:      "AND (SELECT status FROM wa_messages WHERE conversation_id=c.id AND direction='outbound' ORDER BY ts DESC LIMIT 1) = 'sent'",
+      delivered: "AND (SELECT status FROM wa_messages WHERE conversation_id=c.id AND direction='outbound' ORDER BY ts DESC LIMIT 1) = 'delivered'",
+      read:      "AND (SELECT status FROM wa_messages WHERE conversation_id=c.id AND direction='outbound' ORDER BY ts DESC LIMIT 1) = 'read'",
+      any:       "",
+    };
     const convs = await env.bloom_wa.prepare(`
       SELECT c.id, c.phone, wc.name FROM wa_conversations c
       LEFT JOIN wa_contacts wc ON wc.phone = c.phone
@@ -627,26 +638,38 @@ async function runFollowups(env) {
         AND c.stage = ?
         AND c.last_direction = 'outbound'
         AND c.last_message_at < ?
+        ${statusFilters[trigger] || ""}
     `).bind(String(rule.pipeline_id), rule.stage, cutoff).all().catch(() => null);
     if (!convs?.results?.length) continue;
     for (const conv of convs.results) {
       const firstName = (conv.name || conv.phone).split(" ")[0];
       const msg = rule.message.replace(/\{nombre\}/g, firstName);
-      // Enviar por WhatsApp
+      let wamid = null;
       if (env.WA_TOKEN && env.WA_PHONE_ID) {
-        await fetch(`https://graph.facebook.com/v20.0/${env.WA_PHONE_ID}/messages`, {
+        const waResp = await fetch(`https://graph.facebook.com/v20.0/${env.WA_PHONE_ID}/messages`, {
           method: "POST",
           headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" },
           body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, type: "text", text: { body: msg } })
-        }).catch(() => {});
+        }).then(r => r.json()).catch(() => null);
+        wamid = waResp?.messages?.[0]?.id || null;
       }
-      // Guardar en D1 y actualizar conversación
       const msgId = "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
-      await env.bloom_wa.prepare(`INSERT INTO wa_messages (id,conversation_id,direction,type,body,status,ts) VALUES (?,?,'outbound','text',?,'sent',?)`)
-        .bind(msgId, conv.id, msg, now).run().catch(() => {});
+      await env.bloom_wa.prepare(`INSERT INTO wa_messages (id,conversation_id,direction,type,body,status,wa_message_id,ts) VALUES (?,?,'outbound','text',?,'sent',?,?)`)
+        .bind(msgId, conv.id, msg, wamid, now).run().catch(() => {});
       await env.bloom_wa.prepare(`UPDATE wa_conversations SET last_message=?,last_message_at=?,last_direction='outbound',updated_at=? WHERE id=?`)
         .bind(msg, now, now, conv.id).run().catch(() => {});
     }
+  }
+}
+
+async function handleWAStatus(env, status) {
+  const { id: wamid, status: st, timestamp } = status;
+  if (!wamid || !st) return;
+  const ts = new Date(Number(timestamp) * 1000).toISOString();
+  if (st === "delivered") {
+    await env.bloom_wa.prepare(`UPDATE wa_messages SET status='delivered', delivered_at=? WHERE wa_message_id=? AND status!='read'`).bind(ts, wamid).run();
+  } else if (st === "read") {
+    await env.bloom_wa.prepare(`UPDATE wa_messages SET status='read', read_at=? WHERE wa_message_id=?`).bind(ts, wamid).run();
   }
 }
 

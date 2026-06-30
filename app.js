@@ -388,7 +388,8 @@ function msgNode(m){
     return d;
   }
   const b=el("div","msg "+(m.direction==="out"?"out":"in"));
-  const _t=`<div class="t">${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
+  const _tick=m.direction==="out"?`<span class="msg-tick ${m.status||'sent'}">${m.status==='read'||m.status==='delivered'?'✓✓':'✓'}</span>`:'';
+  const _t=`<div class="t">${_tick}${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
   if((m.msg_type==="image"||m.media_type==="image")&&m.media_url){
     const cap=m.body&&m.body!=="📷 Foto"?`<div style="font-size:13px;margin-top:4px">${esc(m.body)}</div>`:"";
     b.innerHTML=`<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${cap}${_t}`;
@@ -2731,13 +2732,14 @@ function renderFollowupRules(){
     const pipe=state.pipelines.find(p=>String(p.id)===String(r.pipeline_id));
     const stCol=pipe?stageColor(pipe,r.stage):"#6366f1";
     const delay=r.delay_hours>=24?`${r.delay_hours/24} día${r.delay_hours>=48?"s":""}`:`${r.delay_hours} h`;
+    const triggerLabel={delivered:"entregado sin leer",read:"leído sin respuesta",sent:"no entregado",any:""}[r.status_trigger||"any"];
     const row=document.createElement("div");
     row.style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px";
     row.innerHTML=`
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
           <span style="background:${stCol}22;color:${stCol};border:1px solid ${stCol}66;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:600">${esc(pipe?.name||"?")} · ${esc(r.stage)}</span>
-          <span style="font-size:11px;color:var(--text-dim)">sin respuesta ${delay}</span>
+          <span style="font-size:11px;color:var(--text-dim)">sin respuesta ${delay}${triggerLabel?` · ${triggerLabel}`:""}</span>
           ${!r.enabled?`<span style="font-size:10px;color:#b91c1c;background:#fee2e2;border-radius:4px;padding:1px 5px">pausado</span>`:""}
         </div>
         <div style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${esc(r.message)}</div>
@@ -2789,6 +2791,15 @@ function openFollowupForm(idx){
       </div>
     </div>
     <div>
+      <label style="font-size:12px;color:var(--text-dim)">Condición de estado del mensaje</label>
+      <select id="fuTrigger" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;margin-top:4px">
+        <option value="any"${(r.status_trigger||'any')==='any'?' selected':''}>Siempre (sin importar el estado)</option>
+        <option value="delivered"${r.status_trigger==='delivered'?' selected':''}>✓✓ Entregado pero no leído</option>
+        <option value="read"${r.status_trigger==='read'?' selected':''}>✓✓ Leído pero sin respuesta</option>
+        <option value="sent"${r.status_trigger==='sent'?' selected':''}>✓ Enviado pero no entregado</option>
+      </select>
+    </div>
+    <div>
       <label style="font-size:12px;color:var(--text-dim)">Mensaje (usa {nombre})</label>
       <textarea id="fuMsg" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:80px;font-family:inherit;margin-top:4px;box-sizing:border-box">${esc(r.message)}</textarea>
     </div>
@@ -2811,7 +2822,8 @@ async function saveFollowupRule(){
   const delay_hours=unit==="d"?n*24:n;
   const message=($("#fuMsg")?.value||"").trim();
   if(!pipeId||!stage||!message){alert("Completa todos los campos");return;}
-  const rule={enabled:$("#fuEnabled")?.checked!==false,pipeline_id:pipeId,stage,delay_hours,message};
+  const status_trigger=$("#fuTrigger")?.value||"any";
+  const rule={enabled:$("#fuEnabled")?.checked!==false,pipeline_id:pipeId,stage,delay_hours,message,status_trigger};
   const rules=[...(pos.chatConfig?.followups||[])];
   if(_fuEditing!=null) rules[_fuEditing]=rule; else rules.push(rule);
   pos.chatConfig={...pos.chatConfig, followups:rules};
