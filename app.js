@@ -125,17 +125,21 @@ let _boardMode=false;
 
 function toggleBoardView(){
   _boardMode=!_boardMode;
-  const board=$("#kanbanBoard");
-  board.classList.toggle("show",_boardMode);
   const btn=$("#boardToggleBtn");
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
-  if(_boardMode) renderBoard();
-  // En móvil al cerrar el tablero, volver siempre a la lista de chats
-  if(!_boardMode && window.innerWidth<=720){
-    document.body.classList.remove("chat-open","panel-open");
-    state.active=null;
-    $("#panel").classList.add("hidden");
+  if(window.innerWidth<=720){
+    // Móvil: body class + position:fixed (más confiable que position:absolute en el grid)
+    document.body.classList.toggle("board-open",_boardMode);
+    if(!_boardMode){
+      document.body.classList.remove("chat-open","panel-open");
+      state.active=null;
+      const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+    }
+  } else {
+    // Desktop: position:absolute dentro del screen
+    $("#kanbanBoard").classList.toggle("show",_boardMode);
   }
+  if(_boardMode) renderBoard();
 }
 
 function renderBoard(){
@@ -1275,9 +1279,10 @@ const pos = { catalog:[], cart:[], saleType:"tienda", payment:null, sellers:[], 
 
 // ---- Cambio de pantalla ----
 function switchScreen(name){
-  // Cerrar kanban siempre que se cambie pantalla (incluye volver a chats desde el nav)
+  // Cerrar kanban siempre que se cambie pantalla
   if(_boardMode){
     _boardMode=false;
+    document.body.classList.remove("board-open");
     $("#kanbanBoard").classList.remove("show");
     const btn=$("#boardToggleBtn");
     if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
