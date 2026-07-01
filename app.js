@@ -126,7 +126,7 @@ let _boardMode=false;
 function _closeBoardMobile(){
   const board=$("#kanbanBoard");
   const sidebar=document.querySelector(".sidebar");
-  if(board) board.classList.remove("kb-show");
+  if(board) board.classList.remove("kb-show","show");
   if(sidebar) sidebar.classList.remove("kb-hidden");
   document.body.classList.remove("board-open","chat-open","panel-open");
   state.active=null;
@@ -1336,17 +1336,12 @@ function switchScreen(name){
   // Cerrar kanban siempre que se cambie pantalla
   if(_boardMode){
     _boardMode=false;
-    if(window.innerWidth<=720){
-      _closeBoardMobile();
-    } else {
-      document.body.classList.remove("board-open");
-      $("#kanbanBoard").classList.remove("show");
-      const btn=$("#boardToggleBtn");
-      if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
-      document.body.classList.remove("chat-open","panel-open");
-      state.active=null;
-      const pan=$("#panel"); if(pan) pan.classList.add("hidden");
-    }
+    // Siempre limpiar todo el estado del kanban sin importar innerWidth
+    _closeBoardMobile();
+    $("#kanbanBoard")?.classList.remove("show");
+    document.body.classList.remove("board-open");
+    const btn=$("#boardToggleBtn");
+    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
   }
   // Siempre limpiar chat-open/panel-open al cambiar pantalla — sin importar window.innerWidth
   // (si el viewport se expandió, window.innerWidth puede devolver >720 en móvil y dejar chat-open pegado)
