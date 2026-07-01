@@ -356,21 +356,7 @@ async function openChat(phone){
   fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
 }
-function closeChat(){
-  // Limpiar estado del tablero si está activo
-  if(_boardMode){
-    _boardMode=false;
-    _closeBoardMobile();
-    $("#kanbanBoard")?.classList.remove("show");
-    document.body.classList.remove("board-open");
-    const btn=$("#boardToggleBtn");
-    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
-  }
-  if(window.innerWidth<=720 && history.state?.chat) history.back();
-  document.body.classList.remove("chat-open","panel-open");
-  state.active=null;
-  $("#panel").classList.add("hidden");
-}
+function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");}
 
 // ---------- Mensajes (desde D1 vía worker) ----------
 async function loadMessages(phone){
@@ -459,12 +445,7 @@ function appendMessage(m){
 // ---------- Panel derecho ----------
 function togglePanel(){
   if(window.innerWidth<=720){
-    if(document.body.classList.contains("panel-open")){
-      if(history.state?.chat) history.back();
-      document.body.classList.remove("panel-open");
-    } else {
-      document.body.classList.add("panel-open");
-    }
+    document.body.classList.toggle("panel-open");
   } else {
     $("#panel").classList.toggle("hidden");
   }
@@ -1372,7 +1353,7 @@ function switchScreen(name){
     const el=document.getElementById("screen-"+s);
     const nav=document.getElementById("nav-"+s);
     el.classList.toggle("active", s===name);
-    // No tocar inline display — CSS se encarga con !important
+    el.style.display=s===name?(s==="chats"||s==="pos"?"grid":"block"):"none";
     if(nav) nav.classList.toggle("on", s===name);
   });
   if(name==="chats"){ renderChatList(); if(!pos.sellers?.length) loadSellers(); }
