@@ -61,6 +61,8 @@
 
 **Carpeta de trabajo local:** `C:\Users\Usuario\bloom-pos`
 
+> ⚠️ **Nota 2026-07-01**: la sesión de ese día se trabajó desde `D:\Usuario\Downloads\bloom-pos-main\bloom-pos-main` (una copia descargada del repo), NO desde `C:\Users\Usuario\bloom-pos`. Los cambios sí se pushearon a GitHub/`origin main` normalmente, así que producción está al día — pero `C:\Users\Usuario\bloom-pos` quedó desactualizada localmente. Antes de seguir editando ahí, hacer `git pull` primero.
+
 ---
 
 ## Cloudflare D1 — Chat de clientes (WhatsApp CRM)
@@ -137,6 +139,29 @@ Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 
 ## Historial de sesiones con Claude
 
+### 2026-07-01
+
+#### Fix: venta POS no creaba el pedido en Shopify si no había stock
+- **Causa raíz**: `createShopifyOrder` (worker.js) mandaba `inventory_behaviour: "decrement_obeying_policy"`. Si la variante tenía 0 unidades y política `DENY`, Shopify rechazaba la orden con un 422 — pero `app.js` nunca revisaba `shopify.ok`, así que la venta se guardaba en Supabase con `shopify_order_id:null` sin avisar a nadie.
+- **Fix**: `worker.js` ahora usa `inventory_behaviour: "decrement_ignoring_policy"` (crea el pedido igual, aunque quede stock negativo) y soporta un campo opcional `created_at` en el payload para forzar la fecha del pedido. `app.js` ahora muestra un `alert()` si `shopify.ok` es falso, avisando al cajero en el momento.
+- El precio que se manda a Shopify siempre fue el del POS (`it.price`), no el de catálogo — eso ya estaba bien, no hizo falta tocarlo.
+- Worker desplegado con `wrangler deploy` (ya autenticado en esta máquina con la cuenta `jguillermoduran1988@gmail.com`).
+- Venta afectada (Juliana Salazar Correa, 2026-06-30, $230.000) se creó manualmente en Shopify como pedido **#2273** vía el endpoint `/order` del propio worker (respetando fecha, cliente, precio real e inventario forzado) y se vinculó en Supabase (`shopify_order_id`/`shopify_order_name`).
+- **Limitación descubierta**: la integración de Shopify vía MCP (claude.ai) NO puede crear/editar pedidos (`orderCreate`) aunque se le den todos los permisos — esa mutación requiere un token de acceso *offline*, y esa integración usa un token online. Para crear pedidos a mano en el futuro, hay que pasar por el endpoint `/order` del worker (que sí tiene el token privado con permisos), no por el MCP de Shopify directo.
+
+#### Fix: bug de ancho en móvil (botones del header desaparecían) — ver sección "BUG 1 (RESUELTO)" más abajo
+- Causa real: `.sidebar` le faltaba `min-width:0` como ítem de grid — un "grid blowout" al re-renderizar la lista de chats, no un problema de viewport.
+- Diagnosticado agregando un indicador visual temporal (medía anchos reales con `getBoundingClientRect()`), ya removido del código.
+
+#### Reporte Excel de ventas por colección
+- Se generó `Ventas_SalidasBano_Ropa_22Abr_30Jun.xlsx` (en el Escritorio real del usuario, que está redirigido a `D:\Usuario\Desktop`, **no** `C:\Users\Usuario\Desktop`) con el detalle de ventas de las colecciones "Salidas De Baño" y "Ropa" entre el 22 de abril y el 30 de junio de 2026 (367 pedidos revisados, 256 líneas / 257 unidades vendidas de esas colecciones).
+- Método: se trajeron todos los productos de ambas colecciones vía GraphQL (`collection.products`), luego todos los pedidos del rango con sus `lineItems`, y se cruzó por `product.id` con un script de Node (no vía MCP, por el límite de tokens de salida del tool).
+
+#### Nota sobre esta sesión
+- Se trabajó desde `D:\Usuario\Downloads\bloom-pos-main\bloom-pos-main`, no desde `C:\Users\Usuario\bloom-pos` (ver nota en "Cómo desplegar" más arriba). Todos los pushes fueron a `origin main` normalmente vía token personal (el usuario debe rotarlo, quedó expuesto en el chat en algún momento de la sesión).
+
+---
+
 ### 2026-06-29
 - Se agregó plus menu al chat de clientes (emoji, foto, nota de voz) — igual al chat de equipo
 - Se descubrió que el chat de clientes usa D1/Worker, NO Supabase — se corrigió todo para usar `POST /wa/send`
@@ -211,58 +236,22 @@ Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 
 ---
 
-### 2026-06-30 — Bugs PENDIENTES (no resueltos)
+### ✅ BUG 1 (RESUELTO 2026-07-01): Kanban/chat en móvil — botones del header "desaparecían"
 
-#### 🔴 BUG 1: Kanban en móvil — botones del header desaparecen
+**Síntoma**: Al volver de un chat o del tablero (kanban) en móvil, los 3 botones junto al logo (tablero, POS, datos + "en línea") dejaban de verse. El usuario reportó que en realidad la lista de chats se veía "más ancha" y como si siguiera de largo hacia la derecha.
 
-**Síntoma**: Al abrir el kanban y luego cerrarlo (tocando el mismo botón de tablero), los 3 botones que aparecen junto al logo de Bloom (tablero, POS, datos + "en línea") desaparecen. Solo queda el logo. Para recuperarlos hay que recargar la app.
+**Causa raíz real** (encontrada con un indicador de debug temporal que medía anchos reales de elementos, no solo `window.innerWidth`):
+`.sidebar` es un ítem de la grilla CSS `#screen-chats{display:grid}`. Los ítems de grid tienen `min-width:auto` por defecto — o sea que **no pueden achicarse por debajo del ancho del contenido interno más ancho (min-content)**. Al volver de un chat/tablero se vuelve a ejecutar `renderChatList()`, y si algún contenido dentro del sidebar no podía hacer wrap, el track de la grilla "explotaba" de 390px a ~707px para acomodarlo — arrastrando todo `.sidebar` (y por lo tanto los botones del header, que quedaban con `left:511` en una pantalla de 390px, fuera de vista) sin que `window.innerWidth`, `scrollWidth` ni `100vw` reflejaran el problema (por eso las primeras teorías sobre el viewport fallaron).
 
-**Lo que debería verse**: Logo Bloom a la izquierda + botón kanban + botón POS + botón Datos + punto "en línea" a la derecha del logo. (El usuario envió screenshot de referencia mostrando el estado correcto.)
-
-**Intentos fallidos**:
-1. Quitar `chat-open` en `toggleBoardView()` → falló
-2. `switchScreen` cierra kanban → falló
-3. `body.board-open` + CSS `position:fixed` → falló
-4. `history.pushState` + listener `popstate` → falló
-5. `style.cssText` directo en JS para mostrar/ocultar sidebar y board → falló
-6. CSS classes `.kb-show` / `.kb-hidden` con `!important` → último intento, aún no confirmado por el usuario
-
-**Estado actual del código** (app.js ~línea 126):
-```javascript
-function _closeBoardMobile(){
-  $("#kanbanBoard")?.classList.remove("kb-show");
-  document.querySelector(".sidebar")?.classList.remove("kb-hidden");
-  document.body.classList.remove("board-open","chat-open","panel-open");
-  state.active=null;
-  const pan=$("#panel"); if(pan) pan.classList.add("hidden");
-}
-function toggleBoardView(){
-  _boardMode=!_boardMode;
-  if(window.innerWidth<=720){
-    if(_boardMode){
-      document.querySelector(".sidebar")?.classList.add("kb-hidden");
-      $("#kanbanBoard")?.classList.add("kb-show");
-      document.body.classList.add("board-open");
-      history.pushState({kanban:true},"");
-    } else { _closeBoardMobile(); }
-  } else {
-    $("#kanbanBoard").classList.toggle("show",_boardMode);
-  }
-  if(_boardMode) renderBoard();
-}
-```
-
-**CSS actual** (index.html ~línea 176):
+**Fix aplicado** (index.html, selector `.sidebar`):
 ```css
-@media(max-width:720px){
-  .sidebar.kb-hidden{display:none!important;visibility:hidden!important}
-  #kanbanBoard.kb-show{display:flex!important;position:fixed!important;top:0;left:0;right:0;bottom:56px;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)}
-}
+.sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--surface)}
 ```
+Se agregó `min-width:0` — el mismo patrón que ya tenía `min-height:0` para el overflow vertical del flex interno, pero le faltaba el equivalente horizontal para el grid externo.
 
-**Hipótesis pendiente de investigar**: Los botones están en `.side-head` > `div` (segundo hijo). El sidebar sí aparece (logo, tabs, búsqueda, lista de chats), pero SOLO el div de botones desaparece. Esto sugiere que NO es un problema de display del sidebar completo, sino algo específico con ese div de botones. Posibles causas: (a) algún JS toca `.side-head` o su segundo hijo; (b) problema de compositing/z-index de iOS Safari con el elemento que estuvo en `position:fixed`; (c) el `#kanbanBoard` con `position:absolute;inset:0;z-index:20` (su estado CSS por defecto) cubre el header aunque tenga `display:none` de alguna forma.
+**Intentos previos que NO funcionaron** (por si se repite algo parecido): tocar clases `chat-open`/`board-open`, `history.pushState`+`popstate`, reset del `<meta name="viewport">`, `overflow-x:hidden` + `max-width:100vw` en `html,body,.screen`. Todos atacaban el síntoma (viewport/overflow) en vez de la causa real (grid item sin `min-width:0`).
 
-**Siguiente paso sugerido**: Buscar si hay algún JS que modifique `.side-head` o el div de los botones. Considerar mover `#kanbanBoard` fuera de `#screen-chats` en el HTML (hacerlo hijo directo de `<body>`) para que `position:absolute;inset:0` no afecte el layout del grid.
+**Lección para bugs de "ancho" similares en el futuro**: medir el ancho real de los elementos sospechosos con `getBoundingClientRect()` (no solo `window.innerWidth`/`scrollWidth`), y revisar si son ítems de flex/grid sin `min-width:0` (o `min-height:0` en el eje vertical) antes de sospechar del viewport del navegador.
 
 ---
 
