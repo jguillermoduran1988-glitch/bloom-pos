@@ -123,6 +123,14 @@ function currentPipeline(){ return state.pipelines.find(p=>p.id===state.activePi
 // ============================================================
 let _boardMode=false;
 
+// Fuerza a Safari/Chrome móvil a recalcular el media query max-width:720px
+// después de navegar con history.pushState/popstate — sin esto, la pantalla
+// puede quedar renderizada más ancha de lo que corresponde tras volver atrás.
+function _fixMobileViewport(){
+  const _vp=document.querySelector("meta[name=viewport]");
+  if(_vp) _vp.setAttribute("content","width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover");
+}
+
 function _closeBoardMobile(){
   const board=$("#kanbanBoard");
   const sidebar=document.querySelector(".sidebar");
@@ -131,13 +139,14 @@ function _closeBoardMobile(){
   document.body.classList.remove("board-open","chat-open","panel-open");
   state.active=null;
   const pan=$("#panel"); if(pan) pan.classList.add("hidden");
+  _fixMobileViewport();
 }
 
 function toggleBoardView(){
   _boardMode=!_boardMode;
   const btn=$("#boardToggleBtn");
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
-  const isMob=Math.min(window.screen.width,window.screen.height)<=720;
+  const isMob=window.innerWidth<=720;
   if(_boardMode){
     if(isMob){
       document.querySelector(".sidebar")?.classList.add("kb-hidden");
@@ -170,6 +179,7 @@ window.addEventListener("popstate",(e)=>{
       document.body.classList.remove("chat-open","panel-open");
       const pan=$("#panel"); if(pan) pan.classList.add("hidden");
       renderChatList();
+      _fixMobileViewport();
     } else if(e.state?.screen){
       switchScreen(e.state.screen);
     }
@@ -1364,9 +1374,7 @@ function switchScreen(name){
   }
   if(name==="datos") initDatos();
   if(name==="equipo") initTeam();
-  // Resetear viewport para que el media query mobile se aplique correctamente
-  const _vp=document.querySelector("meta[name=viewport]");
-  if(_vp) _vp.setAttribute("content","width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover");
+  _fixMobileViewport();
 }
 
 // ---- Cargar vendedores y métodos de pago ----
