@@ -4,15 +4,22 @@
 //  Features: etiquetas, referral (historia/pauta), embudos múltiples editables.
 // ====================================================================
 
-// ===== DEBUG TEMPORAL: indicador de ancho de viewport (quitar cuando se resuelva el bug de ancho) =====
-(function _dbgViewportBadge(){
+// ===== DEBUG TEMPORAL: mide el ancho real de elementos clave (quitar al resolver el bug de ancho) =====
+(function _dbgElementWidths(){
   const b=document.createElement("div");
   b.id="_dbgVp";
-  b.style.cssText="position:fixed;top:2px;right:2px;z-index:999999;background:#000;color:#0f0;font-size:9px;line-height:1.3;padding:2px 5px;border-radius:4px;pointer-events:none;font-family:monospace;white-space:pre";
-  document.addEventListener("DOMContentLoaded",()=>document.body.appendChild(b));
-  if(document.body) document.body.appendChild(b);
+  b.style.cssText="position:fixed;top:2px;right:2px;z-index:999999;background:#000;color:#0f0;font-size:9px;line-height:1.35;padding:3px 5px;border-radius:4px;pointer-events:none;font-family:monospace;white-space:pre;text-align:right";
+  function attach(){ if(document.body && !document.getElementById("_dbgVp")) document.body.appendChild(b); }
+  document.addEventListener("DOMContentLoaded",attach);
+  attach();
+  function w(sel){
+    const el=document.querySelector(sel);
+    if(!el) return "—";
+    const r=el.getBoundingClientRect();
+    return `${Math.round(r.width)}(L${Math.round(r.left)})`;
+  }
   function upd(){
-    b.textContent=`iw:${window.innerWidth} cw:${document.documentElement.clientWidth} sw:${document.documentElement.scrollWidth} vv:${window.visualViewport?Math.round(window.visualViewport.width):"-"}`;
+    b.textContent=`iw:${window.innerWidth}\nsidebar:${w(".sidebar")}\nsidehead:${w(".side-head")}\nbtns:${w(".side-head > div:nth-child(2)")}\nchatlist:${w("#chatList")}`;
   }
   setInterval(upd,400);
   window.addEventListener("resize",upd);
