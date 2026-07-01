@@ -18,10 +18,21 @@
     const r=el.getBoundingClientRect();
     return `${Math.round(r.width)}(L${Math.round(r.left)})`;
   }
+  let vwTest=document.getElementById("_dbgVwTest");
+  if(!vwTest){
+    vwTest=document.createElement("div");
+    vwTest.id="_dbgVwTest";
+    vwTest.style.cssText="position:fixed;top:-9999px;left:0;width:100vw;height:1px;pointer-events:none;visibility:hidden";
+    document.documentElement.appendChild(vwTest);
+  }
   function upd(){
     const sc=document.getElementById("screen-chats");
     const gtc=sc?getComputedStyle(sc).gridTemplateColumns:"—";
-    b.textContent=`iw:${window.innerWidth}\nsidebar:${w(".sidebar")}\nsidehead:${w(".side-head")}\nbtns:${w(".side-head > div:nth-child(2)")}\nchatlist:${w("#chatList")}\nbody.cls:${document.body.className}\nsb.cls:${document.querySelector(".sidebar")?.className}\ngridCols:${gtc}`;
+    const scW=sc?Math.round(sc.getBoundingClientRect().width):"—";
+    const htmlW=Math.round(document.documentElement.getBoundingClientRect().width);
+    const bodyW=Math.round(document.body.getBoundingClientRect().width);
+    const vw100=Math.round(vwTest.getBoundingClientRect().width);
+    b.textContent=`iw:${window.innerWidth} html:${htmlW} body:${bodyW} 100vw:${vw100}\nscreen-chats:${scW}\nsidebar:${w(".sidebar")}\nbtns:${w(".side-head > div:nth-child(2)")}\ngridCols:${gtc}`;
   }
   setInterval(upd,400);
   window.addEventListener("resize",upd);
