@@ -42,9 +42,9 @@
   html,body{height:100%;overflow:hidden;max-width:100vw;overflow-x:hidden}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden;max-width:100vw;overflow-x:hidden}
-  .screen{display:none;height:calc(100dvh - 56px - env(safe-area-inset-bottom,0px));min-height:0;overflow:hidden;min-width:0;max-width:100vw}
-  .screen.active{display:grid !important;grid-template-rows:100%;position:relative;width:100%}
-  #screen-chats{grid-template-columns:320px 1fr 280px}
+  .screen{display:none;height:calc(100dvh - 56px - env(safe-area-inset-bottom,0px));min-height:0;overflow:hidden;min-width:0;max-width:100vw;position:relative}
+  .screen.active{display:grid !important;grid-template-rows:100%;position:relative;width:100%;max-width:100vw;overflow-x:hidden}
+  #screen-chats{grid-template-columns:320px 1fr 280px;max-width:100vw;overflow-x:hidden}
   .navbar{position:fixed;bottom:0;left:0;right:0;
     height:calc(56px + env(safe-area-inset-bottom,0px));
     padding-bottom:env(safe-area-inset-bottom,0px);
@@ -175,7 +175,9 @@
   #kanbanBoard.show{display:flex}
   @media(max-width:720px){
     .sidebar.kb-hidden{display:none!important;visibility:hidden!important}
-    #kanbanBoard.kb-show{display:flex!important;position:fixed!important;top:0;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom,0px));z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)}
+    #kanbanBoard.kb-show{display:flex!important;position:absolute!important;top:0;left:0;right:0;bottom:0;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg);width:100%;max-width:100vw}
+    /* Prevenir overflow horizontal */
+    body.board-open{overflow-x:hidden;max-width:100vw}
   }
   .kb-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
   .kb-head-title{font-weight:700;font-size:14px;white-space:nowrap}
