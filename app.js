@@ -164,12 +164,12 @@ window.addEventListener("popstate",(e)=>{
       // Quitar también la clase "show" que toggleBoardView agrega — si no, el kanban
       // queda visible como position:absolute sin overflow:hidden y desborda horizontalmente
       $("#kanbanBoard")?.classList.remove("show");
-    } else if(state.active && window.innerWidth<=720){
+    } else if(state.active){
       state.active=null;
       document.body.classList.remove("chat-open","panel-open");
       const pan=$("#panel"); if(pan) pan.classList.add("hidden");
       renderChatList();
-    } else if(e.state?.screen && window.innerWidth<=720){
+    } else if(e.state?.screen){
       switchScreen(e.state.screen);
     }
   }finally{ _inPopstate=false; }
@@ -1348,12 +1348,11 @@ function switchScreen(name){
       const pan=$("#panel"); if(pan) pan.classList.add("hidden");
     }
   }
-  // En móvil: al cambiar de pantalla siempre limpiar chat-open para que la lista de chats sea visible al volver
-  if(window.innerWidth<=720){
-    document.body.classList.remove("chat-open","panel-open");
-    state.active=null;
-    const pan=$("#panel"); if(pan) pan.classList.add("hidden");
-  }
+  // Siempre limpiar chat-open/panel-open al cambiar pantalla — sin importar window.innerWidth
+  // (si el viewport se expandió, window.innerWidth puede devolver >720 en móvil y dejar chat-open pegado)
+  document.body.classList.remove("chat-open","panel-open");
+  state.active=null;
+  const pan=$("#panel"); if(pan) pan.classList.add("hidden");
   ["chats","pos","equipo","datos","config"].forEach(s=>{
     const el=document.getElementById("screen-"+s);
     const nav=document.getElementById("nav-"+s);
