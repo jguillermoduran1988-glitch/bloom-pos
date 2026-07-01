@@ -1353,7 +1353,7 @@ function switchScreen(name){
     const el=document.getElementById("screen-"+s);
     const nav=document.getElementById("nav-"+s);
     el.classList.toggle("active", s===name);
-    el.style.display=""; // dejar que CSS maneje display igual que en carga inicial
+    el.style.display=s===name?(s==="chats"||s==="pos"?"grid":"block"):"none";
     if(nav) nav.classList.toggle("on", s===name);
   });
   if(name==="chats"){ renderChatList(); if(!pos.sellers?.length) loadSellers(); }
@@ -1364,12 +1364,7 @@ function switchScreen(name){
   }
   if(name==="datos") initDatos();
   if(name==="equipo") initTeam();
-  // Forzar layout de 1 columna en móvil usando screen.width (no innerWidth que cambia con el zoom del browser)
-  // Cuando el viewport se expande por contenido ancho, innerWidth puede reportar >720 aunque el dispositivo sea móvil
-  const isMobile=Math.min(window.screen.width,window.screen.height)<=720;
-  const chatsEl=document.getElementById("screen-chats");
-  if(chatsEl && isMobile) chatsEl.style.gridTemplateColumns="1fr";
-  // Resetear viewport
+  // Resetear viewport para que el media query mobile se aplique correctamente
   const _vp=document.querySelector("meta[name=viewport]");
   if(_vp) _vp.setAttribute("content","width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover");
 }
