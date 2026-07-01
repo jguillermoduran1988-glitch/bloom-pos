@@ -1038,7 +1038,9 @@ async function createShopifyOrder(env, o) {
   // Orden real, pagada
   order.financial_status = "paid";
   order.fulfillment_status = "fulfilled";
-  order.inventory_behaviour = "decrement_obeying_policy";
+  // ignora la política de inventario (deny/continue) para que la venta en el POS
+  // siempre pueda crear el pedido en Shopify aunque el stock esté en 0
+  order.inventory_behaviour = "decrement_ignoring_policy";
   if (cust.email) order.send_receipt = true;
   // Descuento en orden real: usa discount_codes
   if (o.discount) {

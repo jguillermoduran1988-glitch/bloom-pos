@@ -2578,6 +2578,9 @@ async function confirmSale(){
     shopify=await r.json();
     console.log("[bloom] order response:", JSON.stringify(shopify));
   }catch(e){console.error(e);}
+  if(!shopify.ok){
+    alert("⚠️ La venta se va a registrar, pero NO se pudo crear el pedido en Shopify.\n\nError: "+String(shopify.error||"desconocido").slice(0,300)+"\n\nAvísale a soporte para crearlo manualmente.");
+  }
   const saleResp = await sbPost("sales",{
     shopify_order_id:shopify.order_id||null, shopify_order_name:shopify.order_name||null,
     ...salePayload,
