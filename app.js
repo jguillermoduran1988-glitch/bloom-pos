@@ -357,6 +357,15 @@ async function openChat(phone){
   await loadMessages(phone);
 }
 function closeChat(){
+  // Limpiar estado del tablero si está activo
+  if(_boardMode){
+    _boardMode=false;
+    _closeBoardMobile();
+    $("#kanbanBoard")?.classList.remove("show");
+    document.body.classList.remove("board-open");
+    const btn=$("#boardToggleBtn");
+    if(btn) btn.querySelector(".material-symbols-outlined").textContent="view_kanban";
+  }
   if(window.innerWidth<=720 && history.state?.chat) history.back();
   document.body.classList.remove("chat-open","panel-open");
   state.active=null;
