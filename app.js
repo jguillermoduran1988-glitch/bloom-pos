@@ -137,17 +137,18 @@ function toggleBoardView(){
   _boardMode=!_boardMode;
   const btn=$("#boardToggleBtn");
   if(btn) btn.querySelector(".material-symbols-outlined").textContent=_boardMode?"view_list":"view_kanban";
-  if(window.innerWidth<=720){
-    if(_boardMode){
+  const isMob=Math.min(window.screen.width,window.screen.height)<=720;
+  if(_boardMode){
+    if(isMob){
       document.querySelector(".sidebar")?.classList.add("kb-hidden");
       $("#kanbanBoard")?.classList.add("kb-show");
       document.body.classList.add("board-open");
       history.pushState({kanban:true},"");
-    } else {
-      _closeBoardMobile();
     }
+    $("#kanbanBoard")?.classList.add("show");
   } else {
-    $("#kanbanBoard").classList.toggle("show",_boardMode);
+    // Siempre limpiar todo sin importar el ancho de pantalla
+    _closeBoardMobile();
   }
   if(_boardMode) renderBoard();
 }
