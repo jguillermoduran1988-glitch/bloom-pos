@@ -4,6 +4,21 @@
 //  Features: etiquetas, referral (historia/pauta), embudos múltiples editables.
 // ====================================================================
 
+// ===== DEBUG TEMPORAL: indicador de ancho de viewport (quitar cuando se resuelva el bug de ancho) =====
+(function _dbgViewportBadge(){
+  const b=document.createElement("div");
+  b.id="_dbgVp";
+  b.style.cssText="position:fixed;top:2px;right:2px;z-index:999999;background:#000;color:#0f0;font-size:9px;line-height:1.3;padding:2px 5px;border-radius:4px;pointer-events:none;font-family:monospace;white-space:pre";
+  document.addEventListener("DOMContentLoaded",()=>document.body.appendChild(b));
+  if(document.body) document.body.appendChild(b);
+  function upd(){
+    b.textContent=`iw:${window.innerWidth} cw:${document.documentElement.clientWidth} sw:${document.documentElement.scrollWidth} vv:${window.visualViewport?Math.round(window.visualViewport.width):"-"}`;
+  }
+  setInterval(upd,400);
+  window.addEventListener("resize",upd);
+  upd();
+})();
+
 const C = window.CONFIG;
 const SB = { url: C.SUPABASE_URL, key: C.SUPABASE_ANON };
 const MSG_WINDOW = 60;
