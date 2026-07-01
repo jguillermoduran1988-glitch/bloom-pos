@@ -41,9 +41,9 @@
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow:hidden;max-width:100vw;overflow-x:hidden}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden;max-width:100vw}
+    background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden;max-width:100vw;overflow-x:hidden}
   .screen{display:none;height:calc(100dvh - 56px - env(safe-area-inset-bottom,0px));min-height:0;overflow:hidden;min-width:0;max-width:100vw}
-  .screen.active{display:grid;grid-template-rows:100%;position:relative}
+  .screen.active{display:grid !important;grid-template-rows:100%;position:relative;width:100%}
   #screen-chats{grid-template-columns:320px 1fr 280px}
   .navbar{position:fixed;bottom:0;left:0;right:0;
     height:calc(56px + env(safe-area-inset-bottom,0px));
@@ -365,6 +365,8 @@
     .ch-back{display:block}
     .panel{width:100%}
     .panel-mobile-head{display:flex;align-items:center;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+    /* Asegurar que el navbar siempre sea visible en mobile */
+    .navbar{display:flex!important}
   }
   /* ============ POS ============ */
   .pos{display:grid;grid-template-columns:1fr 460px;width:100%;height:100%;overflow:hidden;min-width:0}

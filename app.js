@@ -1363,7 +1363,7 @@ function switchScreen(name){
     const el=document.getElementById("screen-"+s);
     const nav=document.getElementById("nav-"+s);
     el.classList.toggle("active", s===name);
-    el.style.display=s===name?(s==="chats"||s==="pos"?"grid":"block"):"none";
+    // No tocar inline display — CSS se encarga con !important
     if(nav) nav.classList.toggle("on", s===name);
   });
   if(name==="chats"){ renderChatList(); if(!pos.sellers?.length) loadSellers(); }
