@@ -19,7 +19,9 @@
     return `${Math.round(r.width)}(L${Math.round(r.left)})`;
   }
   function upd(){
-    b.textContent=`iw:${window.innerWidth}\nsidebar:${w(".sidebar")}\nsidehead:${w(".side-head")}\nbtns:${w(".side-head > div:nth-child(2)")}\nchatlist:${w("#chatList")}`;
+    const sc=document.getElementById("screen-chats");
+    const gtc=sc?getComputedStyle(sc).gridTemplateColumns:"—";
+    b.textContent=`iw:${window.innerWidth}\nsidebar:${w(".sidebar")}\nsidehead:${w(".side-head")}\nbtns:${w(".side-head > div:nth-child(2)")}\nchatlist:${w("#chatList")}\nbody.cls:${document.body.className}\nsb.cls:${document.querySelector(".sidebar")?.className}\ngridCols:${gtc}`;
   }
   setInterval(upd,400);
   window.addEventListener("resize",upd);
