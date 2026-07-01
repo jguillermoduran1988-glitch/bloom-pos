@@ -1363,7 +1363,12 @@ function switchScreen(name){
   }
   if(name==="datos") initDatos();
   if(name==="equipo") initTeam();
-  // Resetear viewport al mismo ancho que en la carga inicial (igual que al girar el celular)
+  // Forzar layout de 1 columna en móvil usando screen.width (no innerWidth que cambia con el zoom del browser)
+  // Cuando el viewport se expande por contenido ancho, innerWidth puede reportar >720 aunque el dispositivo sea móvil
+  const isMobile=Math.min(window.screen.width,window.screen.height)<=720;
+  const chatsEl=document.getElementById("screen-chats");
+  if(chatsEl && isMobile) chatsEl.style.gridTemplateColumns="1fr";
+  // Resetear viewport
   const _vp=document.querySelector("meta[name=viewport]");
   if(_vp) _vp.setAttribute("content","width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover");
 }
