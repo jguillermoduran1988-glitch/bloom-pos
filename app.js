@@ -4,41 +4,6 @@
 //  Features: etiquetas, referral (historia/pauta), embudos múltiples editables.
 // ====================================================================
 
-// ===== DEBUG TEMPORAL: mide el ancho real de elementos clave (quitar al resolver el bug de ancho) =====
-(function _dbgElementWidths(){
-  const b=document.createElement("div");
-  b.id="_dbgVp";
-  b.style.cssText="position:fixed;top:2px;right:2px;z-index:999999;background:#000;color:#0f0;font-size:9px;line-height:1.35;padding:3px 5px;border-radius:4px;pointer-events:none;font-family:monospace;white-space:pre;text-align:right";
-  function attach(){ if(document.body && !document.getElementById("_dbgVp")) document.body.appendChild(b); }
-  document.addEventListener("DOMContentLoaded",attach);
-  attach();
-  function w(sel){
-    const el=document.querySelector(sel);
-    if(!el) return "—";
-    const r=el.getBoundingClientRect();
-    return `${Math.round(r.width)}(L${Math.round(r.left)})`;
-  }
-  let vwTest=document.getElementById("_dbgVwTest");
-  if(!vwTest){
-    vwTest=document.createElement("div");
-    vwTest.id="_dbgVwTest";
-    vwTest.style.cssText="position:fixed;top:-9999px;left:0;width:100vw;height:1px;pointer-events:none;visibility:hidden";
-    document.documentElement.appendChild(vwTest);
-  }
-  function upd(){
-    const sc=document.getElementById("screen-chats");
-    const gtc=sc?getComputedStyle(sc).gridTemplateColumns:"—";
-    const scW=sc?Math.round(sc.getBoundingClientRect().width):"—";
-    const htmlW=Math.round(document.documentElement.getBoundingClientRect().width);
-    const bodyW=Math.round(document.body.getBoundingClientRect().width);
-    const vw100=Math.round(vwTest.getBoundingClientRect().width);
-    b.textContent=`iw:${window.innerWidth} html:${htmlW} body:${bodyW} 100vw:${vw100}\nscreen-chats:${scW}\nsidebar:${w(".sidebar")}\nbtns:${w(".side-head > div:nth-child(2)")}\ngridCols:${gtc}`;
-  }
-  setInterval(upd,400);
-  window.addEventListener("resize",upd);
-  upd();
-})();
-
 const C = window.CONFIG;
 const SB = { url: C.SUPABASE_URL, key: C.SUPABASE_ANON };
 const MSG_WINDOW = 60;
