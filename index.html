@@ -39,12 +39,12 @@
     --primary:#c49a4b;
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;overflow:hidden;max-width:100vw !important;overflow-x:hidden !important;width:100%}
+  html,body{height:100%;overflow:hidden;max-width:100vw;overflow-x:hidden}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden;max-width:100vw !important;overflow-x:hidden !important;width:100%}
-  .screen{display:none;height:calc(100dvh - 56px - env(safe-area-inset-bottom,0px));min-height:0;overflow:hidden;min-width:0;max-width:100vw !important;position:relative;width:100%}
-  .screen.active{display:grid !important;grid-template-rows:100%;position:relative;width:100% !important;max-width:100vw !important;overflow-x:hidden !important}
-  #screen-chats{grid-template-columns:320px 1fr 280px;max-width:100vw !important;overflow-x:hidden !important}
+    background:var(--bg);color:var(--text);font-size:15px;height:100dvh;overflow:hidden;max-width:100vw}
+  .screen{display:none;height:calc(100dvh - 56px - env(safe-area-inset-bottom,0px));min-height:0;overflow:hidden;min-width:0;max-width:100vw}
+  .screen.active{display:grid;grid-template-rows:100%;position:relative}
+  #screen-chats{grid-template-columns:320px 1fr 280px}
   .navbar{position:fixed;bottom:0;left:0;right:0;
     height:calc(56px + env(safe-area-inset-bottom,0px));
     padding-bottom:env(safe-area-inset-bottom,0px);
@@ -175,9 +175,7 @@
   #kanbanBoard.show{display:flex}
   @media(max-width:720px){
     .sidebar.kb-hidden{display:none!important;visibility:hidden!important}
-    #kanbanBoard.kb-show{display:flex!important;position:absolute!important;top:0;left:0;right:0;bottom:0;z-index:90;overflow:hidden;flex-direction:column;background:var(--bg);width:100%;max-width:100vw}
-    /* Prevenir overflow horizontal */
-    body.board-open{overflow-x:hidden;max-width:100vw}
+    #kanbanBoard.kb-show{display:flex!important;position:fixed!important;top:0;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom,0px));z-index:90;overflow:hidden;flex-direction:column;background:var(--bg)}
   }
   .kb-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
   .kb-head-title{font-weight:700;font-size:14px;white-space:nowrap}
@@ -367,31 +365,6 @@
     .ch-back{display:block}
     .panel{width:100%}
     .panel-mobile-head{display:flex;align-items:center;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
-    
-    /* FIX CRÍTICO: Navbar siempre visible y contenido contenido */
-    .navbar{
-      display:flex!important;
-      z-index:9999!important;
-      width:100%!important;
-      max-width:100vw!important;
-    }
-    
-    /* Evitar que el contenido desborde horizontalmente */
-    html, body {
-      overflow-x:hidden!important;
-      max-width:100vw!important;
-    }
-    
-    /* Aislar pantallas problemáticas */
-    #screen-kanban {
-      contain: layout style paint;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    
-    #screen-kanban .kanban-board {
-      min-width: max-content;
-    }
   }
   /* ============ POS ============ */
   .pos{display:grid;grid-template-columns:1fr 460px;width:100%;height:100%;overflow:hidden;min-width:0}
@@ -615,7 +588,7 @@
     <div class="side-head">
       <div class="brand"><img src="logo-bloom.svg" alt="Bloom" style="height:36px;display:block"></div>
       <div style="display:flex;align-items:center;gap:8px">
-        <!-- <button class="iconbtn" id="boardToggleBtn" title="Vista tablero" onclick="toggleBoardView()"><span class="material-symbols-outlined" style="font-size:18px">view_kanban</span></button> -->
+        <button class="iconbtn" id="boardToggleBtn" title="Vista tablero" onclick="toggleBoardView()"><span class="material-symbols-outlined" style="font-size:18px">view_kanban</span></button>
         <button class="iconbtn" title="POS / Vender" onclick="switchScreen('pos')"><span class="material-symbols-outlined" style="font-size:18px">point_of_sale</span></button>
         <button class="iconbtn" title="Datos / Estadísticas" onclick="switchScreen('datos')"><span class="material-symbols-outlined" style="font-size:18px">analytics</span></button>
         <div class="conn"><span class="dot" id="connDot"></span><span id="connText">…</span></div>
