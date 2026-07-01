@@ -356,7 +356,12 @@ async function openChat(phone){
   fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
 }
-function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");}
+function closeChat(){
+  if(window.innerWidth<=720 && history.state?.chat) history.back();
+  document.body.classList.remove("chat-open","panel-open");
+  state.active=null;
+  $("#panel").classList.add("hidden");
+}
 
 // ---------- Mensajes (desde D1 vía worker) ----------
 async function loadMessages(phone){
@@ -445,7 +450,12 @@ function appendMessage(m){
 // ---------- Panel derecho ----------
 function togglePanel(){
   if(window.innerWidth<=720){
-    document.body.classList.toggle("panel-open");
+    if(document.body.classList.contains("panel-open")){
+      if(history.state?.chat) history.back();
+      document.body.classList.remove("panel-open");
+    } else {
+      document.body.classList.add("panel-open");
+    }
   } else {
     $("#panel").classList.toggle("hidden");
   }
