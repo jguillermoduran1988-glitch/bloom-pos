@@ -627,7 +627,7 @@
       <div id="replyPreview" style="display:none;align-items:center;gap:8px;padding:8px 12px;background:var(--accent-soft);border-top:1px solid var(--border);border-left:3px solid var(--accent)"></div>
       <div class="composer" id="composer" style="display:none">
         <button class="team-plus" id="chatPlusBtn" onclick="toggleChatPlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
-        <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…" spellcheck="true" lang="es"></textarea>
+        <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…" spellcheck="true" lang="es" autocorrect="on" autocapitalize="sentences"></textarea>
         <button class="send" id="chatVoiceBtn" title="Mantén presionado para grabar, desliza arriba para bloquear"
           onmousedown="micPressStart(event)" ontouchstart="micPressStart(event)" onclick="micClickWhileLocked()">
           <span class="material-symbols-outlined" style="font-size:20px">mic</span>
