@@ -381,6 +381,7 @@ export default {
         `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, last_direction = ?, updated_at = ? WHERE id = ?`
       ).bind(lastMsg, now, msgType==="note"?"":"outbound", now, conversation_id).run();
       // Envío real a WhatsApp (notas internas no se envían al cliente)
+      let wamid = null;
       if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgType !== "note") {
         let waResp = null;
         if (media_url && msgType === "image") {
@@ -392,11 +393,14 @@ export default {
         } else if (msgBody) {
           waResp = await sendWhatsApp(env, phone, msgBody, reply_to).catch(() => null);
         }
-        const wamid = waResp?.messages?.[0]?.id;
+        wamid = waResp?.messages?.[0]?.id || null;
         if (wamid) await env.bloom_wa.prepare(`UPDATE wa_messages SET wa_message_id=? WHERE id=?`).bind(wamid, msgId).run().catch(()=>{});
         if (!wamid) console.log("WA send failed", msgType, JSON.stringify(waResp));
       }
-      return Response.json({ ok: true, id: msgId }, { headers: cors });
+      // Devolver el wa_message_id real para que el cliente lo guarde en su
+      // estado local — sin esto, los avisos en vivo de "entregado/leido/fallo"
+      // (status_update por WebSocket) nunca encontraban el mensaje a actualizar.
+      return Response.json({ ok: true, id: msgId, wa_message_id: wamid }, { headers: cors });
     }
 
     // -------- PATCH conversación: stage, pipeline_id --------

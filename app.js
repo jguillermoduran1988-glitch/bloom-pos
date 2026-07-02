@@ -846,13 +846,16 @@ async function sendCurrent(){
 async function dispatch(text){
   const phone=state.active; const now=new Date().toISOString();
   const replyTo=_replyingTo?.wa_message_id||null;
-  appendMessage({body:text,direction:"out",created_at:now,msg_type:"text",reply_to:replyTo});
+  const localMsg={body:text,direction:"out",created_at:now,msg_type:"text",reply_to:replyTo};
+  appendMessage(localMsg);
   cancelReply();
   await markRepliedAndAdvanceStage(phone);
   const c=state.chats.get(phone); c.last=text; c.lastAt=now; renderChatList();
   try{
-    await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+    const r=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({conversation_id:state.chats.get(phone)?.id||phone,phone,body:text,reply_to:replyTo})});
+    const d=await r.json().catch(()=>null);
+    if(d?.wa_message_id) localMsg.wa_message_id=d.wa_message_id;
   }catch(e){console.error("envío:",e);}
 }
 
@@ -1067,14 +1070,16 @@ async function confirmSendChatPhoto(){
     if(!upResp?.url){ alert("No se pudo subir el archivo"); return; }
     const now=new Date().toISOString();
     const replyTo=_replyingTo?.wa_message_id||null;
-    appendMessage({body:caption,media_url:upResp.url,direction:"out",created_at:now,msg_type:msgType,reply_to:replyTo});
+    const localMsg={body:caption,media_url:upResp.url,direction:"out",created_at:now,msg_type:msgType,reply_to:replyTo};
+    appendMessage(localMsg);
     cancelReply();
     await markRepliedAndAdvanceStage(state.active);
     const c=state.chats.get(state.active);
     if(c){ c.last=isVideo?"🎬 Video":"📷 Foto"; c.lastAt=now; renderChatList(); }
     const convId=c?.id||state.active;
-    await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({conversation_id:convId,phone:state.active,body:caption,media_url:upResp.url,type:msgType,reply_to:replyTo})}).catch(()=>{});
+    const sendD=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({conversation_id:convId,phone:state.active,body:caption,media_url:upResp.url,type:msgType,reply_to:replyTo})}).then(r=>r.json()).catch(()=>null);
+    if(sendD?.wa_message_id) localMsg.wa_message_id=sendD.wa_message_id;
   } finally {
     if(btn){ btn.disabled=false; btn.textContent="Enviar"; }
   }
@@ -1153,13 +1158,15 @@ async function startVoiceRecording(){
       if(!upResp?.url){ alert("No se pudo subir la nota de voz."); return; }
       const now=new Date().toISOString();
       const replyTo=_replyingTo?.wa_message_id||null;
-      appendMessage({body:"",media_url:upResp.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo});
+      const localMsg={body:"",media_url:upResp.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo};
+      appendMessage(localMsg);
       cancelReply();
       await markRepliedAndAdvanceStage(state.active);
       const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
       const convId=c?.id||state.active;
-      await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:upResp.url,type:"audio",reply_to:replyTo})}).catch(()=>{});
+      const sendD=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:upResp.url,type:"audio",reply_to:replyTo})}).then(r=>r.json()).catch(()=>null);
+      if(sendD?.wa_message_id) localMsg.wa_message_id=sendD.wa_message_id;
     };
     _chatRecorder.start();
     btn?.classList.add("rec");
@@ -1467,15 +1474,19 @@ async function sendProducts(){
     const caption=`*${p.name}*${sz} — ${money(p.price)}`;
     const now=new Date().toISOString();
     if(p.image){
-      appendMessage({body:caption,media_url:p.image,direction:"out",created_at:now,msg_type:"image"});
+      const localMsg={body:caption,media_url:p.image,direction:"out",created_at:now,msg_type:"image"};
+      appendMessage(localMsg);
       if(c){ c.last="📷 Foto"; c.lastAt=now; renderChatList(); }
-      await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({conversation_id:convId,phone,body:caption,media_url:p.image,type:"image"})}).catch(()=>{});
+      const sendD=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone,body:caption,media_url:p.image,type:"image"})}).then(r=>r.json()).catch(()=>null);
+      if(sendD?.wa_message_id) localMsg.wa_message_id=sendD.wa_message_id;
     }else{
-      appendMessage({body:caption,direction:"out",created_at:now,msg_type:"text"});
+      const localMsg={body:caption,direction:"out",created_at:now,msg_type:"text"};
+      appendMessage(localMsg);
       if(c){ c.last=caption; c.lastAt=now; renderChatList(); }
-      await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({conversation_id:convId,phone,body:caption})}).catch(()=>{});
+      const sendD=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone,body:caption})}).then(r=>r.json()).catch(()=>null);
+      if(sendD?.wa_message_id) localMsg.wa_message_id=sendD.wa_message_id;
     }
   }
   await dispatch(`¿Cuál te gusta más? Te la aparto ya 💕`);
