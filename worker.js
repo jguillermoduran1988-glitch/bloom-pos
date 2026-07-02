@@ -366,7 +366,7 @@ export default {
 
     // -------- WhatsApp Inbox: enviar mensaje --------
     if (request.method === "POST" && url.pathname === "/wa/send") {
-      const { conversation_id, phone, body, media_url, type } = await request.json();
+      const { conversation_id, phone, body, media_url, type, reply_to } = await request.json();
       if (!conversation_id) return Response.json({ ok: false, error: "faltan campos" }, { headers: cors });
       if (!body && !media_url) return Response.json({ ok: false, error: "faltan campos" }, { headers: cors });
       const now = new Date().toISOString();
@@ -374,8 +374,8 @@ export default {
       const msgType = type || "text";
       const msgBody = body || "";
       await env.bloom_wa.prepare(
-        `INSERT INTO wa_messages (id, conversation_id, direction, type, body, media_url, status, ts) VALUES (?, ?, 'outbound', ?, ?, ?, 'sent', ?)`
-      ).bind(msgId, conversation_id, msgType, msgBody, media_url || null, now).run();
+        `INSERT INTO wa_messages (id, conversation_id, direction, type, body, media_url, status, ts, reply_to) VALUES (?, ?, 'outbound', ?, ?, ?, 'sent', ?, ?)`
+      ).bind(msgId, conversation_id, msgType, msgBody, media_url || null, now, reply_to || null).run();
       const lastMsg = media_url ? (msgType === "image" ? "📷 Foto" : "🎤 Nota de voz") : msgBody;
       await env.bloom_wa.prepare(
         `UPDATE wa_conversations SET last_message = ?, last_message_at = ?, last_direction = ?, updated_at = ? WHERE id = ?`
@@ -384,13 +384,13 @@ export default {
       if (env.WA_TOKEN && env.WA_PHONE_ID && phone && msgType !== "note") {
         let waResp = null;
         if (media_url && msgType === "image") {
-          waResp = await sendWhatsAppMedia(env, phone, "image", media_url, msgBody).catch(() => null);
+          waResp = await sendWhatsAppMedia(env, phone, "image", media_url, msgBody, reply_to).catch(() => null);
         } else if (media_url && msgType === "audio") {
-          waResp = await sendWhatsAppMedia(env, phone, "audio", media_url).catch(() => null);
+          waResp = await sendWhatsAppMedia(env, phone, "audio", media_url, null, reply_to).catch(() => null);
         } else if (media_url && msgType === "video") {
-          waResp = await sendWhatsAppMedia(env, phone, "video", media_url, msgBody).catch(() => null);
+          waResp = await sendWhatsAppMedia(env, phone, "video", media_url, msgBody, reply_to).catch(() => null);
         } else if (msgBody) {
-          waResp = await sendWhatsApp(env, phone, msgBody).catch(() => null);
+          waResp = await sendWhatsApp(env, phone, msgBody, reply_to).catch(() => null);
         }
         const wamid = waResp?.messages?.[0]?.id;
         if (wamid) await env.bloom_wa.prepare(`UPDATE wa_messages SET wa_message_id=? WHERE id=?`).bind(wamid, msgId).run().catch(()=>{});
@@ -1041,6 +1041,8 @@ async function createShopifyOrder(env, o) {
   // ignora la política de inventario (deny/continue) para que la venta en el POS
   // siempre pueda crear el pedido en Shopify aunque el stock esté en 0
   order.inventory_behaviour = "decrement_ignoring_policy";
+  // permite forzar la fecha original de la venta (ej: registrar ventas atrasadas)
+  if (o.created_at) { order.created_at = o.created_at; order.processed_at = o.created_at; }
   if (cust.email) order.send_receipt = true;
   // Descuento en orden real: usa discount_codes
   if (o.discount) {
@@ -1179,11 +1181,12 @@ async function handleIncoming(env, msg, contact) {
     ).bind(text, now, now, convId).run();
   }
 
-  // Guardar mensaje
+  // Guardar mensaje (msg.context.id trae el wamid del mensaje que el cliente citó al responder)
   const msgId = "in-" + (waId || Date.now()) + "-" + Math.random().toString(36).slice(2, 6);
+  const replyToWamid = msg.context?.id || null;
   await env.bloom_wa.prepare(
-    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, media_url, status, ts) VALUES (?, ?, ?, 'inbound', ?, ?, ?, 'delivered', ?)`
-  ).bind(msgId, convId, waId || null, msgType, text, mediaUrl, now).run();
+    `INSERT OR IGNORE INTO wa_messages (id, conversation_id, wa_message_id, direction, type, body, media_url, status, ts, reply_to) VALUES (?, ?, ?, 'inbound', ?, ?, ?, 'delivered', ?, ?)`
+  ).bind(msgId, convId, waId || null, msgType, text, mediaUrl, now, replyToWamid).run();
 
   // Bot: procesar respuesta
   await handleBotInput(env, convId, phone, text, interactiveReplyId, !existing, contact);
@@ -1564,7 +1567,7 @@ async function resolvePaymentMethodId(env, gatewayName) {
 }
 
 // ============ Enviar a WhatsApp ============
-async function sendWhatsAppMedia(env, phone, type, url, caption) {
+async function sendWhatsAppMedia(env, phone, type, url, caption, replyToWamid) {
   const mediaObj = { link: url };
   if (caption) mediaObj.caption = caption;
   const res = await fetch(
@@ -1575,13 +1578,14 @@ async function sendWhatsAppMedia(env, phone, type, url, caption) {
       body: JSON.stringify({
         messaging_product: "whatsapp", to: phone,
         type, [type]: mediaObj,
+        ...(replyToWamid ? { context: { message_id: replyToWamid } } : {}),
       }),
     }
   );
   return res.json();
 }
 
-async function sendWhatsApp(env, phone, message) {
+async function sendWhatsApp(env, phone, message, replyToWamid) {
   const res = await fetch(
     `https://graph.facebook.com/v19.0/${env.WA_PHONE_ID}/messages`,
     {
@@ -1590,6 +1594,7 @@ async function sendWhatsApp(env, phone, message) {
       body: JSON.stringify({
         messaging_product: "whatsapp", to: phone,
         type: "text", text: { body: message },
+        ...(replyToWamid ? { context: { message_id: replyToWamid } } : {}),
       }),
     }
   );

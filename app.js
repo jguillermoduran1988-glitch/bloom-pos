@@ -349,6 +349,7 @@ function renderWindowBanner(phone){
 async function openChat(phone){
   if(window.innerWidth<=720) history.pushState({screen:"chats",chat:phone},"");
   state.active=phone;
+  cancelReply();
   const c=state.chats.get(phone); c.unread=0;
   document.body.classList.add("chat-open");
   $("#emptyState").style.display="none";
@@ -366,7 +367,7 @@ async function openChat(phone){
   fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
 }
-function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");}
+function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");cancelReply();}
 
 // ---------- Mensajes (desde D1 vía worker) ----------
 async function loadMessages(phone){
@@ -380,6 +381,8 @@ async function loadMessages(phone){
     msg_type: m.type||"text",
     media_url: m.media_url||null,
     status: m.status||"sent",
+    wa_message_id: m.wa_message_id||null,
+    reply_to: m.reply_to||null,
   }));
   renderMessages();
 }
@@ -412,19 +415,74 @@ function msgNode(m){
   const b=el("div","msg "+(m.direction==="out"?"out":"in"));
   const _tick=m.direction==="out"?`<span class="msg-tick ${m.status||'sent'}">${m.status==='read'||m.status==='delivered'?'✓✓':'✓'}</span>`:'';
   const _t=`<div class="t">${_tick}${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
+  const _quote=quotedPreviewHtml(m);
   if((m.msg_type==="image"||m.media_type==="image")&&m.media_url){
     const cap=m.body&&m.body!=="📷 Foto"?`<div style="font-size:13px;margin-top:4px">${esc(m.body)}</div>`:"";
-    b.innerHTML=`<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${cap}${_t}`;
+    b.innerHTML=`${_quote}<img class="tm-photo" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')">${cap}${_t}`;
   }else if(m.msg_type==="video"&&m.media_url){
-    b.innerHTML=`<video controls src="${esc(m.media_url)}" style="max-width:100%;border-radius:8px"></video>${_t}`;
+    b.innerHTML=`${_quote}<video controls src="${esc(m.media_url)}" style="max-width:100%;border-radius:8px"></video>${_t}`;
   }else if((m.msg_type==="audio"||m.media_type==="audio")&&m.media_url){
-    b.innerHTML=`<audio controls src="${esc(m.media_url)}"></audio>${_t}`;
+    b.innerHTML=`${_quote}<audio controls src="${esc(m.media_url)}"></audio>${_t}`;
   }else if(m.msg_type==="document"&&m.media_url){
-    b.innerHTML=`<a href="${esc(m.media_url)}" target="_blank" style="display:flex;align-items:center;gap:6px;color:#2563eb"><span class="material-symbols-outlined">description</span>${esc(m.body||"Documento")}</a>${_t}`;
+    b.innerHTML=`${_quote}<a href="${esc(m.media_url)}" target="_blank" style="display:flex;align-items:center;gap:6px;color:#2563eb"><span class="material-symbols-outlined">description</span>${esc(m.body||"Documento")}</a>${_t}`;
   }else{
-    b.innerHTML=waFormat(m.body)+_t;
+    b.innerHTML=_quote+waFormat(m.body)+_t;
   }
+  attachLongPressReply(b, m);
   return b;
+}
+
+// ---------- Responder a un mensaje específico (cita, como WhatsApp) ----------
+let _replyingTo = null; // {wa_message_id, sender, preview}
+function quotedPreviewLabel(qm){
+  if(!qm) return "Mensaje";
+  if(qm.msg_type==="image") return "📷 Foto";
+  if(qm.msg_type==="video") return "🎥 Video";
+  if(qm.msg_type==="audio") return "🎤 Audio";
+  if(qm.msg_type==="document") return "📄 Documento";
+  return (qm.body||"Mensaje").slice(0,80);
+}
+function quotedPreviewHtml(m){
+  if(!m.reply_to) return "";
+  const qm=state.messages.find(x=>x.wa_message_id===m.reply_to);
+  const sender=qm ? (qm.direction==="out"?"Tú":(state.chats.get(state.active)?.name||"Cliente")) : "Mensaje";
+  return `<div class="msg-quote">
+    <div class="msg-quote-sender">${esc(sender)}</div>
+    <div class="msg-quote-text">${esc(quotedPreviewLabel(qm))}</div>
+  </div>`;
+}
+function attachLongPressReply(node, m){
+  if(!m.wa_message_id) return; // solo se puede citar un mensaje que ya tiene ID real de WhatsApp
+  let timer=null;
+  const start=()=>{ timer=setTimeout(()=>{ timer=null; startReplyTo(m); if(navigator.vibrate) navigator.vibrate(40); },500); };
+  const cancel=()=>{ if(timer){ clearTimeout(timer); timer=null; } };
+  node.addEventListener("touchstart", start, {passive:true});
+  node.addEventListener("touchend", cancel);
+  node.addEventListener("touchmove", cancel);
+  node.addEventListener("mousedown", start);
+  node.addEventListener("mouseup", cancel);
+  node.addEventListener("mouseleave", cancel);
+}
+function startReplyTo(m){
+  _replyingTo = { wa_message_id: m.wa_message_id, sender: m.direction==="out"?"Tú":(state.chats.get(state.active)?.name||"Cliente"), preview: quotedPreviewLabel(m) };
+  renderReplyPreview();
+  $("#chatInput")?.focus();
+}
+function cancelReply(){
+  _replyingTo = null;
+  renderReplyPreview();
+}
+function renderReplyPreview(){
+  const box=$("#replyPreview"); if(!box) return;
+  if(!_replyingTo){ box.style.display="none"; box.innerHTML=""; return; }
+  box.style.display="flex";
+  box.innerHTML=`
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:700;color:var(--accent-dark)">Respondiendo a ${esc(_replyingTo.sender)}</div>
+      <div style="font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(_replyingTo.preview)}</div>
+    </div>
+    <button onclick="cancelReply()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;flex-shrink:0"><span class="material-symbols-outlined" style="font-size:18px">close</span></button>
+  `;
 }
 function renderMessages(keepScroll){
   const box=$("#msgs"); box.innerHTML="";
@@ -768,11 +826,13 @@ async function sendCurrent(){
 }
 async function dispatch(text){
   const phone=state.active; const now=new Date().toISOString();
-  appendMessage({body:text,direction:"out",created_at:now,msg_type:"text"});
+  const replyTo=_replyingTo?.wa_message_id||null;
+  appendMessage({body:text,direction:"out",created_at:now,msg_type:"text",reply_to:replyTo});
+  cancelReply();
   const c=state.chats.get(phone); c.last=text; c.lastAt=now; renderChatList();
   try{
     await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({conversation_id:state.chats.get(phone)?.id||phone,phone,body:text})});
+      body:JSON.stringify({conversation_id:state.chats.get(phone)?.id||phone,phone,body:text,reply_to:replyTo})});
   }catch(e){console.error("envío:",e);}
 }
 
@@ -4786,6 +4846,8 @@ function _connectWaSocket(){
           body:m.body||"", direction:m.direction==="outbound"?"out":"in",
           created_at:m.ts||m.created_at, msg_type:m.type||"text", media_url:m.media_url||null,
           status:m.status||"sent",
+          wa_message_id: m.wa_message_id||null,
+          reply_to: m.reply_to||null,
         }));
         renderMessages();
       }
