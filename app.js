@@ -1116,6 +1116,36 @@ async function encodeToMp3(blob){
   return new Blob(chunks,{type:"audio/mpeg"});
 }
 
+// ---------- Nivel de audio en vivo mientras se graba (barras, como WhatsApp) ----------
+let _levelAnalyser=null, _levelCtx=null, _levelRAF=null;
+function startLevelMeter(stream){
+  try{
+    _levelCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const src=_levelCtx.createMediaStreamSource(stream);
+    _levelAnalyser=_levelCtx.createAnalyser();
+    _levelAnalyser.fftSize=256;
+    src.connect(_levelAnalyser);
+    const data=new Uint8Array(_levelAnalyser.frequencyBinCount);
+    const loop=()=>{
+      if(!_levelAnalyser) return;
+      _levelAnalyser.getByteFrequencyData(data);
+      let sum=0; for(let i=0;i<data.length;i++) sum+=data[i];
+      const pct=Math.min(1,(sum/data.length)/70);
+      document.querySelectorAll("#micLevelBars .mic-bar").forEach(bar=>{
+        const jitter=0.6+Math.random()*0.5;
+        bar.style.height=(4+pct*22*jitter)+"px";
+      });
+      _levelRAF=requestAnimationFrame(loop);
+    };
+    loop();
+  }catch(e){}
+}
+function stopLevelMeter(){
+  if(_levelRAF) cancelAnimationFrame(_levelRAF);
+  _levelRAF=null; _levelAnalyser=null;
+  if(_levelCtx){ _levelCtx.close().catch(()=>{}); _levelCtx=null; }
+}
+
 // ---------- Nota de voz: mantener presionado para grabar (como WhatsApp) ----------
 let _chatRecorder=null, _chatAudioChunks=[];
 async function startVoiceRecording(){
@@ -1124,6 +1154,7 @@ async function startVoiceRecording(){
   const btn=$("#chatVoiceBtn");
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    startLevelMeter(stream);
     // Orden de prioridad: SOLO formatos que WhatsApp Cloud API acepta para audio
     // (audio/ogg;codecs=opus, audio/mpeg, audio/amr, audio/mp4, audio/aac).
     // Antes se probaba audio/webm primero — Chrome/Android lo soportan bien para
@@ -1141,32 +1172,18 @@ async function startVoiceRecording(){
     _chatRecorder.onstop=async()=>{
       btn?.classList.remove("rec","locked");
       renderMicHint(false);
+      stopLevelMeter();
       stream.getTracks().forEach(t=>t.stop());
       const realType=_chatRecorder.mimeType||mime||"audio/mp4";
       const rawBlob=new Blob(_chatAudioChunks,{type:realType});
       if(rawBlob.size===0) return; // grabación cancelada/vacía, no manda nada
-      const hint=$("#micRecHint");
-      if(hint){ hint.style.display="block"; hint.textContent="⏳ Procesando audio…"; }
+      showVoicePreviewProcessing();
       let mp3Blob;
       try{ mp3Blob=await encodeToMp3(rawBlob); }
-      catch(e){ console.error("Error convirtiendo a mp3:",e); alert("No se pudo procesar el audio grabado."); if(hint) hint.style.display="none"; return; }
-      // Sube a R2 (worker), igual que las fotos — no a Supabase
-      const formData=new FormData();
-      formData.append("file", mp3Blob, `nota_${Date.now()}.mp3`);
-      const upResp=await fetch(`${C.WORKER_URL}/wa/upload`,{method:"POST",body:formData}).then(r=>r.json()).catch(()=>null);
-      if(hint) hint.style.display="none";
-      if(!upResp?.url){ alert("No se pudo subir la nota de voz."); return; }
-      const now=new Date().toISOString();
-      const replyTo=_replyingTo?.wa_message_id||null;
-      const localMsg={body:"",media_url:upResp.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo};
-      appendMessage(localMsg);
-      cancelReply();
-      await markRepliedAndAdvanceStage(state.active);
-      const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
-      const convId=c?.id||state.active;
-      const sendD=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:upResp.url,type:"audio",reply_to:replyTo})}).then(r=>r.json()).catch(()=>null);
-      if(sendD?.wa_message_id) localMsg.wa_message_id=sendD.wa_message_id;
+      catch(e){ console.error("Error convirtiendo a mp3:",e); alert("No se pudo procesar el audio grabado."); discardVoicePreview(); return; }
+      // Muestra el preview (reproducir / descartar / enviar) — ANTES no
+      // preguntaba nada, se mandaba directo apenas soltabas el botón.
+      showVoicePreview(mp3Blob);
     };
     _chatRecorder.start();
     btn?.classList.add("rec");
@@ -1185,11 +1202,57 @@ function renderMicHint(show){
   if(!hint){
     hint=document.createElement("div");
     hint.id="micRecHint";
-    hint.style.cssText="position:absolute;bottom:100%;left:0;right:0;background:var(--accent-dark,#a07d32);color:#fff;font-size:12px;text-align:center;padding:5px;border-radius:8px 8px 0 0";
+    hint.style.cssText="position:absolute;bottom:100%;left:0;right:0;background:var(--accent-dark,#a07d32);color:#fff;font-size:12px;padding:6px 10px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:center;gap:10px";
+    hint.innerHTML=`<span id="micHintText"></span><span id="micLevelBars" style="display:flex;align-items:center;gap:3px;height:26px">${'<span class="mic-bar"></span>'.repeat(9)}</span>`;
     $("#composer")?.parentElement?.insertBefore(hint, $("#composer"));
   }
-  hint.style.display="block";
-  hint.textContent=_micLocked?"🔒 Grabando — toca el micrófono para enviar":"🎙️ Grabando… suelta para enviar, desliza arriba para bloquear";
+  hint.style.display="flex";
+  const t=$("#micHintText"); if(t) t.textContent=_micLocked?"🔒 Grabando — toca el micrófono para terminar":"🎙️ Grabando… suelta para revisar, desliza arriba para bloquear";
+}
+
+// ---------- Preview de la nota de voz antes de mandarla (como WhatsApp) ----------
+let _pendingVoiceMp3=null, _pendingVoiceUrl=null;
+function showVoicePreviewProcessing(){
+  const box=$("#voicePreviewBar"); if(!box) return;
+  box.style.display="flex";
+  box.innerHTML=`<div style="flex:1;text-align:center;font-size:13px;color:var(--text-dim)">⏳ Procesando audio…</div>`;
+}
+function showVoicePreview(mp3Blob){
+  _pendingVoiceMp3=mp3Blob;
+  if(_pendingVoiceUrl) URL.revokeObjectURL(_pendingVoiceUrl);
+  _pendingVoiceUrl=URL.createObjectURL(mp3Blob);
+  const box=$("#voicePreviewBar"); if(!box) return;
+  box.style.display="flex";
+  box.innerHTML=`
+    <button onclick="discardVoicePreview()" title="Descartar" style="background:none;border:none;color:#c0392b;cursor:pointer;flex-shrink:0;display:flex"><span class="material-symbols-outlined">delete</span></button>
+    <audio controls src="${_pendingVoiceUrl}" style="flex:1;height:36px;min-width:0"></audio>
+    <button onclick="sendVoicePreview()" title="Enviar" style="background:var(--accent);border:none;color:#fff;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0"><span class="material-symbols-outlined" style="font-size:18px">send</span></button>
+  `;
+}
+function discardVoicePreview(){
+  if(_pendingVoiceUrl) URL.revokeObjectURL(_pendingVoiceUrl);
+  _pendingVoiceMp3=null; _pendingVoiceUrl=null;
+  const box=$("#voicePreviewBar"); if(box){ box.style.display="none"; box.innerHTML=""; }
+}
+async function sendVoicePreview(){
+  if(!_pendingVoiceMp3 || !state.active) return;
+  const mp3Blob=_pendingVoiceMp3;
+  discardVoicePreview();
+  const formData=new FormData();
+  formData.append("file", mp3Blob, `nota_${Date.now()}.mp3`);
+  const upResp=await fetch(`${C.WORKER_URL}/wa/upload`,{method:"POST",body:formData}).then(r=>r.json()).catch(()=>null);
+  if(!upResp?.url){ alert("No se pudo subir la nota de voz."); return; }
+  const now=new Date().toISOString();
+  const replyTo=_replyingTo?.wa_message_id||null;
+  const localMsg={body:"",media_url:upResp.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo};
+  appendMessage(localMsg);
+  cancelReply();
+  await markRepliedAndAdvanceStage(state.active);
+  const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
+  const convId=c?.id||state.active;
+  const sendD=await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:upResp.url,type:"audio",reply_to:replyTo})}).then(r=>r.json()).catch(()=>null);
+  if(sendD?.wa_message_id) localMsg.wa_message_id=sendD.wa_message_id;
 }
 
 let _micStartY=0, _micLocked=false;
@@ -1899,6 +1962,7 @@ async function syncPendingSales(){
 
   _syncing=false;
   renderPendingBadge();
+  loadGoalBar(); // por si alguna venta encolada se sincronizó recién
 }
 
 // Escucha cambios de conectividad
@@ -2376,6 +2440,17 @@ function saveCustomerModal(){
   }else{
     pos.billing=null;
   }
+
+  // Confirmación final antes de guardar — evita errores de digitación que
+  // luego terminan mal en la factura/envío de Shopify
+  const resumen=`¿Confirmas que estos datos del cliente están correctos?\n\n`
+    +`${pos.customer.full_name}\n`
+    +`Cédula: ${pos.customer.doc}\n`
+    +`Celular: ${pos.customer.phone}\n`
+    +`Correo: ${pos.customer.email}\n`
+    +(pos.customer.address?`Dirección: ${pos.customer.address}\n`:``)
+    +`${pos.customer.city}, ${pos.customer.depto}`;
+  if(!confirm(resumen)) return;
 
   pos.customerSaved=true;
   const btn=$("#btnCustomer");
@@ -2899,6 +2974,7 @@ async function confirmSale(){
   }catch(e){ console.warn("No se pudo guardar cliente en base:",e); }
 
   btn.textContent = shopify.ok ? `✓ Venta ${shopify.order_name||""}` : "✓ Registrada (revisar Shopify)";
+  loadGoalBar(); // refresca la meta del día/mes en vivo, sin necesitar recargar
   setTimeout(()=>{ clearPosCart(); btn.textContent="Registrar venta"; },1800);
 }
 
