@@ -139,6 +139,37 @@ Base de datos: `bloom-wa` (id: `9f398288-159e-46e5-9ebf-8ff290155d14`)
 
 ## Historial de sesiones con Claude
 
+### 2026-07-02
+
+#### Ficha del cliente (panel del chat): confirmación única al salir, no por cada cambio
+- Antes: `addTag`, `removeTag`, `setStage`, `movePipeline` pedían `confirm()` individual en cada acción — el usuario pidió que NO interrumpiera en cada cambio.
+- **Fix**: esas 4 funciones ahora aplican el cambio solo en local (UI se actualiza al instante) y marcan el estado como "pendiente" (`_panelPending`, con snapshot de tags/stage/pipeline_id "antes"). Una única función `commitOrDiscardPanelChanges()` compara el estado actual contra el snapshot y, si hay diferencias, pregunta UNA vez ("¿Guardar los cambios en las etiquetas y la etapa de X?"); si el usuario dice que no, revierte todo. Se llama al cerrar el chat (`closeChat`), al abrir otro chat (`openChat`, antes de cambiar `state.active`) y al cambiar de pantalla (`switchScreen`).
+- `_applyAddTag()` (sin confirmación) sigue existiendo aparte para la auto-etiqueta "recompra" — no se tocó.
+
+#### Editar cliente desde la ficha: ahora es un popup completo, no un formulario inline
+- Antes había un formulario chiquito inline (solo dirección/depto/ciudad) dentro del panel — el usuario pidió que fuera un popup como el del POS, con TODOS los datos editables.
+- **Fix**: nuevo modal `#pCustEditModal` (mismo estilo que `#customerModal` del POS) con nombres, apellidos, cédula, celular, correo, dirección, depto, ciudad. Funciones: `openCustomerFullEdit()`, `closeCustomerFullEdit()`, `savePanelCustomerFull()`, `onPCustModalDeptoChange()`. Al guardar valida todos los campos (mismas reglas que `saveCustomerModal()` del POS: `cedulaValida`, `celularValido`, `emailValido`) y muestra el mismo popup de confirmación grande con el nombre en negrita (`askCustomerNameConfirm()`) antes de hacer el `PATCH` a `customers`.
+- `askCustomerNameConfirm(name, label, yesLabel, noLabel)` ahora acepta texto custom (antes el label "¿Confirmas que el nombre...?" estaba fijo en el HTML) — se reutiliza para el POS y para esta ficha.
+- Se eliminaron `toggleCustomerEdit()`, `onPCustDeptoChange()`, `saveCustomerPanelEdit()` y el div `#pCustomerEditForm` (reemplazados por lo de arriba).
+
+#### Fix: "meta del día" en el POS mostraba plata aunque no se hubiera vendido nada
+- **Causa raíz**: el filtro `created_at=gte.${today}T00:00:00` (en `loadGoalBar()`, app.js) no llevaba zona horaria — Supabase lo interpreta como UTC. Colombia es UTC-5, así que "hoy a las 00:00" se calculaba 5 horas antes de la medianoche real, colando ventas de la noche anterior en el total de "hoy" (y del mes).
+- **Fix**: se le agregó `-05:00` explícito al filtro, tanto para el total del día como el del mes.
+
+#### Bug largo: selector de productos ("Enviar productos" en el chat) — varias rondas hasta encontrar la causa real
+Este fue el bug más difícil de la sesión, con varias iteraciones fallidas antes de dar con la causa real — dejar la lección aquí por si se repite un patrón parecido:
+1. **Primer síntoma reportado**: las imágenes de los productos se veían como líneas delgadas (`.pc-img` tenía `aspect-ratio:3/4`, que colapsaba en el navegador/webview del usuario). Fix: volver a `height:120px` fijo. **Esto NO resolvió el problema real** (el usuario ya lo había reportado antes en una sesión anterior con la misma `aspect-ratio`, y volvió a pasar).
+2. **Segundo síntoma**: después de "arreglarlo", el modal mostraba solo una fila de productos y luego un espacio en blanco enorme, sin llegar al botón de enviar. **Causa raíz real** (mismo patrón que el bug del `.sidebar` del 2026-07-01, pero en el eje vertical): `.prod-grid` era `flex:1;overflow-y:auto` dentro de `.sheet` (flex column), pero sin `min-height:0` un ítem flex nunca se achica por debajo de la altura de su contenido — entonces el grid intentaba crecer para mostrar TODOS los productos a la vez, rompiendo el límite de `.sheet` (`max-height:78dvh`).
+   - **Fix real**: se separó `.sheet` en 3 zonas — `.sheet-head` (fijo arriba), un wrapper nuevo `flex:1;min-height:0;overflow-y:auto` que contiene la búsqueda + la barra de tallas + el grid (esta es la única parte que scrollea), y `.sheet-foot` (fijo abajo, el botón "Enviar N productos"). `.sheet` pasó a `overflow:hidden`.
+3. **Tercer síntoma**: la barra de tallas (arriba de los productos) se veía como "algo que no se alcanza a ver" / el usuario pensó que eran "colecciones". **Causa raíz**: las pastillas de talla (`.sz`) tenían `background:var(--bg)` (`#fdfbf7`) sobre un fondo `.sheet` blanco (`#fff`) — contraste casi nulo, prácticamente invisibles. Fix: fondo `var(--surface-2)` + texto oscuro en negrita + se ocultó el scrollbar nativo feo (mismo truco que ya se usaba en el textarea del chat: `scrollbar-width:none` + `::-webkit-scrollbar{display:none}`).
+4. **Cuarto síntoma**: la barra de tallas se veía "cortada"/muy angosta, como tapada por los productos. Fix: `flex-shrink:0` explícito en la barra de búsqueda, la de tallas y el grid (defensivo, para que ningún hijo del wrapper scrolleable se comprima), más `border-bottom` en `.sizes` para separación visual clara y más padding.
+- SW cache subido varias veces en esta sesión: v107 → v112. **Lección**: cuando un fix "no se ve reflejado" después de que el usuario ya recargó, no asumir que es 100% caché — en este caso había un bug real de layout que se fue revelando en capas (imagen → blowout del grid → contraste → compresión), cada uno visible solo después de resolver el anterior.
+
+#### Pendiente / observación
+- **Seguir trabajando en la sección del selector de productos ("Enviar productos")** — quedó funcional pero es la parte de la UI que más iteraciones necesitó esta sesión; vale la pena revisarla de nuevo con el usuario en la próxima sesión para confirmar que quedó completamente bien (fila de tallas, grid, scroll, panel de "seleccionados" con captions editables).
+
+---
+
 ### 2026-07-01
 
 #### Fix: venta POS no creaba el pedido en Shopify si no había stock
@@ -255,7 +286,7 @@ Se agregó `min-width:0` — el mismo patrón que ya tenía `min-height:0` para 
 
 ---
 
-#### 🔴 BUG 2: Selector de productos Shopify — no carga en escritorio, se cierra en móvil
+#### 🟡 BUG 2 (ver actualización 2026-07-02 arriba): Selector de productos Shopify — no carga en escritorio, se cierra en móvil
 
 **Síntoma**:
 - **Escritorio (desktop)**: Al tocar "Productos" en las acciones de la ficha de cliente, el modal se abre con "Cargando productos…" pero nunca muestra los productos.
