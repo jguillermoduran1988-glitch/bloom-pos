@@ -959,11 +959,11 @@
 <div class="modal-bg" id="custConfirmModal">
   <div class="modal-box modal-sm">
     <div class="modal-body" style="text-align:center;padding:26px 22px">
-      <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px">¿Confirmas que el nombre del cliente está correcto?</div>
+      <div id="custConfirmLabel" style="font-size:13px;color:var(--text-dim);margin-bottom:10px">¿Confirmas que el nombre del cliente está correcto?</div>
       <div id="custConfirmName" style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:22px"></div>
       <div style="display:flex;gap:10px">
-        <button onclick="_custConfirmResolve(false)" style="flex:1;padding:12px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer;font-size:14px;color:var(--text)">Corregir</button>
-        <button onclick="_custConfirmResolve(true)" style="flex:1;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px">Sí, es correcto</button>
+        <button id="custConfirmNoBtn" onclick="_custConfirmResolve(false)" style="flex:1;padding:12px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer;font-size:14px;color:var(--text)">Corregir</button>
+        <button id="custConfirmYesBtn" onclick="_custConfirmResolve(true)" style="flex:1;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px">Sí, es correcto</button>
       </div>
     </div>
   </div>

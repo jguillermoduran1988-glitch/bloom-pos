@@ -347,6 +347,7 @@ function renderWindowBanner(phone){
 
 // ---------- Abrir chat ----------
 async function openChat(phone){
+  if(state.active && state.active!==phone) await commitOrDiscardPanelChanges();
   if(window.innerWidth<=720) history.pushState({screen:"chats",chat:phone},"");
   state.active=phone;
   cancelReply();
@@ -367,7 +368,7 @@ async function openChat(phone){
   renderWindowBanner(phone);
   await loadMessages(phone);
 }
-function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");cancelReply();}
+async function closeChat(){await commitOrDiscardPanelChanges();document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");cancelReply();}
 
 // ---------- Mensajes (desde D1 vía worker) ----------
 async function loadMessages(phone){
@@ -692,7 +693,9 @@ async function saveCustomerPanelEdit(){
   const address=$("#pCustAddress").value.trim();
   const depto=$("#pCustDepto").value;
   const city=$("#pCustCity").value;
-  if(!confirm("¿Confirmas que quieres guardar estos cambios en los datos del cliente?")) return;
+  const custName=_panelCustomer.full_name||_panelCustomer.name||"este cliente";
+  const ok=await askCustomerNameConfirm(custName,"¿Confirmas que quieres guardar estos cambios en los datos del cliente?","Sí, guardar","Cancelar");
+  if(!ok) return;
   const r=await sbPatch(`customers?id=eq.${_panelCustomer.id}`,{address:address||null, depto:depto||null, city:city||null});
   if(!r.ok){ alert("No se pudo guardar. Intenta de nuevo."); return; }
   _panelCustomer.address=address||null; _panelCustomer.depto=depto||null; _panelCustomer.city=city||null;
@@ -759,6 +762,8 @@ function tagPickerKey(e){
   }
   if(e.key==="Escape"){_tagPickerOpen=false;$("#tagPickerDrop").classList.remove("open");}
 }
+// Cambios de etiquetas/etapa/embudo se aplican solo en local; se guardan
+// (con una sola confirmación) al salir del chat — ver _ensurePanelPending / commitOrDiscardPanelChanges
 async function _applyAddTag(tag){
   const c=state.chats.get(state.active);
   if(!tag||!c||(c.tags||[]).includes(tag))return;
@@ -768,21 +773,19 @@ async function _applyAddTag(tag){
     method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
   }).catch(()=>{});
 }
-// Wrapper con confirmación — para cuando el vendedor agrega una etiqueta a mano
 async function addTag(tag){
   const c=state.chats.get(state.active);
   if(!tag||!c||(c.tags||[]).includes(tag))return;
-  if(!confirm(`¿Agregar la etiqueta "${tag}"?`)) return;
-  await _applyAddTag(tag);
+  _ensurePanelPending();
+  c.tags=[...(c.tags||[]),tag];
+  renderTags(c); renderChatList();
 }
 async function removeTag(tag){
   const c=state.chats.get(state.active);
-  if(!confirm(`¿Quitar la etiqueta "${tag}"?`)) return;
+  if(!c) return;
+  _ensurePanelPending();
   c.tags=(c.tags||[]).filter(t=>t!==tag);
   renderTags(c); renderChatList();
-  await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(c.phone)}`,{
-    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
-  }).catch(()=>{});
 }
 
 
@@ -801,12 +804,9 @@ function renderStages(c){
 }
 async function setStage(st){
   const c=state.chats.get(state.active); if(!c || c.stage===st) return;
-  if(!confirm(`¿Mover esta conversación a la etapa "${st}"?`)) return;
+  _ensurePanelPending();
   c.stage=st;
   renderStages(c); renderChatList();
-  await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
-    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({stage:st})
-  }).catch(()=>{});
 }
 
 // ---------- Mover de embudo ----------
@@ -819,12 +819,56 @@ async function movePipeline(){
   const idx=parseInt(pick)-1;
   if(isNaN(idx)||!others[idx])return;
   const target=others[idx];
-  if(!confirm(`¿Confirmas mover esta conversación al embudo "${target.name}"?`)) return;
+  _ensurePanelPending();
   c.pipeline_id=target.id; c.stage=target.stages[0];
   renderPanel(); renderChatList();
-  await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
-    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({pipeline_id:target.id,stage:c.stage})
-  }).catch(()=>{});
+}
+
+// ---------- Confirmación única de cambios de la ficha (tags/etapa/embudo) ----------
+// En vez de preguntar en cada cambio, se guarda el estado "antes" al primer
+// cambio y se pregunta UNA vez, al salir/cerrar el chat, si hay diferencias.
+let _panelPending=null;
+function _ensurePanelPending(){
+  const c=state.chats.get(state.active);
+  if(!c) return null;
+  if(!_panelPending || _panelPending.phone!==state.active){
+    _panelPending={ phone: state.active, tagsBefore:[...(c.tags||[])], stageBefore:c.stage, pipelineBefore:c.pipeline_id };
+  }
+  return _panelPending;
+}
+async function commitOrDiscardPanelChanges(){
+  if(!_panelPending) return;
+  const pending=_panelPending; _panelPending=null;
+  const c=state.chats.get(pending.phone);
+  if(!c) return;
+  const tagsChanged=JSON.stringify(pending.tagsBefore)!==JSON.stringify(c.tags||[]);
+  const stageChanged=pending.stageBefore!==c.stage;
+  const pipelineChanged=pending.pipelineBefore!==c.pipeline_id;
+  if(!tagsChanged && !stageChanged && !pipelineChanged) return;
+  const parts=[];
+  if(tagsChanged) parts.push("las etiquetas");
+  if(pipelineChanged) parts.push("el embudo");
+  else if(stageChanged) parts.push("la etapa");
+  const ok=confirm(`¿Guardar los cambios en ${parts.join(" y ")} de "${c.name}"?`);
+  if(ok){
+    if(tagsChanged){
+      await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(c.phone)}`,{
+        method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
+      }).catch(()=>{});
+    }
+    if(stageChanged||pipelineChanged){
+      const body={};
+      if(stageChanged) body.stage=c.stage;
+      if(pipelineChanged) body.pipeline_id=c.pipeline_id;
+      await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
+        method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)
+      }).catch(()=>{});
+    }
+  } else {
+    c.tags=pending.tagsBefore; c.stage=pending.stageBefore; c.pipeline_id=pending.pipelineBefore;
+    renderChatList();
+    if(state.active===pending.phone){ renderTags(c); renderStages(c); renderPanel(); }
+  }
 }
 
 // ---------- Modal crear/editar embudo ----------
@@ -1716,6 +1760,7 @@ function switchScreen(name){
   }
   // Siempre limpiar chat-open/panel-open al cambiar pantalla — sin importar window.innerWidth
   // (si el viewport se expandió, window.innerWidth puede devolver >720 en móvil y dejar chat-open pegado)
+  if(_panelPending) commitOrDiscardPanelChanges();
   document.body.classList.remove("chat-open","panel-open");
   state.active=null;
   const pan=$("#panel"); if(pan) pan.classList.add("hidden");
@@ -2483,10 +2528,13 @@ function _custConfirmResolve(ok){
   if(_custConfirmResolveFn) _custConfirmResolveFn(ok);
   _custConfirmResolveFn=null;
 }
-function askCustomerNameConfirm(name){
+function askCustomerNameConfirm(name,label,yesLabel,noLabel){
   return new Promise(resolve=>{
     _custConfirmResolveFn=resolve;
     const el=$("#custConfirmName"); if(el) el.textContent=name;
+    const lbl=$("#custConfirmLabel"); if(lbl) lbl.textContent=label||"¿Confirmas que el nombre del cliente está correcto?";
+    const yb=$("#custConfirmYesBtn"); if(yb) yb.textContent=yesLabel||"Sí, es correcto";
+    const nb=$("#custConfirmNoBtn"); if(nb) nb.textContent=noLabel||"Corregir";
     $("#custConfirmModal")?.classList.add("show");
   });
 }
