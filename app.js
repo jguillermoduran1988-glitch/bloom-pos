@@ -608,7 +608,6 @@ let _panelCustomer=null;
 async function loadCustomerRecord(phone){
   const sec=$("#pCustomerSec"); if(!sec) return;
   sec.style.display="none";
-  $("#pCustomerEditForm").style.display="none";
   const variants=[phone, "+"+phone, phone.slice(2)];
   let customer=null;
   for(const v of variants){
@@ -657,49 +656,72 @@ async function loadCustomerRecord(phone){
   sec.style.display="";
 }
 
-// ---- Editar dirección/ciudad/depto desde la ficha del cliente (panel del chat) ----
-function onPCustDeptoChange(){
-  const deptoSel=$("#pCustDepto"), citySel=$("#pCustCity");
+// ---- Editar cliente desde la ficha del chat — mismo popup que el del POS ----
+function onPCustModalDeptoChange(){
+  const deptoSel=$("#pcmDepto"), citySel=$("#pcmCity");
   const chosen=deptoSel.value;
   citySel.innerHTML='<option value="">Selecciona…</option>';
   if(chosen && window.COLOMBIA && window.COLOMBIA[chosen]){
     window.COLOMBIA[chosen].forEach(c=>{ const o=document.createElement("option"); o.value=c; o.textContent=c; citySel.appendChild(o); });
   }
 }
-function toggleCustomerEdit(){
-  const form=$("#pCustomerEditForm"); if(!form) return;
-  const show=form.style.display==="none";
-  if(show && _panelCustomer){
-    $("#pCustAddress").value=_panelCustomer.address||"";
-    const deptoSel=$("#pCustDepto");
-    deptoSel.innerHTML='<option value="">Selecciona…</option>';
-    if(window.COLOMBIA){
-      Object.keys(window.COLOMBIA).sort((a,b)=>a.localeCompare(b,"es")).forEach(d=>{
-        const o=document.createElement("option"); o.value=d; o.textContent=d;
-        if(d===(_panelCustomer.depto||_panelCustomer.department)) o.selected=true;
-        deptoSel.appendChild(o);
-      });
-    }
-    onPCustDeptoChange();
-    if(_panelCustomer.city){
-      const citySel=$("#pCustCity");
-      [...citySel.options].forEach(o=>{ if(o.value.toUpperCase()===String(_panelCustomer.city).toUpperCase()) o.selected=true; });
-    }
+function openCustomerFullEdit(){
+  if(!_panelCustomer){ alert("Este contacto todavía no tiene un registro de cliente."); return; }
+  $("#pcmName").value=_panelCustomer.name||"";
+  $("#pcmLastName").value=_panelCustomer.last_name||"";
+  $("#pcmDoc").value=_panelCustomer.doc||_panelCustomer.document||"";
+  $("#pcmPhone").value=_panelCustomer.phone||"";
+  $("#pcmEmail").value=_panelCustomer.email||"";
+  $("#pcmAddress").value=_panelCustomer.address||"";
+  const deptoSel=$("#pcmDepto");
+  deptoSel.innerHTML='<option value="">Selecciona…</option>';
+  if(window.COLOMBIA){
+    Object.keys(window.COLOMBIA).sort((a,b)=>a.localeCompare(b,"es")).forEach(d=>{
+      const o=document.createElement("option"); o.value=d; o.textContent=d;
+      if(d===(_panelCustomer.depto||_panelCustomer.department)) o.selected=true;
+      deptoSel.appendChild(o);
+    });
   }
-  form.style.display=show?"block":"none";
+  onPCustModalDeptoChange();
+  if(_panelCustomer.city){
+    const citySel=$("#pcmCity");
+    [...citySel.options].forEach(o=>{ if(o.value.toUpperCase()===String(_panelCustomer.city).toUpperCase()) o.selected=true; });
+  }
+  $("#pCustEditModal").classList.add("show");
 }
-async function saveCustomerPanelEdit(){
+function closeCustomerFullEdit(){ $("#pCustEditModal").classList.remove("show"); }
+async function savePanelCustomerFull(){
   if(!_panelCustomer?.id){ alert("No se encontró el registro del cliente."); return; }
-  const address=$("#pCustAddress").value.trim();
-  const depto=$("#pCustDepto").value;
-  const city=$("#pCustCity").value;
-  const custName=_panelCustomer.full_name||_panelCustomer.name||"este cliente";
-  const ok=await askCustomerNameConfirm(custName,"¿Confirmas que quieres guardar estos cambios en los datos del cliente?","Sí, guardar","Cancelar");
+  const name=$("#pcmName").value.trim();
+  const lastName=$("#pcmLastName").value.trim();
+  const doc=$("#pcmDoc").value.trim();
+  const phone=$("#pcmPhone").value.trim();
+  const email=$("#pcmEmail").value.trim();
+  const address=$("#pcmAddress").value.trim();
+  const depto=$("#pcmDepto").value;
+  const city=$("#pcmCity").value;
+  if(!name){ alert("Faltan los nombres"); return; }
+  if(!lastName){ alert("Faltan los apellidos"); return; }
+  if(!doc){ alert("Falta la cédula"); return; }
+  if(!cedulaValida(doc)){ alert("Cédula inválida: no puede tener 9 dígitos, y si tiene 10 debe empezar en 1"); return; }
+  if(!phone){ alert("Falta el celular"); return; }
+  if(!celularValido(phone)){ alert("Celular inválido: debe empezar en 3 y tener 10 dígitos"); return; }
+  if(!email || !emailValido(email)){ alert("Correo inválido"); return; }
+  if(!depto){ alert("Selecciona el departamento"); return; }
+  if(!city){ alert("Selecciona la ciudad"); return; }
+
+  const fullName=`${name} ${lastName}`.trim().toUpperCase();
+  const ok=await askCustomerNameConfirm(fullName);
   if(!ok) return;
-  const r=await sbPatch(`customers?id=eq.${_panelCustomer.id}`,{address:address||null, depto:depto||null, city:city||null});
+
+  const body={
+    name:name.toUpperCase(), last_name:lastName.toUpperCase(), full_name:fullName,
+    doc, phone, email:email.toLowerCase(), address:address.toUpperCase()||null, depto, city,
+  };
+  const r=await sbPatch(`customers?id=eq.${_panelCustomer.id}`, body);
   if(!r.ok){ alert("No se pudo guardar. Intenta de nuevo."); return; }
-  _panelCustomer.address=address||null; _panelCustomer.depto=depto||null; _panelCustomer.city=city||null;
-  toggleCustomerEdit();
+  Object.assign(_panelCustomer, body);
+  closeCustomerFullEdit();
   await loadCustomerRecord(state.active);
 }
 

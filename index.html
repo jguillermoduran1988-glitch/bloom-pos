@@ -313,7 +313,7 @@
   .overlay.show{display:flex}
   .overlay.center{align-items:center}
   .modal{background:var(--surface);width:90%;max-width:380px;max-height:88vh;overflow-y:auto;border-radius:18px;padding:18px;animation:pop .2s ease}
-  .sheet{background:var(--surface);width:100%;max-width:680px;max-height:78dvh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow-y:auto;animation:up .25s ease}
+  .sheet{background:var(--surface);width:100%;max-width:680px;max-height:78dvh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:up .25s ease}
   @keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
   @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
   .sheet-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
@@ -673,20 +673,9 @@
     <div class="p-sec" id="pCustomerSec" style="display:none">
       <div class="p-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>Datos cliente <span style="font-size:10px;font-weight:400;color:var(--text-dim)" id="pCustomerSub"></span></span>
-        <button class="iconbtn" style="width:26px;height:26px" onclick="toggleCustomerEdit()" title="Editar dirección/ciudad"><span class="material-symbols-outlined" style="font-size:15px">edit</span></button>
+        <button class="iconbtn" style="width:26px;height:26px" onclick="openCustomerFullEdit()" title="Editar datos del cliente"><span class="material-symbols-outlined" style="font-size:15px">edit</span></button>
       </div>
       <div id="pCustomerData"></div>
-      <div id="pCustomerEditForm" style="display:none;margin-top:8px">
-        <div class="field"><label>Dirección</label><input id="pCustAddress" placeholder="Dirección"></div>
-        <div class="field-row">
-          <div class="field"><label>Departamento</label><select id="pCustDepto" onchange="onPCustDeptoChange()"><option value="">Selecciona…</option></select></div>
-          <div class="field"><label>Ciudad</label><select id="pCustCity"><option value="">Selecciona…</option></select></div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button onclick="toggleCustomerEdit()" style="flex:1;padding:8px;border:1px solid var(--border);background:none;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text)">Cancelar</button>
-          <button onclick="saveCustomerPanelEdit()" style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px">Guardar</button>
-        </div>
-      </div>
       <div id="pCustomerSales" style="margin-top:6px"></div>
     </div>
     <div class="p-sec">
@@ -728,11 +717,13 @@
   <div class="overlay" id="overlay">
     <div class="sheet">
       <div class="sheet-head"><h3>Enviar productos</h3><button class="iconbtn" onclick="closePicker()">✕</button></div>
-      <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
-        <input id="pickerSearch" placeholder="Buscar producto…" oninput="renderProducts()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
+      <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column">
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+          <input id="pickerSearch" placeholder="Buscar producto…" oninput="renderProducts()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
+        </div>
+        <div class="sizes" id="sizeRow"></div>
+        <div class="prod-grid" id="prodGrid"></div>
       </div>
-      <div class="sizes" id="sizeRow"></div>
-      <div class="prod-grid" id="prodGrid"></div>
       <div id="pickerSelectedWrap" style="display:none;border-top:1px solid var(--border);padding:10px 14px;max-height:200px;overflow-y:auto">
         <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Seleccionados — podés editar el texto que se manda</div>
         <div id="pickerSelectedList" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -952,6 +943,30 @@
       </div>
     </div>
     <div class="modal-foot"><button class="modal-save" onclick="saveCustomerModal()">Guardar datos</button></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: EDITAR CLIENTE DESDE LA FICHA DEL CHAT ===== -->
+<div class="modal-bg" id="pCustEditModal">
+  <div class="modal-box">
+    <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">assignment</span> Datos del cliente</h3><button class="modal-x" onclick="closeCustomerFullEdit()">✕</button></div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field"><label>Nombres *</label><input id="pcmName" placeholder="Nombres"></div>
+        <div class="field"><label>Apellidos *</label><input id="pcmLastName" placeholder="Apellidos"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Cédula *</label><input id="pcmDoc" placeholder="Número" inputmode="numeric"></div>
+        <div class="field"><label>Celular *</label><input id="pcmPhone" placeholder="300..." inputmode="numeric" maxlength="10"></div>
+      </div>
+      <div class="field"><label>Correo *</label><input id="pcmEmail" placeholder="correo@ejemplo.com" inputmode="email"></div>
+      <div class="field"><label>Dirección (opcional)</label><input id="pcmAddress" placeholder="Calle 00 # 00-00"></div>
+      <div class="field-row">
+        <div class="field"><label>Departamento *</label><select id="pcmDepto" onchange="onPCustModalDeptoChange()"><option value="">Selecciona…</option></select></div>
+        <div class="field"><label>Ciudad / Municipio *</label><select id="pcmCity"><option value="">Selecciona…</option></select></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="modal-save" onclick="savePanelCustomerFull()">Guardar datos</button></div>
   </div>
 </div>
 
