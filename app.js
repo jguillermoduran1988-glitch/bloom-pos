@@ -1411,10 +1411,29 @@ function updateSendBtn(){const n=picker.selected.size;const b=$("#sendProdBtn");
 async function sendProducts(){
   const sel=picker.products.filter(p=>picker.selected.has(p.id));
   const sz=picker.size?` (talla ${picker.size})`:"";
-  const lines=sel.map(p=>`• *${p.name}*${sz} — ${money(p.price)}`).join("\n");
-  const name=state.chats.get(state.active).name.split(" ")[0];
-  const msg=`Hola ${name}! 🌸 Te comparto estas opciones:\n\n${lines}\n\n¿Cuál te gusta más? Te la aparto ya 💕`;
-  closePicker(); await dispatch(msg);
+  const phone=state.active;
+  const c=state.chats.get(phone);
+  const convId=c?.id||phone;
+  closePicker();
+  const name=c?.name?.split(" ")[0]||"";
+  await dispatch(`Hola ${name}! 🌸 Te comparto estas opciones:`);
+  // Manda cada producto como foto real (no solo el texto) cuando tiene imagen
+  for(const p of sel){
+    const caption=`*${p.name}*${sz} — ${money(p.price)}`;
+    const now=new Date().toISOString();
+    if(p.image){
+      appendMessage({body:caption,media_url:p.image,direction:"out",created_at:now,msg_type:"image"});
+      if(c){ c.last="📷 Foto"; c.lastAt=now; renderChatList(); }
+      await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone,body:caption,media_url:p.image,type:"image"})}).catch(()=>{});
+    }else{
+      appendMessage({body:caption,direction:"out",created_at:now,msg_type:"text"});
+      if(c){ c.last=caption; c.lastAt=now; renderChatList(); }
+      await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({conversation_id:convId,phone,body:caption})}).catch(()=>{});
+    }
+  }
+  await dispatch(`¿Cuál te gusta más? Te la aparto ya 💕`);
 }
 
 // ---------- Realtime ----------
