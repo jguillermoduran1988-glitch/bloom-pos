@@ -318,7 +318,7 @@
   @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
   .sheet-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
   .sheet-head h3{font-size:16px}
-  .sizes{display:flex;gap:6px;padding:10px 16px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .sizes{display:flex;gap:6px;padding:12px 16px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;flex-shrink:0;border-bottom:1px solid var(--border)}
   .sizes::-webkit-scrollbar{display:none}
   .sz{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface-2);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;flex-shrink:0}
   .sz.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
@@ -719,11 +719,11 @@
     <div class="sheet">
       <div class="sheet-head"><h3>Enviar productos</h3><button class="iconbtn" onclick="closePicker()">✕</button></div>
       <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column">
-        <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <div style="flex-shrink:0;padding:8px 14px;border-bottom:1px solid var(--border)">
           <input id="pickerSearch" placeholder="Buscar producto…" oninput="renderProducts()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--bg);color:var(--text);outline:none">
         </div>
         <div class="sizes" id="sizeRow"></div>
-        <div class="prod-grid" id="prodGrid"></div>
+        <div class="prod-grid" id="prodGrid" style="flex-shrink:0"></div>
       </div>
       <div id="pickerSelectedWrap" style="display:none;border-top:1px solid var(--border);padding:10px 14px;max-height:200px;overflow-y:auto">
         <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Seleccionados — podés editar el texto que se manda</div>
