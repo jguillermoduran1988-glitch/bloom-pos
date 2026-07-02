@@ -1145,6 +1145,7 @@
         <button id="datTab3" onclick="datosTab('pers')"><span class="material-symbols-outlined">package_2</span> <span class="dat-tab-lbl">Pers.</span></button>
         <button id="datTab6" onclick="datosTab('exchanges')"><span class="material-symbols-outlined">swap_horiz</span> <span class="dat-tab-lbl">Cambios</span></button>
         <button id="datTab7" onclick="datosTab('etiquetas')"><span class="material-symbols-outlined">label</span> <span class="dat-tab-lbl">Etiquetas</span></button>
+        <button id="datTab8" onclick="datosTab('proveedores')"><span class="material-symbols-outlined">local_shipping</span> <span class="dat-tab-lbl">Proveedores</span></button>
       </div>
       <button class="dat-more-btn" id="datMoreBtn" onclick="toggleDatMore()" title="Más opciones"><span class="material-symbols-outlined">more_horiz</span></button>
     </div>
@@ -1442,6 +1443,115 @@
       </div>
     </div>
 
+    <!-- Pestaña: Proveedores (consignación) -->
+    <div id="datPaneProveedores" style="display:none">
+      <div class="cfg-sec">
+        <h3 style="display:flex;align-items:center;justify-content:space-between">
+          <span><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">local_shipping</span> Proveedores en consignación</span>
+          <button onclick="openSupplierModal()" style="display:flex;align-items:center;gap:4px;padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer"><span class="material-symbols-outlined" style="font-size:16px">add</span> Proveedor</button>
+        </h3>
+        <div id="cnSuppliersList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== MODAL: PROVEEDOR (crear/editar) ===== -->
+<div class="modal-bg" id="cnSupplierModal">
+  <div class="modal-box modal-sm">
+    <div class="modal-head"><h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">local_shipping</span> Proveedor</h3><button class="modal-x" onclick="closeSupplierModal()">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="cnSupId">
+      <div class="field"><label>Nombre del proveedor</label><input id="cnSupName" placeholder="Ej: Confecciones XYZ"></div>
+      <div class="field-row">
+        <div class="field"><label>Contacto</label><input id="cnSupContactName" placeholder="Nombre del contacto"></div>
+        <div class="field"><label>Teléfono</label><input id="cnSupContactPhone" placeholder="300..." inputmode="numeric"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-del" id="cnSupDeleteBtn" onclick="deleteSupplier()" style="display:none"><span class="material-symbols-outlined" style="font-size:18px">delete</span> Borrar</button>
+      <button class="modal-save" onclick="saveSupplier()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: DETALLE DE PROVEEDOR ===== -->
+<div class="modal-bg" id="cnDetailModal">
+  <div class="modal-box" style="max-width:680px">
+    <div class="modal-head">
+      <h3 id="cnDetailTitle"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">local_shipping</span> Proveedor</h3>
+      <button class="modal-x" onclick="closeSupplierDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button onclick="openAddConsignmentProduct()" style="flex:1;min-width:140px;padding:9px;background:var(--accent-soft);color:var(--accent-dark);border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">+ Producto</button>
+        <button onclick="openDeliveryModal()" style="flex:1;min-width:140px;padding:9px;background:var(--accent-soft);color:var(--accent-dark);border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">+ Registrar entrega</button>
+        <button onclick="openSettlementModal()" style="flex:1;min-width:140px;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">Cerrar mes</button>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Productos</div>
+      <div id="cnProductsTable" style="margin-bottom:16px"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Historial de cierres</div>
+      <div id="cnSettlementsHistory"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: AGREGAR PRODUCTO A PROVEEDOR ===== -->
+<div class="modal-bg" id="cnAddProductModal">
+  <div class="modal-box modal-sm">
+    <div class="modal-head"><h3>Agregar producto</h3><button class="modal-x" onclick="closeAddConsignmentProduct()">✕</button></div>
+    <div class="modal-body">
+      <div id="cnAddProductPickStep">
+        <input id="cnProductSearch" placeholder="Buscar producto por nombre…" oninput="searchConsignmentProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:8px;background:var(--surface);color:var(--text)">
+        <div id="cnProductSearchResults" style="max-height:260px;overflow-y:auto"></div>
+      </div>
+      <div id="cnAddProductCostStep" style="display:none">
+        <div id="cnAddProductSelectedName" style="font-weight:600;margin-bottom:10px"></div>
+        <div class="field">
+          <label>Forma de pago al proveedor</label>
+          <select id="cnCostType" onchange="updateCostValueLabel()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text)">
+            <option value="fixed">Precio fijo por unidad vendida</option>
+            <option value="percent">% del precio de venta</option>
+          </select>
+        </div>
+        <div class="field"><label id="cnCostValueLabel">Precio por unidad ($)</label><input id="cnCostValue" type="number" min="0" placeholder="0"></div>
+        <button onclick="backToConsignmentSearch()" style="background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;padding:0">‹ Volver a buscar</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-save" id="cnAddProductSaveBtn" style="display:none" onclick="saveConsignmentProduct()">Agregar producto</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: REGISTRAR ENTREGA ===== -->
+<div class="modal-bg" id="cnDeliveryModal">
+  <div class="modal-box modal-sm">
+    <div class="modal-head"><h3>Registrar entrega</h3><button class="modal-x" onclick="closeDeliveryModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Fecha de entrega</label><input id="cnDeliveryDate" type="date"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Cantidades entregadas</div>
+      <div id="cnDeliveryItems" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <div class="field"><label>Notas (opcional)</label><textarea id="cnDeliveryNotes" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;height:60px;background:var(--surface);color:var(--text)"></textarea></div>
+    </div>
+    <div class="modal-foot"><button class="modal-save" onclick="saveDelivery()">Guardar entrega</button></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CIERRE DE MES (conteo físico) ===== -->
+<div class="modal-bg" id="cnSettlementModal">
+  <div class="modal-box" style="max-width:600px">
+    <div class="modal-head"><h3>Cierre de mes — conteo físico</h3><button class="modal-x" onclick="closeSettlementModal()">✕</button></div>
+    <div class="modal-body">
+      <div id="cnSettlementPeriod" style="font-size:12px;color:var(--text-dim);margin-bottom:10px"></div>
+      <button onclick="scanForConsignmentCount()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:var(--accent-soft);color:var(--accent-dark);border:1px solid var(--border);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:14px">
+        <span class="material-symbols-outlined" style="font-size:18px">photo_camera</span> Escanear conteo
+      </button>
+      <div id="cnSettlementItems" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
+      <div id="cnSettlementTotal" style="background:var(--surface-2);border-radius:10px;padding:12px;font-size:14px;font-weight:700"></div>
+    </div>
+    <div class="modal-foot"><button class="modal-save" onclick="saveSettlement()">Cerrar mes y guardar</button></div>
   </div>
 </div>
 

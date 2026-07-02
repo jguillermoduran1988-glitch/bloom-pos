@@ -1857,13 +1857,50 @@ function openScanner(){
     $("#scannerMsg").textContent = "No se pudo cargar el lector. Revisa tu internet.";
     return;
   }
-  scanner = new Html5Qrcode("scannerView");
+  scanner = new Html5Qrcode("scannerView", {
+    // limita los formatos a los que realmente usamos: decodifica más rápido
+    // y con menos falsos negativos que probando todos los formatos disponibles
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.QR_CODE,
+    ],
+    verbose: false,
+  });
   scanner.start(
-    { facingMode: "environment" },         // cámara trasera
-    { fps: 10, qrbox: { width: 240, height: 160 } },
+    // pide resolución más alta a la cámara trasera: los códigos de barras
+    // necesitan más nitidez que un QR para decodificarse bien en celular
+    { facingMode: { exact: "environment" }, advanced: [{ focusMode: "continuous" }] },
+    {
+      fps: 15,
+      // caja rectangular (ancho > alto) — se ajusta mejor a un código de
+      // barras 1D que la caja casi cuadrada que había antes
+      qrbox: { width: 280, height: 120 },
+      aspectRatio: 1.777,
+      disableFlip: true,
+      videoConstraints: {
+        facingMode: { exact: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: "continuous" }],
+      },
+    },
     (decodedText) => onScanSuccess(decodedText),
     () => {}                                // ignora errores por frame
-  ).then(()=>{
+  ).catch(()=>{
+    // fallback: si "environment" exacto falla (algunos Android/desktop lo rechazan),
+    // reintenta sin exigir cámara trasera exacta
+    return scanner.start(
+      { facingMode: "environment" },
+      { fps: 15, qrbox: { width: 280, height: 120 }, aspectRatio: 1.777, disableFlip: true },
+      (decodedText) => onScanSuccess(decodedText),
+      () => {}
+    );
+  }).then(()=>{
     $("#scannerMsg").textContent = "Apunta al código de barras o QR";
   }).catch(err=>{
     $("#scannerMsg").textContent = "No se pudo abrir la cámara. Da permiso o usa otro dispositivo.";
@@ -1873,11 +1910,15 @@ function openScanner(){
 
 function closeScanner(){
   $("#scannerModal").classList.remove("show");
+  _scanMode = "cart";
   if(scanner){
     scanner.stop().then(()=>{ scanner.clear(); scanner=null; }).catch(()=>{ scanner=null; });
   }
 }
 
+// "cart" = agregar al carrito del POS (comportamiento normal).
+// "count" = sumar al conteo físico del cierre de consignación (ver openSettlementModal).
+let _scanMode = "cart";
 let _lastScan="", _lastScanTime=0;
 function onScanSuccess(code){
   code = (code||"").trim();
@@ -1886,6 +1927,11 @@ function onScanSuccess(code){
   const now=Date.now();
   if(code===_lastScan && (now-_lastScanTime)<2000) return;
   _lastScan=code; _lastScanTime=now;
+
+  if(_scanMode==="count"){
+    handleConsignmentScan(code);
+    return;
+  }
 
   const found = findProductByCode(code);
   if(found){
@@ -3754,19 +3800,20 @@ function toggleDatMore(){
   if(btn) btn.classList.toggle("on");
 }
 function datosTab(which){
-  ["tienda","ventas","clientes","pers","Exchanges","Etiquetas"].forEach(t=>{
+  ["tienda","ventas","clientes","pers","Exchanges","Etiquetas","Proveedores"].forEach(t=>{
     const key = t==="Exchanges" ? "datPaneExchanges" : "datPane"+t.charAt(0).toUpperCase()+t.slice(1);
     const p=document.getElementById(key);
-    const w = t==="Exchanges" ? "exchanges" : t==="Etiquetas" ? "etiquetas" : t;
+    const w = t==="Exchanges" ? "exchanges" : t==="Etiquetas" ? "etiquetas" : t==="Proveedores" ? "proveedores" : t;
     if(p) p.style.display = which===w?"block":"none";
   });
-  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3",exchanges:"datTab6",etiquetas:"datTab7"};
+  const tabMap={tienda:"datTab1",ventas:"datTab4",clientes:"datTab5",pers:"datTab3",exchanges:"datTab6",etiquetas:"datTab7",proveedores:"datTab8"};
   Object.entries(tabMap).forEach(([t,id])=>{ const b=document.getElementById(id); if(b) b.classList.toggle("on",which===t); });
   if(which==="pers") loadCustomOrders();
   if(which==="ventas") loadSalesHistory();
   if(which==="clientes") initClientesTab();
   if(which==="exchanges") loadExchangesTab();
   if(which==="etiquetas") initEtiquetasTab();
+  if(which==="proveedores") initProveedoresTab();
 }
 async function initEtiquetasTab(){
   if(!pos.catalog.length) pos.catalog = await fetchProducts();
@@ -5450,6 +5497,401 @@ async function loadReport(range){
   }
 }
 
+
+// ============================================================
+//  PROVEEDORES EN CONSIGNACIÓN
+// ============================================================
+let _cnSuppliers = [];
+let _cnActiveSupplier = null;   // proveedor abierto en el detalle
+let _cnActiveProducts = [];     // productos de ese proveedor
+let _cnSettlementDraft = null;  // {periodStart, periodEnd, items:[...]} del cierre en curso
+let _cnPickedProduct = null;    // producto/variante elegido en el buscador
+
+async function initProveedoresTab(){
+  _cnSuppliers = await sbGet(`consignment_suppliers?store=eq.${C.STORE}&order=name.asc`) || [];
+  renderConsignmentSuppliers();
+}
+
+function renderConsignmentSuppliers(){
+  const box = $("#cnSuppliersList"); if(!box) return;
+  if(!_cnSuppliers.length){
+    box.innerHTML = '<div style="font-size:13px;color:var(--text-dim)">No hay proveedores todavía. Creá uno con el botón de arriba.</div>';
+    return;
+  }
+  box.innerHTML = _cnSuppliers.map(s=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--surface)" onclick="openSupplierDetail('${s.id}')">
+      <div>
+        <div style="font-weight:600;font-size:14px">${esc(s.name)}</div>
+        <div style="font-size:12px;color:var(--text-dim)">${esc(s.contact_name||"")}${s.contact_phone?" · "+esc(s.contact_phone):""}</div>
+      </div>
+      <span class="material-symbols-outlined" style="color:var(--text-dim)">chevron_right</span>
+    </div>
+  `).join("");
+}
+
+// ---- Crear / editar / borrar proveedor ----
+function openSupplierModal(id){
+  const s = id ? _cnSuppliers.find(x=>x.id===id) : null;
+  $("#cnSupId").value = s?.id || "";
+  $("#cnSupName").value = s?.name || "";
+  $("#cnSupContactName").value = s?.contact_name || "";
+  $("#cnSupContactPhone").value = s?.contact_phone || "";
+  $("#cnSupDeleteBtn").style.display = s ? "flex" : "none";
+  $("#cnSupplierModal").classList.add("show");
+}
+function closeSupplierModal(){ $("#cnSupplierModal").classList.remove("show"); }
+async function saveSupplier(){
+  const id = $("#cnSupId").value;
+  const name = $("#cnSupName").value.trim();
+  if(!name){ alert("Ponle un nombre al proveedor"); return; }
+  const data = {
+    store: C.STORE, name,
+    contact_name: $("#cnSupContactName").value.trim()||null,
+    contact_phone: $("#cnSupContactPhone").value.trim()||null,
+  };
+  const r = id ? await sbPatch(`consignment_suppliers?id=eq.${id}`, data) : await sbPost("consignment_suppliers", data);
+  if(!r.ok){ alert("No se pudo guardar. ¿Ya corriste migracion6_consignacion.sql en Supabase?"); return; }
+  closeSupplierModal();
+  await initProveedoresTab();
+}
+async function deleteSupplier(){
+  const id = $("#cnSupId").value; if(!id) return;
+  if(!confirm("¿Borrar este proveedor? También se borran sus productos, entregas y cierres registrados.")) return;
+  await sbDelete(`consignment_suppliers?id=eq.${id}`);
+  closeSupplierModal();
+  await initProveedoresTab();
+}
+
+// ---- Detalle de proveedor ----
+async function openSupplierDetail(id){
+  _cnActiveSupplier = _cnSuppliers.find(s=>s.id===id);
+  if(!_cnActiveSupplier) return;
+  $("#cnDetailTitle").innerHTML = `<span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">local_shipping</span> ${esc(_cnActiveSupplier.name)}`;
+  $("#cnDetailModal").classList.add("show");
+  await loadSupplierDetail();
+}
+function closeSupplierDetail(){ $("#cnDetailModal").classList.remove("show"); _cnActiveSupplier=null; _cnActiveProducts=[]; }
+
+async function loadSupplierDetail(){
+  if(!_cnActiveSupplier) return;
+  const supId = _cnActiveSupplier.id;
+  $("#cnProductsTable").innerHTML = '<div style="font-size:13px;color:var(--text-dim)">Cargando…</div>';
+  _cnActiveProducts = await sbGet(`consignment_products?supplier_id=eq.${supId}&active=eq.true&order=product_name.asc`) || [];
+  _cnActiveSupplier._deliveries = await sbGet(`consignment_deliveries?supplier_id=eq.${supId}&order=delivered_at.desc`) || [];
+  _cnActiveSupplier._settlements = await sbGet(`consignment_settlements?supplier_id=eq.${supId}&order=closed_at.desc`) || [];
+  const period = _cnActiveProducts.length ? await computeConsignmentPeriod(_cnActiveSupplier) : {items:[]};
+  renderConsignmentProductsTable(period);
+  renderSettlementsHistory(_cnActiveSupplier._settlements);
+}
+
+function addDays(dateStr, n){
+  const d = new Date(dateStr+"T00:00:00");
+  d.setDate(d.getDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function sumDeliveredQty(deliveries, variantId){
+  let total=0;
+  for(const d of deliveries){
+    for(const it of (d.items||[])){
+      if(String(it.variant_id)===String(variantId)) total += Number(it.qty)||0;
+    }
+  }
+  return total;
+}
+function findSettlementItem(settlement, variantId){
+  return (settlement.items||[]).find(i=>String(i.variant_id)===String(variantId));
+}
+
+// Calcula, para cada producto del proveedor, cuánto se entregó/vendió desde el
+// último cierre y cuánto debería haber en existencia — cruzando las ventas del
+// POS (sales.items) por variant_id, igual que se hace en el reporte de Shopify.
+async function computeConsignmentPeriod(supplier){
+  const deliveries = supplier._deliveries || [];
+  const settlements = supplier._settlements || [];
+  const last = settlements[0] || null;
+  const periodStart = last ? addDays(last.period_end, 1) : (supplier.created_at||"").slice(0,10) || "1900-01-01";
+  const periodEnd = new Date().toISOString().slice(0,10);
+
+  const sales = await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${periodStart}&created_at=lte.${periodEnd}T23:59:59&select=items`) || [];
+  const soldQty={}, soldRevenue={};
+  for(const sale of sales){
+    for(const it of (sale.items||[])){
+      const vid = it.variant_id; if(vid==null) continue;
+      soldQty[vid] = (soldQty[vid]||0) + (Number(it.qty)||0);
+      soldRevenue[vid] = (soldRevenue[vid]||0) + (Number(it.qty)||0)*(Number(it.price)||0);
+    }
+  }
+
+  const sinceDate = last ? last.period_end : "1900-01-01";
+  const items = _cnActiveProducts.map(p=>{
+    const vid = p.variant_id;
+    const deliveredSince = sumDeliveredQty(deliveries.filter(d=>d.delivered_at > sinceDate), vid);
+    const baseline = last ? (findSettlementItem(last, vid)?.physical_count ?? 0) : 0;
+    const sold = soldQty[vid] || 0;
+    const revenue = soldRevenue[vid] || 0;
+    const systemExpected = baseline + deliveredSince - sold;
+    const amount = p.cost_type==="percent" ? Math.round(revenue*(Number(p.cost_value)||0)/100) : sold*(Number(p.cost_value)||0);
+    return {
+      variant_id: vid, product_name: p.product_name, variant_title: p.variant_title, sku: p.sku,
+      cost_type: p.cost_type, cost_value: p.cost_value,
+      baseline, delivered_since: deliveredSince, sold_qty: sold, revenue,
+      system_expected: systemExpected, amount,
+    };
+  });
+  return { periodStart, periodEnd, items };
+}
+
+function findConsignmentProductId(variantId){
+  const p = _cnActiveProducts.find(x=>String(x.variant_id)===String(variantId));
+  return p ? p.id : "";
+}
+
+function renderConsignmentProductsTable(period){
+  const box = $("#cnProductsTable"); if(!box) return;
+  if(!_cnActiveProducts.length){
+    box.innerHTML = '<div style="font-size:13px;color:var(--text-dim)">Todavía no agregaste productos de este proveedor.</div>';
+    return;
+  }
+  box.innerHTML = period.items.map(it=>{
+    const costLabel = it.cost_type==="percent" ? `${it.cost_value}%` : money(it.cost_value);
+    return `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-weight:600;font-size:13px">${esc(it.product_name)}${it.variant_title?` <span style="color:var(--text-dim);font-weight:400">(${esc(it.variant_title)})</span>`:""}</div>
+        <button onclick="removeConsignmentProduct('${findConsignmentProductId(it.variant_id)}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:3px">Costo: ${costLabel} · Entregado desde último cierre: ${it.delivered_since} · Vendido: ${it.sold_qty} · En existencia (esperado): <b>${it.system_expected}</b></div>
+    </div>`;
+  }).join("");
+}
+
+function renderSettlementsHistory(settlements){
+  const box = $("#cnSettlementsHistory"); if(!box) return;
+  if(!settlements.length){ box.innerHTML='<div style="font-size:13px;color:var(--text-dim)">Todavía no hay cierres registrados.</div>'; return; }
+  box.innerHTML = settlements.map(s=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <div>
+        <div style="font-size:13px;font-weight:600">${s.period_start} → ${s.period_end}</div>
+        <div style="font-size:12px;color:var(--text-dim)">${money(s.total_amount)}</div>
+      </div>
+      <button onclick="toggleSettlementPaid('${s.id}','${s.status}')" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);cursor:pointer;background:${s.status==='pagado'?'#dcfce7':'#fef2f2'};color:${s.status==='pagado'?'#166534':'#991b1b'}">${s.status==='pagado'?'Pagado':'Pendiente'}</button>
+    </div>
+  `).join("");
+}
+async function toggleSettlementPaid(id, current){
+  const next = current==="pagado" ? "pendiente" : "pagado";
+  await sbPatch(`consignment_settlements?id=eq.${id}`, {status: next});
+  if(_cnActiveSupplier) await loadSupplierDetail();
+}
+
+// ---- Agregar producto al proveedor (buscador del catálogo Shopify ya sincronizado) ----
+function openAddConsignmentProduct(){
+  $("#cnProductSearch").value = "";
+  $("#cnProductSearchResults").innerHTML = "";
+  $("#cnAddProductPickStep").style.display = "block";
+  $("#cnAddProductCostStep").style.display = "none";
+  $("#cnAddProductSaveBtn").style.display = "none";
+  _cnPickedProduct = null;
+  $("#cnAddProductModal").classList.add("show");
+  ensureCatalogLoadedForConsignment();
+}
+function closeAddConsignmentProduct(){ $("#cnAddProductModal").classList.remove("show"); }
+async function ensureCatalogLoadedForConsignment(){
+  if(!pos.catalog.length) pos.catalog = await fetchProducts();
+}
+function searchConsignmentProduct(){
+  const q = $("#cnProductSearch").value.trim().toLowerCase();
+  const box = $("#cnProductSearchResults");
+  if(!q){ box.innerHTML=""; return; }
+  const already = new Set(_cnActiveProducts.map(p=>String(p.variant_id)));
+  const matches = pos.catalog.filter(p=>p.name && p.name.toLowerCase().includes(q)).slice(0,15);
+  let html="";
+  for(const p of matches){
+    const variants = (p.variants||[]).filter(v=>v.variant_id);
+    for(const v of variants){
+      const isAdded = already.has(String(v.variant_id));
+      const variantTitle = [v.color,v.talla].filter(Boolean).join(" / ")||null;
+      const label = [p.name, variantTitle].filter(Boolean).join(" · ");
+      // base64 (UTF-8 seguro) para poder pasar el objeto por el atributo onclick
+      // sin pelearse con comillas anidadas dentro del HTML generado
+      const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
+        name:p.name, variant_title:variantTitle, variant_id:v.variant_id,
+        sku:v.sku||null, barcode:v.barcode||null,
+      }))));
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);${isAdded?"opacity:.4":"cursor:pointer"}" ${isAdded?"":`onclick="pickConsignmentProduct('${payload}')"`}>
+        <span style="font-size:13px">${esc(label)}</span>
+        ${isAdded?'<span style="font-size:11px;color:var(--text-dim)">Ya agregado</span>':''}
+      </div>`;
+    }
+  }
+  box.innerHTML = html || '<div style="font-size:13px;color:var(--text-dim);padding:8px">Sin resultados</div>';
+}
+function pickConsignmentProduct(payloadB64){
+  const data = JSON.parse(decodeURIComponent(escape(atob(payloadB64))));
+  _cnPickedProduct = data;
+  $("#cnAddProductSelectedName").textContent = data.name + (data.variant_title?` (${data.variant_title})`:"");
+  $("#cnAddProductPickStep").style.display = "none";
+  $("#cnAddProductCostStep").style.display = "block";
+  $("#cnAddProductSaveBtn").style.display = "block";
+  $("#cnCostType").value = "fixed";
+  $("#cnCostValue").value = "";
+  updateCostValueLabel();
+}
+function backToConsignmentSearch(){
+  $("#cnAddProductPickStep").style.display = "block";
+  $("#cnAddProductCostStep").style.display = "none";
+  $("#cnAddProductSaveBtn").style.display = "none";
+}
+function updateCostValueLabel(){
+  const type = $("#cnCostType").value;
+  $("#cnCostValueLabel").textContent = type==="percent" ? "Porcentaje (%)" : "Precio por unidad ($)";
+}
+async function saveConsignmentProduct(){
+  if(!_cnPickedProduct || !_cnActiveSupplier) return;
+  const costType = $("#cnCostType").value;
+  const costValue = Number($("#cnCostValue").value)||0;
+  if(costValue<=0){ alert("Poné un valor de costo mayor a 0"); return; }
+  const r = await sbPost("consignment_products", {
+    supplier_id: _cnActiveSupplier.id,
+    variant_id: _cnPickedProduct.variant_id,
+    product_name: _cnPickedProduct.name,
+    variant_title: _cnPickedProduct.variant_title,
+    sku: _cnPickedProduct.sku,
+    barcode: _cnPickedProduct.barcode,
+    cost_type: costType,
+    cost_value: costValue,
+  });
+  if(!r.ok){ alert("No se pudo agregar el producto. ¿Ya corriste migracion6_consignacion.sql en Supabase?"); return; }
+  closeAddConsignmentProduct();
+  await loadSupplierDetail();
+}
+async function removeConsignmentProduct(id){
+  if(!id) return;
+  if(!confirm("¿Quitar este producto del proveedor?")) return;
+  await sbPatch(`consignment_products?id=eq.${id}`, {active:false});
+  await loadSupplierDetail();
+}
+
+// ---- Registrar entrega parcial ----
+function openDeliveryModal(){
+  if(!_cnActiveProducts.length){ alert("Primero agregá productos a este proveedor."); return; }
+  $("#cnDeliveryDate").value = new Date().toISOString().slice(0,10);
+  $("#cnDeliveryNotes").value = "";
+  $("#cnDeliveryItems").innerHTML = _cnActiveProducts.map(p=>`
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;font-size:13px">${esc(p.product_name)}${p.variant_title?` <span style="color:var(--text-dim)">(${esc(p.variant_title)})</span>`:""}</div>
+      <input type="number" min="0" placeholder="0" data-variant="${p.variant_id}" class="cn-delivery-qty" style="width:70px;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+    </div>
+  `).join("");
+  $("#cnDeliveryModal").classList.add("show");
+}
+function closeDeliveryModal(){ $("#cnDeliveryModal").classList.remove("show"); }
+async function saveDelivery(){
+  const date = $("#cnDeliveryDate").value || new Date().toISOString().slice(0,10);
+  const inputs = document.querySelectorAll(".cn-delivery-qty");
+  const items=[];
+  inputs.forEach(inp=>{
+    const qty = Number(inp.value)||0;
+    if(qty>0) items.push({variant_id:Number(inp.dataset.variant), qty});
+  });
+  if(!items.length){ alert("Poné al menos una cantidad."); return; }
+  const r = await sbPost("consignment_deliveries", {
+    supplier_id: _cnActiveSupplier.id,
+    delivered_at: date,
+    items,
+    notes: $("#cnDeliveryNotes").value.trim()||null,
+  });
+  if(!r.ok){ alert("No se pudo guardar la entrega."); return; }
+  closeDeliveryModal();
+  await loadSupplierDetail();
+}
+
+// ---- Cierre de mes: conteo físico (con lector de código de barras) + liquidación ----
+async function openSettlementModal(){
+  if(!_cnActiveProducts.length){ alert("Primero agregá productos a este proveedor."); return; }
+  $("#cnSettlementItems").innerHTML = '<div style="font-size:13px;color:var(--text-dim)">Calculando…</div>';
+  $("#cnSettlementModal").classList.add("show");
+  _cnSettlementDraft = await computeConsignmentPeriod(_cnActiveSupplier);
+  $("#cnSettlementPeriod").textContent = `Período: ${_cnSettlementDraft.periodStart} → ${_cnSettlementDraft.periodEnd}`;
+  renderSettlementItems();
+}
+function closeSettlementModal(){
+  $("#cnSettlementModal").classList.remove("show");
+  _cnSettlementDraft = null;
+  _scanMode = "cart";
+}
+function renderSettlementItems(){
+  const box = $("#cnSettlementItems"); if(!box || !_cnSettlementDraft) return;
+  box.innerHTML = _cnSettlementDraft.items.map((it,i)=>`
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:600">${esc(it.product_name)}${it.variant_title?` <span style="color:var(--text-dim);font-weight:400">(${esc(it.variant_title)})</span>`:""}</div>
+        <div style="font-size:11px;color:var(--text-dim)">Esperado: ${it.system_expected}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;color:var(--text-dim)">Conteo físico:</label>
+        <input type="number" min="0" value="${it.physical_count ?? it.system_expected}" oninput="updateSettlementCount(${i}, this.value)" style="width:70px;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;text-align:center;background:var(--surface);color:var(--text)">
+      </div>
+    </div>
+  `).join("");
+  renderSettlementTotal();
+}
+function updateSettlementCount(i, val){
+  if(!_cnSettlementDraft) return;
+  _cnSettlementDraft.items[i].physical_count = Number(val)||0;
+  renderSettlementTotal();
+}
+function renderSettlementTotal(){
+  const total = _cnSettlementDraft.items.reduce((s,it)=>s+(it.amount||0),0);
+  $("#cnSettlementTotal").textContent = `Total a pagar al proveedor: ${money(total)}`;
+}
+function scanForConsignmentCount(){
+  _scanMode = "count";
+  openScanner();
+}
+function handleConsignmentScan(code){
+  if(!_cnSettlementDraft) return;
+  const c = code.toLowerCase().trim();
+  const idx = _cnSettlementDraft.items.findIndex(it=>{
+    const p = _cnActiveProducts.find(x=>String(x.variant_id)===String(it.variant_id));
+    if(!p) return false;
+    return (p.sku && String(p.sku).toLowerCase().trim()===c)
+      || (p.barcode && String(p.barcode).toLowerCase().trim()===c)
+      || String(p.variant_id)===code;
+  });
+  if(idx<0){
+    $("#scannerMsg").textContent = `Código ${code} no pertenece a este proveedor`;
+    $("#scannerMsg").style.color="#c0392b";
+    if(navigator.vibrate) navigator.vibrate([60,40,60]);
+    return;
+  }
+  const it = _cnSettlementDraft.items[idx];
+  it.physical_count = (it.physical_count ?? it.system_expected) + 1;
+  renderSettlementItems();
+  $("#scannerMsg").textContent = `✓ ${it.product_name}: ${it.physical_count}`;
+  $("#scannerMsg").style.color="#1d8a5e";
+  if(navigator.vibrate) navigator.vibrate(80);
+}
+async function saveSettlement(){
+  if(!_cnSettlementDraft || !_cnActiveSupplier) return;
+  const items = _cnSettlementDraft.items.map(it=>({
+    variant_id: it.variant_id, product_name: it.product_name, variant_title: it.variant_title,
+    delivered_since: it.delivered_since, sold_qty: it.sold_qty,
+    physical_count: it.physical_count ?? it.system_expected,
+    system_expected: it.system_expected,
+    diff: (it.physical_count ?? it.system_expected) - it.system_expected,
+    cost_type: it.cost_type, cost_value: it.cost_value, amount: it.amount,
+  }));
+  const total = items.reduce((s,it)=>s+(it.amount||0),0);
+  const r = await sbPost("consignment_settlements", {
+    supplier_id: _cnActiveSupplier.id,
+    period_start: _cnSettlementDraft.periodStart,
+    period_end: _cnSettlementDraft.periodEnd,
+    items, total_amount: total, status: "pendiente",
+  });
+  if(!r.ok){ alert("No se pudo guardar el cierre."); return; }
+  closeSettlementModal();
+  await loadSupplierDetail();
+}
 
 // ---------- Arranque ----------
 async function init(){
