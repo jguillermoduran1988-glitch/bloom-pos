@@ -4994,6 +4994,10 @@ function _connectWaSocket(){
         }));
         renderMessages();
       }
+    } else if(data.type==="status_update"){
+      // Actualiza el tick (✓/✓✓/⚠️) de un mensaje ya enviado, sin recargar
+      const m=state.messages.find(x=>x.wa_message_id===data.wa_message_id);
+      if(m){ m.status=data.status; renderMessages(true); }
     }
   };
   _waSocket.onclose=()=>{ _waSocketRetry=setTimeout(_connectWaSocket,4000); };

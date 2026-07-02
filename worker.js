@@ -667,17 +667,37 @@ async function handleWAStatus(env, status) {
   const { id: wamid, status: st, timestamp, errors } = status;
   if (!wamid || !st) return;
   const ts = new Date(Number(timestamp) * 1000).toISOString();
+  let newStatus = null;
   if (st === "delivered") {
     await env.bloom_wa.prepare(`UPDATE wa_messages SET status='delivered', delivered_at=? WHERE wa_message_id=? AND status!='read'`).bind(ts, wamid).run();
+    newStatus = "delivered";
   } else if (st === "read") {
     await env.bloom_wa.prepare(`UPDATE wa_messages SET status='read', read_at=? WHERE wa_message_id=?`).bind(ts, wamid).run();
+    newStatus = "read";
   } else if (st === "failed") {
     // WhatsApp acepta el mensaje al enviarlo (200 OK) pero puede fallar despues
     // al intentar procesar/descargar el media_url - antes esto se ignoraba
     // por completo y el mensaje quedaba viendose como "enviado" sin avisar nunca.
     console.error("WA message FAILED", wamid, JSON.stringify(errors || []));
     await env.bloom_wa.prepare(`UPDATE wa_messages SET status='failed' WHERE wa_message_id=?`).bind(wamid).run();
+    newStatus = "failed";
   }
+  if (!newStatus) return;
+  // Avisar en vivo por WebSocket para que el tick (✓/✓✓/⚠️) se actualice sin
+  // recargar la app - antes solo se avisaba de mensajes NUEVOS, nunca de
+  // cambios de estado en mensajes ya enviados.
+  try {
+    const row = await env.bloom_wa.prepare(`SELECT conversation_id FROM wa_messages WHERE wa_message_id=?`).bind(wamid).first();
+    if (row?.conversation_id) {
+      const id = env.BLOOM_HUB.idFromName("bloom");
+      const stub = env.BLOOM_HUB.get(id);
+      await stub.fetch(new Request("https://internal/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "status_update", phone: row.conversation_id, wa_message_id: wamid, status: newStatus }),
+      }));
+    }
+  } catch (e) {}
 }
 
 // ============ Crear factura en Alegra ============
