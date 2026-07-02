@@ -376,7 +376,7 @@
   .pos-search-row .pos-search{margin-bottom:0;flex:1}
   .scan-btn{flex-shrink:0;width:44px;border:1px solid var(--border);background:var(--accent-soft);border-radius:var(--radius);font-size:20px;cursor:pointer;color:var(--accent-dark)}
   .scan-btn:active{background:var(--accent);color:#fff}
-  #scannerView video{width:100%!important;border-radius:12px}
+  #scannerView video{width:100%!important;height:100%!important;object-fit:cover!important;border-radius:12px}
   .pos-search:focus{border-color:var(--accent)}
   .pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
   .pos-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;background:var(--surface);transition:transform .1s}
@@ -1743,7 +1743,7 @@
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">photo_camera</span> Escanear producto</h3>
         <button class="iconbtn" onclick="closeScanner()">✕</button>
       </div>
-      <div id="scannerView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:240px">
+      <div id="scannerView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:4/3">
         <video id="scannerVideo" playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
       </div>
       <div id="scannerMsg" style="font-size:13px;color:var(--text-dim);text-align:center;margin-top:10px">Apunta al código de barras o QR</div>

@@ -1896,6 +1896,21 @@ function closeScanner(){
   }
 }
 
+// Beep corto al leer un código — generado con Web Audio, sin depender de un archivo de audio
+let _beepCtx = null;
+function playScanBeep(){
+  try{
+    if(!_beepCtx) _beepCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(_beepCtx.state==="suspended") _beepCtx.resume();
+    const osc=_beepCtx.createOscillator(), gain=_beepCtx.createGain();
+    osc.type="sine"; osc.frequency.value=1000;
+    gain.gain.setValueAtTime(0.35,_beepCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,_beepCtx.currentTime+0.12);
+    osc.connect(gain); gain.connect(_beepCtx.destination);
+    osc.start(); osc.stop(_beepCtx.currentTime+0.12);
+  }catch(e){}
+}
+
 // "cart" = agregar al carrito del POS (comportamiento normal).
 // "count" = sumar al conteo físico del cierre de consignación (ver openSettlementModal).
 // "addproduct" = buscar el producto escaneado para agregarlo a un proveedor (ver openAddConsignmentProduct).
@@ -1923,6 +1938,7 @@ function onScanSuccess(code){
     addToCart(found.product, found.variant_id);
     $("#scannerMsg").textContent = `✓ Agregado: ${found.product.name} — sigue escaneando o cierra`;
     $("#scannerMsg").style.color="#1d8a5e";
+    playScanBeep();
     if(navigator.vibrate) navigator.vibrate(80);
     // NO cierra: permite escanear varios productos seguidos
   }else{
@@ -5858,6 +5874,7 @@ function handleConsignmentAddScan(code){
     if(navigator.vibrate) navigator.vibrate([60,40,60]);
     return;
   }
+  playScanBeep();
   closeScanner();
   pickConsignmentProductData({
     name: found.product.name,
@@ -5888,6 +5905,7 @@ function handleConsignmentScan(code){
   renderSettlementItems();
   $("#scannerMsg").textContent = `✓ ${it.product_name}: ${it.physical_count}`;
   $("#scannerMsg").style.color="#1d8a5e";
+  playScanBeep();
   if(navigator.vibrate) navigator.vibrate(80);
 }
 async function saveSettlement(){
