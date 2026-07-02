@@ -671,8 +671,22 @@
     </div>
     <!-- Cliente en el POS (si existe) -->
     <div class="p-sec" id="pCustomerSec" style="display:none">
-      <div class="p-title">Datos cliente <span style="font-size:10px;font-weight:400;color:var(--text-dim)" id="pCustomerSub"></span></div>
+      <div class="p-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Datos cliente <span style="font-size:10px;font-weight:400;color:var(--text-dim)" id="pCustomerSub"></span></span>
+        <button class="iconbtn" style="width:26px;height:26px" onclick="toggleCustomerEdit()" title="Editar dirección/ciudad"><span class="material-symbols-outlined" style="font-size:15px">edit</span></button>
+      </div>
       <div id="pCustomerData"></div>
+      <div id="pCustomerEditForm" style="display:none;margin-top:8px">
+        <div class="field"><label>Dirección</label><input id="pCustAddress" placeholder="Dirección"></div>
+        <div class="field-row">
+          <div class="field"><label>Departamento</label><select id="pCustDepto" onchange="onPCustDeptoChange()"><option value="">Selecciona…</option></select></div>
+          <div class="field"><label>Ciudad</label><select id="pCustCity"><option value="">Selecciona…</option></select></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button onclick="toggleCustomerEdit()" style="flex:1;padding:8px;border:1px solid var(--border);background:none;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text)">Cancelar</button>
+          <button onclick="saveCustomerPanelEdit()" style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px">Guardar</button>
+        </div>
+      </div>
       <div id="pCustomerSales" style="margin-top:6px"></div>
     </div>
     <div class="p-sec">

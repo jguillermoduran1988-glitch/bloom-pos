@@ -603,15 +603,18 @@ async function uploadContactPhoto(input){
   input.value="";
 }
 
+let _panelCustomer=null;
 async function loadCustomerRecord(phone){
   const sec=$("#pCustomerSec"); if(!sec) return;
   sec.style.display="none";
+  $("#pCustomerEditForm").style.display="none";
   const variants=[phone, "+"+phone, phone.slice(2)];
   let customer=null;
   for(const v of variants){
     const rows=await sbGet(`customers?phone=eq.${encodeURIComponent(v)}&limit=1`).catch(()=>null);
     if(rows?.length){customer=rows[0]; break;}
   }
+  _panelCustomer=customer;
   if(!customer) return;
   const cData=$("#pCustomerData");
   const salesDiv=$("#pCustomerSales");
@@ -622,7 +625,7 @@ async function loadCustomerRecord(phone){
   const loc=[customer.city,customer.depto||customer.department].filter(Boolean).join(", ");
   if(loc) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Ciudad</span><span>${esc(loc)}</span></div>`);
   if(customer.address) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Dirección</span><span>${esc(customer.address)}</span></div>`);
-  if(customer.doc||customer.document) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Doc.</span><span>${esc(customer.doc||customer.document)}</span></div>`);
+  if(customer.doc||customer.document) rows2.push(`<div class="p-cust-row"><span class="p-cust-lbl">Cédula</span><span>${esc(customer.doc||customer.document)}</span></div>`);
   if(cData) cData.innerHTML=rows2.join("");
   // Historial de compras
   if(salesDiv){
@@ -642,14 +645,59 @@ async function loadCustomerRecord(phone){
       const fmtMoney=n=>n!=null?`$${Number(n).toLocaleString("es-CO")}`:"";
       salesDiv.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--text-dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.04em">Compras</div>`+
         sales.map(s=>`<div class="p-cust-row" style="font-size:12px"><span style="color:var(--text-dim)">${fmt(s.created_at)}</span><span style="font-weight:600">${fmtMoney(s.total)}</span></div>`).join("");
-      // Auto-etiqueta si el cliente ya ha comprado antes
+      // Auto-etiqueta si el cliente ya ha comprado antes — automático, sin
+      // preguntar (no es una acción manual del vendedor)
       const cfg=pos.chatConfig||{};
       if(cfg.recompra_enabled!==false && cfg.recompra_tag!==false){
-        addTag(cfg.recompra_tag||"recompra");
+        _applyAddTag(cfg.recompra_tag||"recompra");
       }
     }
   }
   sec.style.display="";
+}
+
+// ---- Editar dirección/ciudad/depto desde la ficha del cliente (panel del chat) ----
+function onPCustDeptoChange(){
+  const deptoSel=$("#pCustDepto"), citySel=$("#pCustCity");
+  const chosen=deptoSel.value;
+  citySel.innerHTML='<option value="">Selecciona…</option>';
+  if(chosen && window.COLOMBIA && window.COLOMBIA[chosen]){
+    window.COLOMBIA[chosen].forEach(c=>{ const o=document.createElement("option"); o.value=c; o.textContent=c; citySel.appendChild(o); });
+  }
+}
+function toggleCustomerEdit(){
+  const form=$("#pCustomerEditForm"); if(!form) return;
+  const show=form.style.display==="none";
+  if(show && _panelCustomer){
+    $("#pCustAddress").value=_panelCustomer.address||"";
+    const deptoSel=$("#pCustDepto");
+    deptoSel.innerHTML='<option value="">Selecciona…</option>';
+    if(window.COLOMBIA){
+      Object.keys(window.COLOMBIA).sort((a,b)=>a.localeCompare(b,"es")).forEach(d=>{
+        const o=document.createElement("option"); o.value=d; o.textContent=d;
+        if(d===(_panelCustomer.depto||_panelCustomer.department)) o.selected=true;
+        deptoSel.appendChild(o);
+      });
+    }
+    onPCustDeptoChange();
+    if(_panelCustomer.city){
+      const citySel=$("#pCustCity");
+      [...citySel.options].forEach(o=>{ if(o.value.toUpperCase()===String(_panelCustomer.city).toUpperCase()) o.selected=true; });
+    }
+  }
+  form.style.display=show?"block":"none";
+}
+async function saveCustomerPanelEdit(){
+  if(!_panelCustomer?.id){ alert("No se encontró el registro del cliente."); return; }
+  const address=$("#pCustAddress").value.trim();
+  const depto=$("#pCustDepto").value;
+  const city=$("#pCustCity").value;
+  if(!confirm("¿Confirmas que quieres guardar estos cambios en los datos del cliente?")) return;
+  const r=await sbPatch(`customers?id=eq.${_panelCustomer.id}`,{address:address||null, depto:depto||null, city:city||null});
+  if(!r.ok){ alert("No se pudo guardar. Intenta de nuevo."); return; }
+  _panelCustomer.address=address||null; _panelCustomer.depto=depto||null; _panelCustomer.city=city||null;
+  toggleCustomerEdit();
+  await loadCustomerRecord(state.active);
 }
 
 // ---------- Etiquetas ----------
@@ -711,7 +759,7 @@ function tagPickerKey(e){
   }
   if(e.key==="Escape"){_tagPickerOpen=false;$("#tagPickerDrop").classList.remove("open");}
 }
-async function addTag(tag){
+async function _applyAddTag(tag){
   const c=state.chats.get(state.active);
   if(!tag||!c||(c.tags||[]).includes(tag))return;
   c.tags=[...(c.tags||[]),tag];
@@ -720,8 +768,16 @@ async function addTag(tag){
     method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:c.tags})
   }).catch(()=>{});
 }
+// Wrapper con confirmación — para cuando el vendedor agrega una etiqueta a mano
+async function addTag(tag){
+  const c=state.chats.get(state.active);
+  if(!tag||!c||(c.tags||[]).includes(tag))return;
+  if(!confirm(`¿Agregar la etiqueta "${tag}"?`)) return;
+  await _applyAddTag(tag);
+}
 async function removeTag(tag){
   const c=state.chats.get(state.active);
+  if(!confirm(`¿Quitar la etiqueta "${tag}"?`)) return;
   c.tags=(c.tags||[]).filter(t=>t!==tag);
   renderTags(c); renderChatList();
   await fetch(`${C.WORKER_URL}/wa/contacts/${encodeURIComponent(c.phone)}`,{
@@ -744,7 +800,9 @@ function renderStages(c){
   }
 }
 async function setStage(st){
-  const c=state.chats.get(state.active); c.stage=st;
+  const c=state.chats.get(state.active); if(!c || c.stage===st) return;
+  if(!confirm(`¿Mover esta conversación a la etapa "${st}"?`)) return;
+  c.stage=st;
   renderStages(c); renderChatList();
   await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
     method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({stage:st})
@@ -761,6 +819,7 @@ async function movePipeline(){
   const idx=parseInt(pick)-1;
   if(isNaN(idx)||!others[idx])return;
   const target=others[idx];
+  if(!confirm(`¿Confirmas mover esta conversación al embudo "${target.name}"?`)) return;
   c.pipeline_id=target.id; c.stage=target.stages[0];
   renderPanel(); renderChatList();
   await fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(c.id||c.phone)}`,{
