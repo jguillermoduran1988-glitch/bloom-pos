@@ -4025,7 +4025,7 @@ async function loadSalesHistory(){
   const box=$("#salesHistory"); if(!box) return;
   box.innerHTML='<div style="color:var(--text-dim);font-size:13px">Cargando…</div>';
   const q=($("#salesSearch")||{value:""}).value.trim();
-  const fields = "select=id,shopify_order_name,shopify_order_id,total,status,sale_type,created_at,customer_name,customer_doc,customer_phone,customer_email,alegra_invoice,items,cashier_name,seller_name";
+  const fields = "select=id,shopify_order_name,shopify_order_id,total,subtotal,status,sale_type,created_at,customer_name,customer_doc,customer_phone,customer_email,alegra_invoice,siigo_invoice,items,cashier_name,seller_name,payment_method,payment_detail,discount_type,discount_value,discount_amount";
   let url=`sales?store=eq.${C.STORE}&order=created_at.desc&limit=80&${fields}`;
   if(q){
     const enc=encodeURIComponent(q);
@@ -4055,12 +4055,13 @@ async function loadSalesHistory(){
           <div><b>${money(s.total)}</b>${statusBadge} <span style="font-size:11px;color:var(--text-dim)">${canalBadge}</span></div>
           <div style="font-size:12px;color:var(--text-dim)">${esc(s.customer_name||"Sin cliente")}${s.customer_doc?' · '+esc(s.customer_doc):''}${s.customer_phone?' · '+esc(s.customer_phone):''} · ${fecha}</div>
           ${s.shopify_order_name?`<div style="font-size:11px;color:var(--text-dim)">${esc(s.shopify_order_name)}</div>`:''}
-          ${s.cashier_name?`<div style="font-size:11px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px">badge</span> ${esc(s.cashier_name)}${s.seller_name&&s.seller_name!==s.cashier_name?' · '+esc(s.seller_name):''}</div>`:''}
+          ${(s.cashier_name||s.seller_name)?`<div style="font-size:11px;color:var(--text-dim)"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px">badge</span> Cajero: ${esc(s.cashier_name||"—")} · Vendedor: ${esc(s.seller_name||"—")}</div>`:''}
           ${s.alegra_invoice?`<div style="font-size:11px;color:#1d8a5e">✓ Factura Alegra: ${esc(s.alegra_invoice)}</div>`:""}
         </div>
         <button class="sale-menu-btn" onclick="toggleSaleMenu('${s.id}')">⋮</button>
       </div>
       <div class="sale-menu" id="saleMenu-${s.id}">
+        <button onclick="openSaleDetail('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">visibility</span> Ver detalle</button>
         ${tieneEtiqueta?`<button onclick="printLabel('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">label</span> Imprimir etiqueta</button>`:""}
         <button onclick="invoiceAlegra('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">description</span> Crear factura Alegra</button>
         <button onclick="invoiceSiigo('${s.id}')"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">receipt</span> Crear factura Siigo</button>
@@ -4073,6 +4074,59 @@ function toggleSaleMenu(id){
   document.querySelectorAll(".sale-menu.show").forEach(x=>{ if(x!==m) x.classList.remove("show"); });
   m.classList.toggle("show");
 }
+
+function openSaleDetail(id){
+  const s=_exSaleCache.get(id); if(!s) return;
+  const fecha=new Date(s.created_at).toLocaleString("es-CO",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
+  const itemsHtml=(s.items||[]).map(it=>`
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-size:13px;font-weight:600">${esc(it.name||"—")}</div>
+        ${it.variant?`<div style="font-size:12px;color:var(--text-dim)">${esc(it.variant)}</div>`:''}
+        ${it.sku?`<div style="font-size:11px;color:var(--text-dim)">SKU: ${esc(it.sku)}</div>`:''}
+        ${it.note?`<div style="font-size:11px;color:var(--text-dim)">Nota: ${esc(it.note)}</div>`:''}
+      </div>
+      <div style="text-align:right;font-size:13px;white-space:nowrap">
+        <div style="color:var(--text-dim)">${it.qty||1} × ${money(it.price||0)}</div>
+        <div style="font-weight:700">${money((it.qty||1)*(it.price||0))}</div>
+      </div>
+    </div>`).join("") || '<div style="font-size:13px;color:var(--text-dim)">Sin ítems registrados</div>';
+
+  const paymentHtml = Array.isArray(s.payment_detail) && s.payment_detail.length
+    ? s.payment_detail.map(p=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>${esc(p.method||"—")}</span><b>${money(p.amount||0)}</b></div>`).join("")
+    : `<div style="font-size:13px">${esc(s.payment_method||"—")}</div>`;
+
+  const discountHtml = (Number(s.discount_amount)>0)
+    ? `<div style="display:flex;justify-content:space-between;font-size:13px;color:#b91c1c;padding:3px 0"><span>Descuento${s.discount_type==='pct'?` (${s.discount_value}%)`:''}</span><b>-${money(s.discount_amount)}</b></div>`
+    : '';
+
+  $("#saleDetailBody").innerHTML = `
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text-dim)">${fecha}${s.shopify_order_name?' · '+esc(s.shopify_order_name):''}</div>
+      <div style="font-size:15px;font-weight:700;margin-top:2px">${esc(s.customer_name||"Sin cliente")}</div>
+      <div style="font-size:12px;color:var(--text-dim)">${[s.customer_doc,s.customer_phone,s.customer_email].filter(Boolean).map(esc).join(' · ')}</div>
+    </div>
+
+    <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Productos</div>
+    <div style="margin-bottom:14px">${itemsHtml}</div>
+
+    <div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>Subtotal</span><span>${money(s.subtotal||s.total)}</span></div>
+      ${discountHtml}
+      <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;margin-top:4px;border-top:1px solid var(--border);padding-top:8px"><span>Total</span><span>${money(s.total)}</span></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Medios de pago</div>
+    <div style="margin-bottom:14px">${paymentHtml}</div>
+
+    <div style="display:flex;gap:20px;font-size:13px;flex-wrap:wrap">
+      <div><span style="color:var(--text-dim)">Cajero:</span> <b>${esc(s.cashier_name||"—")}</b></div>
+      <div><span style="color:var(--text-dim)">Vendedor:</span> <b>${esc(s.seller_name||"—")}</b></div>
+    </div>
+  `;
+  $("#saleDetailModal").classList.add("show");
+}
+function closeSaleDetail(){ $("#saleDetailModal").classList.remove("show"); }
 
 // ======= CAMBIO / GARANTÍA =======
 let _exCtx = {};
