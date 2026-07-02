@@ -1080,6 +1080,37 @@ async function confirmSendChatPhoto(){
   }
 }
 
+// Convierte el audio grabado a un MP3 real, frame por frame (WhatsApp acepta
+// audio/mpeg siempre, sin los problemas de contenedor "fragmentado" que produce
+// MediaRecorder en mp4/webm — esos reproducen bien en cualquier navegador, pero
+// WhatsApp los valida más estricto y los rechaza como archivo inválido).
+async function encodeToMp3(blob){
+  const arrayBuffer=await blob.arrayBuffer();
+  const AudioCtx=window.AudioContext||window.webkitAudioContext;
+  const ctx=new AudioCtx();
+  const audioBuffer=await ctx.decodeAudioData(arrayBuffer);
+  const channels=Math.min(audioBuffer.numberOfChannels,2);
+  const sampleRate=audioBuffer.sampleRate;
+  const toInt16=f32=>{
+    const out=new Int16Array(f32.length);
+    for(let i=0;i<f32.length;i++){ const s=Math.max(-1,Math.min(1,f32[i])); out[i]=s<0?s*0x8000:s*0x7FFF; }
+    return out;
+  };
+  const left=toInt16(audioBuffer.getChannelData(0));
+  const right=channels>1?toInt16(audioBuffer.getChannelData(1)):null;
+  const encoder=new lamejs.Mp3Encoder(channels, sampleRate, 64);
+  const chunks=[]; const blockSize=1152;
+  for(let i=0;i<left.length;i+=blockSize){
+    const l=left.subarray(i,i+blockSize);
+    const buf=right?encoder.encodeBuffer(l,right.subarray(i,i+blockSize)):encoder.encodeBuffer(l);
+    if(buf.length>0) chunks.push(buf);
+  }
+  const end=encoder.flush();
+  if(end.length>0) chunks.push(end);
+  ctx.close();
+  return new Blob(chunks,{type:"audio/mpeg"});
+}
+
 // ---------- Nota de voz: mantener presionado para grabar (como WhatsApp) ----------
 let _chatRecorder=null, _chatAudioChunks=[];
 async function startVoiceRecording(){
@@ -1107,20 +1138,28 @@ async function startVoiceRecording(){
       renderMicHint(false);
       stream.getTracks().forEach(t=>t.stop());
       const realType=_chatRecorder.mimeType||mime||"audio/mp4";
-      const realExt=realType.includes("ogg")?"ogg":realType.includes("webm")?"webm":realType.includes("mp4")?"mp4":realType.includes("aac")?"aac":realType.includes("mpeg")?"mp3":"m4a";
-      const blob=new Blob(_chatAudioChunks,{type:realType});
-      if(blob.size===0) return; // grabación cancelada/vacía, no manda nada
-      const up=await sbUpload("team-chat", blob, realExt);
-      if(!up) return;
+      const rawBlob=new Blob(_chatAudioChunks,{type:realType});
+      if(rawBlob.size===0) return; // grabación cancelada/vacía, no manda nada
+      const hint=$("#micRecHint");
+      if(hint){ hint.style.display="block"; hint.textContent="⏳ Procesando audio…"; }
+      let mp3Blob;
+      try{ mp3Blob=await encodeToMp3(rawBlob); }
+      catch(e){ console.error("Error convirtiendo a mp3:",e); alert("No se pudo procesar el audio grabado."); if(hint) hint.style.display="none"; return; }
+      // Sube a R2 (worker), igual que las fotos — no a Supabase
+      const formData=new FormData();
+      formData.append("file", mp3Blob, `nota_${Date.now()}.mp3`);
+      const upResp=await fetch(`${C.WORKER_URL}/wa/upload`,{method:"POST",body:formData}).then(r=>r.json()).catch(()=>null);
+      if(hint) hint.style.display="none";
+      if(!upResp?.url){ alert("No se pudo subir la nota de voz."); return; }
       const now=new Date().toISOString();
       const replyTo=_replyingTo?.wa_message_id||null;
-      appendMessage({body:"",media_url:up.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo});
+      appendMessage({body:"",media_url:upResp.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo});
       cancelReply();
       await markRepliedAndAdvanceStage(state.active);
       const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
       const convId=c?.id||state.active;
       await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"audio",reply_to:replyTo})}).catch(()=>{});
+        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:upResp.url,type:"audio",reply_to:replyTo})}).catch(()=>{});
     };
     _chatRecorder.start();
     btn?.classList.add("rec");
