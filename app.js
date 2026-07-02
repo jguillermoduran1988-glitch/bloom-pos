@@ -1871,19 +1871,31 @@ function openScanner(){
     ],
     verbose: false,
   });
-  // Nota: NO usar facingMode:{exact:"environment"} ni "advanced"/"videoConstraints"
-  // combinados — muchos celulares rechazan esas restricciones (OverconstrainedError)
-  // y la cámara nunca llega a abrir. "environment" simple es lo que de verdad
-  // funciona en la mayoría de Android/iOS.
+  // Nota: NO usar facingMode:{exact:"environment"} combinado con "advanced" —
+  // muchos celulares rechazan esas restricciones (OverconstrainedError) y la
+  // cámara nunca llega a abrir. "environment" simple + un "ideal" (no "exact")
+  // de resolución es lo que de verdad anda en Android/iOS.
   scanner.start(
     { facingMode: "environment" },
     {
-      fps: 12,
-      // caja rectangular (ancho > alto) — se ajusta mejor a un código de
-      // barras 1D que la caja casi cuadrada que había antes
-      qrbox: { width: 280, height: 140 },
-      aspectRatio: 1.777,
+      fps: 10,
+      // Caja de escaneo calculada como % del video real en vez de un tamaño
+      // fijo en píxeles — en iPhone el ancho real del video dentro del modal
+      // varía, y con un tamaño fijo la caja quedaba mal ajustada y el lector
+      // nunca alcanzaba a leer el código aunque la imagen se viera bien.
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const w = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.9);
+        return { width: w, height: Math.floor(w * 0.5) };
+      },
       disableFlip: true,
+      // Pide una resolución mínima decente (ideal, no exact — no rechaza si
+      // el dispositivo no la soporta) para que el código de barras se vea
+      // con suficiente nitidez para decodificarse.
+      videoConstraints: {
+        facingMode: "environment",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
     },
     (decodedText) => onScanSuccess(decodedText),
     () => {}                                // ignora errores por frame
