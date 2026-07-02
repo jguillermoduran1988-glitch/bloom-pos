@@ -3374,13 +3374,13 @@ async function loadGoalBar(){
     const goal=Object.values(monthPlan).reduce((s,v)=>s+v,0);
     if(!goal){ renderGoalBar(0,0,"mes"); return; }
     const firstDay=`${monthKey}-01`;
-    const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${firstDay}T00:00:00&select=total&status=eq.completada`);
+    const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${firstDay}T00:00:00-05:00&select=total&status=eq.completada`);
     const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
     renderGoalBar(goal,total,"mes");
   } else {
     const goal=plans[monthKey]?.[today]||0;
     if(!goal){ renderGoalBar(0,0,"dia"); return; }
-    const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00&select=total&status=eq.completada`);
+    const rows=await sbGet(`sales?store=eq.${C.STORE}&created_at=gte.${today}T00:00:00-05:00&select=total&status=eq.completada`);
     const total=(rows||[]).reduce((s,r)=>s+(r.total||0),0);
     renderGoalBar(goal,total,"dia");
   }
