@@ -394,6 +394,7 @@ export default {
         }
         const wamid = waResp?.messages?.[0]?.id;
         if (wamid) await env.bloom_wa.prepare(`UPDATE wa_messages SET wa_message_id=? WHERE id=?`).bind(wamid, msgId).run().catch(()=>{});
+        if (!wamid) console.log("WA send failed", msgType, JSON.stringify(waResp));
       }
       return Response.json({ ok: true, id: msgId }, { headers: cors });
     }
@@ -663,13 +664,19 @@ async function runFollowups(env) {
 }
 
 async function handleWAStatus(env, status) {
-  const { id: wamid, status: st, timestamp } = status;
+  const { id: wamid, status: st, timestamp, errors } = status;
   if (!wamid || !st) return;
   const ts = new Date(Number(timestamp) * 1000).toISOString();
   if (st === "delivered") {
     await env.bloom_wa.prepare(`UPDATE wa_messages SET status='delivered', delivered_at=? WHERE wa_message_id=? AND status!='read'`).bind(ts, wamid).run();
   } else if (st === "read") {
     await env.bloom_wa.prepare(`UPDATE wa_messages SET status='read', read_at=? WHERE wa_message_id=?`).bind(ts, wamid).run();
+  } else if (st === "failed") {
+    // WhatsApp acepta el mensaje al enviarlo (200 OK) pero puede fallar despues
+    // al intentar procesar/descargar el media_url - antes esto se ignoraba
+    // por completo y el mensaje quedaba viendose como "enviado" sin avisar nunca.
+    console.error("WA message FAILED", wamid, JSON.stringify(errors || []));
+    await env.bloom_wa.prepare(`UPDATE wa_messages SET status='failed' WHERE wa_message_id=?`).bind(wamid).run();
   }
 }
 

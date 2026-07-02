@@ -413,7 +413,7 @@ function msgNode(m){
     return d;
   }
   const b=el("div","msg "+(m.direction==="out"?"out":"in"));
-  const _tick=m.direction==="out"?`<span class="msg-tick ${m.status||'sent'}">${m.status==='read'||m.status==='delivered'?'✓✓':'✓'}</span>`:'';
+  const _tick=m.direction==="out"?`<span class="msg-tick ${m.status||'sent'}" title="${m.status==='failed'?'No se pudo entregar':''}">${m.status==='failed'?'⚠':(m.status==='read'||m.status==='delivered')?'✓✓':'✓'}</span>`:'';
   const _t=`<div class="t">${_tick}${new Date(m.created_at).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})}</div>`;
   const _quote=quotedPreviewHtml(m);
   if((m.msg_type==="image"||m.media_type==="image")&&m.media_url){
@@ -1088,11 +1088,17 @@ async function startVoiceRecording(){
   const btn=$("#chatVoiceBtn");
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    // Orden de prioridad: SOLO formatos que WhatsApp Cloud API acepta para audio
+    // (audio/ogg;codecs=opus, audio/mpeg, audio/amr, audio/mp4, audio/aac).
+    // Antes se probaba audio/webm primero — Chrome/Android lo soportan bien para
+    // grabar, pero WhatsApp lo RECHAZA al procesarlo (nunca llegaba al cliente,
+    // aunque en la app se viera "enviado").
     let mime="", ext="webm";
-    if(MediaRecorder.isTypeSupported("audio/webm")){ mime="audio/webm"; ext="webm"; }
+    if(MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")){ mime="audio/ogg;codecs=opus"; ext="ogg"; }
     else if(MediaRecorder.isTypeSupported("audio/mp4")){ mime="audio/mp4"; ext="mp4"; }
     else if(MediaRecorder.isTypeSupported("audio/aac")){ mime="audio/aac"; ext="aac"; }
-    else{ mime=""; ext="m4a"; }
+    else if(MediaRecorder.isTypeSupported("audio/mpeg")){ mime="audio/mpeg"; ext="mp3"; }
+    else{ mime="audio/webm"; ext="webm"; } // último recurso: WhatsApp lo va a rechazar, pero graba igual
     _chatRecorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream);
     _chatAudioChunks=[];
     _chatRecorder.ondataavailable=e=>{ if(e.data.size>0) _chatAudioChunks.push(e.data); };
@@ -1101,7 +1107,7 @@ async function startVoiceRecording(){
       renderMicHint(false);
       stream.getTracks().forEach(t=>t.stop());
       const realType=_chatRecorder.mimeType||mime||"audio/mp4";
-      const realExt=realType.includes("webm")?"webm":realType.includes("mp4")?"mp4":realType.includes("aac")?"aac":"m4a";
+      const realExt=realType.includes("ogg")?"ogg":realType.includes("webm")?"webm":realType.includes("mp4")?"mp4":realType.includes("aac")?"aac":realType.includes("mpeg")?"mp3":"m4a";
       const blob=new Blob(_chatAudioChunks,{type:realType});
       if(blob.size===0) return; // grabación cancelada/vacía, no manda nada
       const up=await sbUpload("team-chat", blob, realExt);
