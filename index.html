@@ -1743,12 +1743,14 @@
         <h3><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px">photo_camera</span> Escanear producto</h3>
         <button class="iconbtn" onclick="closeScanner()">✕</button>
       </div>
-      <div id="scannerView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:240px"></div>
+      <div id="scannerView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:240px">
+        <video id="scannerVideo" playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
+      </div>
       <div id="scannerMsg" style="font-size:13px;color:var(--text-dim);text-align:center;margin-top:10px">Apunta al código de barras o QR</div>
     </div>
   </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script src="colombia.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>

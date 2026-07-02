@@ -1848,57 +1848,37 @@ async function saveQuickProduct(){
   btn.disabled=false; btn.textContent="Crear y agregar";
   closeQuickProduct();
 }
+// Lector de códigos con ZXing (@zxing/library) — se cambió desde html5-qrcode
+// porque esa librería mostraba la cámara pero no lograba decodificar códigos
+// de barras 1D en iPhone/Safari (problema conocido y bastante reportado de
+// esa librería en iOS, no era un tema de configuración).
 let scanner = null;
 
 function openScanner(){
   $("#scannerModal").classList.add("show");
   $("#scannerMsg").textContent = "Iniciando cámara…";
-  if(typeof Html5Qrcode === "undefined"){
+  if(typeof ZXing === "undefined"){
     $("#scannerMsg").textContent = "No se pudo cargar el lector. Revisa tu internet.";
     return;
   }
-  scanner = new Html5Qrcode("scannerView", {
-    // limita los formatos a los que realmente usamos: decodifica más rápido
-    // y con menos falsos negativos que probando todos los formatos disponibles
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.QR_CODE,
-    ],
-    verbose: false,
-  });
-  // Nota: NO usar facingMode:{exact:"environment"} combinado con "advanced" —
-  // muchos celulares rechazan esas restricciones (OverconstrainedError) y la
-  // cámara nunca llega a abrir. "environment" simple + un "ideal" (no "exact")
-  // de resolución es lo que de verdad anda en Android/iOS.
-  scanner.start(
-    { facingMode: "environment" },
-    {
-      fps: 10,
-      // Caja de escaneo calculada como % del video real en vez de un tamaño
-      // fijo en píxeles — en iPhone el ancho real del video dentro del modal
-      // varía, y con un tamaño fijo la caja quedaba mal ajustada y el lector
-      // nunca alcanzaba a leer el código aunque la imagen se viera bien.
-      qrbox: (viewfinderWidth, viewfinderHeight) => {
-        const w = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.9);
-        return { width: w, height: Math.floor(w * 0.5) };
-      },
-      disableFlip: true,
-      // Pide una resolución mínima decente (ideal, no exact — no rechaza si
-      // el dispositivo no la soporta) para que el código de barras se vea
-      // con suficiente nitidez para decodificarse.
-      videoConstraints: {
-        facingMode: "environment",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    },
-    (decodedText) => onScanSuccess(decodedText),
-    () => {}                                // ignora errores por frame
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+    ZXing.BarcodeFormat.CODE_128,
+    ZXing.BarcodeFormat.EAN_13,
+    ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A,
+    ZXing.BarcodeFormat.UPC_E,
+    ZXing.BarcodeFormat.CODE_39,
+    ZXing.BarcodeFormat.QR_CODE,
+  ]);
+  scanner = new ZXing.BrowserMultiFormatReader(hints);
+  scanner.decodeFromConstraints(
+    { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } },
+    "scannerVideo",
+    (result) => { if(result) onScanSuccess(result.getText()); }
+    // los errores "no encontrado en este frame" se disparan constantemente
+    // mientras no hay código enfocado — ZXing los pasa como 2do argumento,
+    // se ignoran acá igual que antes con html5-qrcode
   ).then(()=>{
     $("#scannerMsg").textContent = "Apunta al código de barras o QR";
   }).catch(err=>{
@@ -1911,7 +1891,8 @@ function closeScanner(){
   $("#scannerModal").classList.remove("show");
   _scanMode = "cart";
   if(scanner){
-    scanner.stop().then(()=>{ scanner.clear(); scanner=null; }).catch(()=>{ scanner=null; });
+    try{ scanner.reset(); }catch(e){}
+    scanner=null;
   }
 }
 
