@@ -1503,7 +1503,12 @@
     <div class="modal-head"><h3>Agregar producto</h3><button class="modal-x" onclick="closeAddConsignmentProduct()">✕</button></div>
     <div class="modal-body">
       <div id="cnAddProductPickStep">
-        <input id="cnProductSearch" placeholder="Buscar producto por nombre…" oninput="searchConsignmentProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:14px;box-sizing:border-box;margin-bottom:8px;background:var(--surface);color:var(--text)">
+        <div style="position:relative;margin-bottom:8px">
+          <input id="cnProductSearch" placeholder="Buscar producto por nombre…" oninput="searchConsignmentProduct()" style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 44px 9px 13px;font-size:14px;box-sizing:border-box;background:var(--surface);color:var(--text)">
+          <button onclick="scanForConsignmentAdd()" title="Escanear código de barras" style="position:absolute;right:4px;top:4px;bottom:4px;width:36px;border:none;background:var(--accent-soft);color:var(--accent-dark);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <span class="material-symbols-outlined" style="font-size:18px">photo_camera</span>
+          </button>
+        </div>
         <div id="cnProductSearchResults" style="max-height:260px;overflow-y:auto"></div>
       </div>
       <div id="cnAddProductCostStep" style="display:none">

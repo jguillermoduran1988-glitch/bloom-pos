@@ -1871,36 +1871,23 @@ function openScanner(){
     ],
     verbose: false,
   });
+  // Nota: NO usar facingMode:{exact:"environment"} ni "advanced"/"videoConstraints"
+  // combinados — muchos celulares rechazan esas restricciones (OverconstrainedError)
+  // y la cámara nunca llega a abrir. "environment" simple es lo que de verdad
+  // funciona en la mayoría de Android/iOS.
   scanner.start(
-    // pide resolución más alta a la cámara trasera: los códigos de barras
-    // necesitan más nitidez que un QR para decodificarse bien en celular
-    { facingMode: { exact: "environment" }, advanced: [{ focusMode: "continuous" }] },
+    { facingMode: "environment" },
     {
-      fps: 15,
+      fps: 12,
       // caja rectangular (ancho > alto) — se ajusta mejor a un código de
       // barras 1D que la caja casi cuadrada que había antes
-      qrbox: { width: 280, height: 120 },
+      qrbox: { width: 280, height: 140 },
       aspectRatio: 1.777,
       disableFlip: true,
-      videoConstraints: {
-        facingMode: { exact: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        advanced: [{ focusMode: "continuous" }],
-      },
     },
     (decodedText) => onScanSuccess(decodedText),
     () => {}                                // ignora errores por frame
-  ).catch(()=>{
-    // fallback: si "environment" exacto falla (algunos Android/desktop lo rechazan),
-    // reintenta sin exigir cámara trasera exacta
-    return scanner.start(
-      { facingMode: "environment" },
-      { fps: 15, qrbox: { width: 280, height: 120 }, aspectRatio: 1.777, disableFlip: true },
-      (decodedText) => onScanSuccess(decodedText),
-      () => {}
-    );
-  }).then(()=>{
+  ).then(()=>{
     $("#scannerMsg").textContent = "Apunta al código de barras o QR";
   }).catch(err=>{
     $("#scannerMsg").textContent = "No se pudo abrir la cámara. Da permiso o usa otro dispositivo.";
@@ -1918,6 +1905,7 @@ function closeScanner(){
 
 // "cart" = agregar al carrito del POS (comportamiento normal).
 // "count" = sumar al conteo físico del cierre de consignación (ver openSettlementModal).
+// "addproduct" = buscar el producto escaneado para agregarlo a un proveedor (ver openAddConsignmentProduct).
 let _scanMode = "cart";
 let _lastScan="", _lastScanTime=0;
 function onScanSuccess(code){
@@ -1930,6 +1918,10 @@ function onScanSuccess(code){
 
   if(_scanMode==="count"){
     handleConsignmentScan(code);
+    return;
+  }
+  if(_scanMode==="addproduct"){
+    handleConsignmentAddScan(code);
     return;
   }
 
@@ -5727,7 +5719,11 @@ function searchConsignmentProduct(){
 }
 function pickConsignmentProduct(payloadB64){
   const data = JSON.parse(decodeURIComponent(escape(atob(payloadB64))));
+  pickConsignmentProductData(data);
+}
+function pickConsignmentProductData(data){
   _cnPickedProduct = data;
+  $("#cnAddProductModal").classList.add("show");
   $("#cnAddProductSelectedName").textContent = data.name + (data.variant_title?` (${data.variant_title})`:"");
   $("#cnAddProductPickStep").style.display = "none";
   $("#cnAddProductCostStep").style.display = "block";
@@ -5847,6 +5843,36 @@ function renderSettlementTotal(){
 function scanForConsignmentCount(){
   _scanMode = "count";
   openScanner();
+}
+async function scanForConsignmentAdd(){
+  await ensureCatalogLoadedForConsignment();
+  _scanMode = "addproduct";
+  openScanner();
+}
+function handleConsignmentAddScan(code){
+  const found = findProductByCode(code);
+  if(!found){
+    $("#scannerMsg").textContent = `Código ${code} no encontrado en el catálogo`;
+    $("#scannerMsg").style.color="#c0392b";
+    if(navigator.vibrate) navigator.vibrate([60,40,60]);
+    return;
+  }
+  const v = (found.product.variants||[]).find(x=>x.variant_id===found.variant_id) || {};
+  const already = _cnActiveProducts.some(p=>String(p.variant_id)===String(found.variant_id));
+  if(already){
+    $("#scannerMsg").textContent = `${found.product.name} ya está agregado a este proveedor`;
+    $("#scannerMsg").style.color="#c0392b";
+    if(navigator.vibrate) navigator.vibrate([60,40,60]);
+    return;
+  }
+  closeScanner();
+  pickConsignmentProductData({
+    name: found.product.name,
+    variant_title: [v.color,v.talla].filter(Boolean).join(" / ")||null,
+    variant_id: found.variant_id,
+    sku: v.sku||null,
+    barcode: v.barcode||null,
+  });
 }
 function handleConsignmentScan(code){
   if(!_cnSettlementDraft) return;
