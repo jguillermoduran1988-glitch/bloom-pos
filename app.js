@@ -1457,9 +1457,9 @@ function expandCommand(text){
 }
 
 // ---------- Selector de productos ----------
-let picker={size:null,selected:new Set(),products:[]};
+let picker={size:null,selected:new Set(),products:[],captions:new Map()};
 async function openPicker(){
-  picker.selected.clear(); picker.size=null; picker.products=[];
+  picker.selected.clear(); picker.captions.clear(); picker.size=null; picker.products=[];
   $("#overlay").classList.add("show");
   const grid=$("#prodGrid");
   // Mostrar caché inmediatamente si existe
@@ -1507,6 +1507,10 @@ function renderSizes(){
     row.appendChild(b);
   }
 }
+function defaultCaption(p){
+  const sz=picker.size?` (talla ${picker.size})`:"";
+  return `*${p.name}*${sz} — ${money(p.price)}`;
+}
 function renderProducts(){
   const grid=$("#prodGrid");grid.innerHTML="";
   const q=($("#pickerSearch")?.value||"").trim().toLowerCase();
@@ -1518,14 +1522,34 @@ function renderProducts(){
     const stk=p.stock<=2?`<span class="low">${p.stock} disp.</span>`:`<span class="ok">${p.stock} stock</span>`;
     const img=p.image?`<img src="${esc(p.image)}" alt="">`:(p.emoji||"<span class=\"material-symbols-outlined\" style=\"font-size:28px;color:var(--text-dim)\">shopping_bag</span>");
     card.innerHTML=`<div class="pc-img">${img}</div><div class="pc-b"><div class="pc-n">${esc(p.name)}</div><div class="pc-p">${money(p.price)}</div><div class="pc-s">${stk}</div></div>`;
-    card.onclick=()=>{if(picker.selected.has(p.id))picker.selected.delete(p.id);else if(picker.selected.size<3)picker.selected.add(p.id);renderProducts();updateSendBtn();};
+    // Sin límite artificial de 3 — se puede ir buscando y seleccionando de a
+    // varias tandas (los ya elegidos quedan guardados aunque cambies la
+    // búsqueda) y mandar todo junto al final.
+    card.onclick=()=>{
+      if(picker.selected.has(p.id)){ picker.selected.delete(p.id); picker.captions.delete(p.id); }
+      else{ picker.selected.add(p.id); picker.captions.set(p.id, defaultCaption(p)); }
+      renderProducts(); updateSendBtn(); renderSelectedPicker();
+    };
     grid.appendChild(card);
   }
 }
 function updateSendBtn(){const n=picker.selected.size;const b=$("#sendProdBtn");b.disabled=n===0;b.textContent=`Enviar ${n} producto${n!==1?"s":""}`;}
+function renderSelectedPicker(){
+  const wrap=$("#pickerSelectedWrap"), list=$("#pickerSelectedList");
+  if(!wrap||!list) return;
+  if(!picker.selected.size){ wrap.style.display="none"; list.innerHTML=""; return; }
+  wrap.style.display="block";
+  const sel=picker.products.filter(p=>picker.selected.has(p.id));
+  list.innerHTML=sel.map(p=>`
+    <div style="display:flex;gap:8px;align-items:flex-start;background:var(--surface-2);border-radius:10px;padding:8px">
+      <img src="${esc(p.image||'')}" style="width:36px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--surface)">
+      <textarea data-pid="${p.id}" oninput="picker.captions.set(${p.id}, this.value)" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;resize:vertical;min-height:44px;background:var(--surface);color:var(--text)">${esc(picker.captions.get(p.id)||defaultCaption(p))}</textarea>
+      <button onclick="picker.selected.delete(${p.id});picker.captions.delete(${p.id});renderProducts();updateSendBtn();renderSelectedPicker();" style="background:none;border:none;color:var(--text-dim);cursor:pointer;flex-shrink:0"><span class="material-symbols-outlined" style="font-size:18px">close</span></button>
+    </div>
+  `).join("");
+}
 async function sendProducts(){
   const sel=picker.products.filter(p=>picker.selected.has(p.id));
-  const sz=picker.size?` (talla ${picker.size})`:"";
   const phone=state.active;
   const c=state.chats.get(phone);
   const convId=c?.id||phone;
@@ -1534,7 +1558,7 @@ async function sendProducts(){
   await dispatch(`Hola ${name}! 🌸 Te comparto estas opciones:`);
   // Manda cada producto como foto real (no solo el texto) cuando tiene imagen
   for(const p of sel){
-    const caption=`*${p.name}*${sz} — ${money(p.price)}`;
+    const caption=(picker.captions.get(p.id)||defaultCaption(p)).trim();
     const now=new Date().toISOString();
     if(p.image){
       const localMsg={body:caption,media_url:p.image,direction:"out",created_at:now,msg_type:"image"};
@@ -2392,7 +2416,22 @@ function cedulaValida(c){
   return c.length>=6 && c.length<=10;
 }
 
-function saveCustomerModal(){
+// Modal chiquito de confirmación con el nombre en grande — un confirm()
+// nativo no se puede poner en negrita/grande, por eso este modal propio.
+let _custConfirmResolveFn=null;
+function _custConfirmResolve(ok){
+  $("#custConfirmModal")?.classList.remove("show");
+  if(_custConfirmResolveFn) _custConfirmResolveFn(ok);
+  _custConfirmResolveFn=null;
+}
+function askCustomerNameConfirm(name){
+  return new Promise(resolve=>{
+    _custConfirmResolveFn=resolve;
+    const el=$("#custConfirmName"); if(el) el.textContent=name;
+    $("#custConfirmModal")?.classList.add("show");
+  });
+}
+async function saveCustomerModal(){
   const depto=$("#custDepto").value, city=$("#custCity").value;
 
   // ----- DATOS DEL CLIENTE (siempre, para la venta en Shopify) -----
@@ -2443,14 +2482,8 @@ function saveCustomerModal(){
 
   // Confirmación final antes de guardar — evita errores de digitación que
   // luego terminan mal en la factura/envío de Shopify
-  const resumen=`¿Confirmas que estos datos del cliente están correctos?\n\n`
-    +`${pos.customer.full_name}\n`
-    +`Cédula: ${pos.customer.doc}\n`
-    +`Celular: ${pos.customer.phone}\n`
-    +`Correo: ${pos.customer.email}\n`
-    +(pos.customer.address?`Dirección: ${pos.customer.address}\n`:``)
-    +`${pos.customer.city}, ${pos.customer.depto}`;
-  if(!confirm(resumen)) return;
+  const ok=await askCustomerNameConfirm(pos.customer.full_name);
+  if(!ok) return;
 
   pos.customerSaved=true;
   const btn=$("#btnCustomer");

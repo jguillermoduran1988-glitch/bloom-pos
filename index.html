@@ -324,7 +324,7 @@
   .prod-grid{flex:1;overflow-y:auto;padding:8px 16px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}
   .pc{border:1px solid var(--border);border-radius:11px;overflow:hidden;cursor:pointer;background:var(--bg)}
   .pc.on{border-color:var(--accent);border-width:2px}
-  .pc-img{aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--surface-2);overflow:hidden}
+  .pc-img{height:120px;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--surface-2);overflow:hidden}
   .pc-img img{width:100%;height:100%;object-fit:cover}
   .pc-b{padding:6px 8px}
   .pc-n{font-size:11px;font-weight:600;line-height:1.25}
@@ -719,6 +719,10 @@
       </div>
       <div class="sizes" id="sizeRow"></div>
       <div class="prod-grid" id="prodGrid"></div>
+      <div id="pickerSelectedWrap" style="display:none;border-top:1px solid var(--border);padding:10px 14px;max-height:200px;overflow-y:auto">
+        <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Seleccionados — podés editar el texto que se manda</div>
+        <div id="pickerSelectedList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
       <div class="sheet-foot"><button class="btn-primary" id="sendProdBtn" disabled onclick="sendProducts()">Enviar 0 productos</button></div>
     </div>
   </div>
@@ -934,6 +938,20 @@
       </div>
     </div>
     <div class="modal-foot"><button class="modal-save" onclick="saveCustomerModal()">Guardar datos</button></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CONFIRMAR NOMBRE DEL CLIENTE ===== -->
+<div class="modal-bg" id="custConfirmModal">
+  <div class="modal-box modal-sm">
+    <div class="modal-body" style="text-align:center;padding:26px 22px">
+      <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px">¿Confirmas que el nombre del cliente está correcto?</div>
+      <div id="custConfirmName" style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:22px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="_custConfirmResolve(false)" style="flex:1;padding:12px;border:1px solid var(--border);background:none;border-radius:10px;cursor:pointer;font-size:14px;color:var(--text)">Corregir</button>
+        <button onclick="_custConfirmResolve(true)" style="flex:1;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px">Sí, es correcto</button>
+      </div>
+    </div>
   </div>
 </div>
 
