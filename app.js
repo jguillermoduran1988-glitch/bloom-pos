@@ -1080,11 +1080,12 @@ async function confirmSendChatPhoto(){
   }
 }
 
+// ---------- Nota de voz: mantener presionado para grabar (como WhatsApp) ----------
 let _chatRecorder=null, _chatAudioChunks=[];
-async function toggleChatVoice(){
-  if(!state.active){ alert("Selecciona un chat primero."); return; }
+async function startVoiceRecording(){
+  if(!state.active) return;
+  if(_chatRecorder && _chatRecorder.state==="recording") return;
   const btn=$("#chatVoiceBtn");
-  if(_chatRecorder && _chatRecorder.state==="recording"){ _chatRecorder.stop(); return; }
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
     let mime="", ext="webm";
@@ -1096,12 +1097,13 @@ async function toggleChatVoice(){
     _chatAudioChunks=[];
     _chatRecorder.ondataavailable=e=>{ if(e.data.size>0) _chatAudioChunks.push(e.data); };
     _chatRecorder.onstop=async()=>{
-      btn.classList.remove("rec"); btn.textContent="🎤";
+      btn?.classList.remove("rec","locked");
+      renderMicHint(false);
       stream.getTracks().forEach(t=>t.stop());
       const realType=_chatRecorder.mimeType||mime||"audio/mp4";
       const realExt=realType.includes("webm")?"webm":realType.includes("mp4")?"mp4":realType.includes("aac")?"aac":"m4a";
       const blob=new Blob(_chatAudioChunks,{type:realType});
-      if(blob.size===0){ alert("La grabación quedó vacía. Intenta de nuevo."); return; }
+      if(blob.size===0) return; // grabación cancelada/vacía, no manda nada
       const up=await sbUpload("team-chat", blob, realExt);
       if(!up) return;
       const now=new Date().toISOString();
@@ -1115,10 +1117,61 @@ async function toggleChatVoice(){
         body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"audio",reply_to:replyTo})}).catch(()=>{});
     };
     _chatRecorder.start();
-    btn.classList.add("rec"); btn.textContent="⏹";
+    btn?.classList.add("rec");
+    renderMicHint(true);
   }catch(e){
     console.error(e);
     alert("No se pudo acceder al micrófono. Revisa el permiso en el navegador.");
+  }
+}
+function stopVoiceRecording(){
+  if(_chatRecorder && _chatRecorder.state==="recording") _chatRecorder.stop();
+}
+function renderMicHint(show){
+  let hint=$("#micRecHint");
+  if(!show){ if(hint) hint.style.display="none"; return; }
+  if(!hint){
+    hint=document.createElement("div");
+    hint.id="micRecHint";
+    hint.style.cssText="position:absolute;bottom:100%;left:0;right:0;background:var(--accent-dark,#a07d32);color:#fff;font-size:12px;text-align:center;padding:5px;border-radius:8px 8px 0 0";
+    $("#composer")?.parentElement?.insertBefore(hint, $("#composer"));
+  }
+  hint.style.display="block";
+  hint.textContent=_micLocked?"🔒 Grabando — toca el micrófono para enviar":"🎙️ Grabando… suelta para enviar, desliza arriba para bloquear";
+}
+
+let _micStartY=0, _micLocked=false;
+function micPressStart(e){
+  if(!state.active){ alert("Selecciona un chat primero."); return; }
+  e.preventDefault();
+  _micLocked=false;
+  _micStartY=(e.touches?e.touches[0].clientY:e.clientY);
+  startVoiceRecording();
+  document.addEventListener("mousemove", micPressMove);
+  document.addEventListener("touchmove", micPressMove, {passive:false});
+  document.addEventListener("mouseup", micPressEnd);
+  document.addEventListener("touchend", micPressEnd);
+}
+function micPressMove(e){
+  const y=(e.touches?e.touches[0].clientY:e.clientY);
+  if(!_micLocked && _micStartY-y>60){
+    _micLocked=true;
+    $("#chatVoiceBtn")?.classList.add("locked");
+    renderMicHint(true);
+  }
+}
+function micPressEnd(){
+  document.removeEventListener("mousemove", micPressMove);
+  document.removeEventListener("touchmove", micPressMove);
+  document.removeEventListener("mouseup", micPressEnd);
+  document.removeEventListener("touchend", micPressEnd);
+  if(_micLocked) return; // sigue grabando hasta que toquen el botón de nuevo
+  stopVoiceRecording();
+}
+function micClickWhileLocked(){
+  if(_micLocked && _chatRecorder && _chatRecorder.state==="recording"){
+    _micLocked=false;
+    stopVoiceRecording();
   }
 }
 

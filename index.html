@@ -148,7 +148,7 @@
   .chat-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .chat-item{padding:11px 14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;border-bottom:1px solid var(--border)}
   .chat-item:active,.chat-item.sel{background:var(--surface-2)}
-  .chat-item.my-conv{outline:2px solid var(--accent);outline-offset:-2px}
+  .chat-item.my-conv{border-right:4px solid var(--accent)}
   .kb-card.my-conv{outline:2px solid var(--accent);outline-offset:-2px}
   .av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--accent)}
   .av-wrap{position:relative;flex-shrink:0;display:inline-flex}
@@ -242,9 +242,12 @@
   .qr:active{background:var(--accent-soft);border-color:var(--accent)}
   .qr b{color:var(--accent)}
   .composer{display:flex;gap:9px;padding:10px 12px;border-top:1px solid var(--border);align-items:flex-end;flex-shrink:0;background:var(--surface)}
-  .composer textarea{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:10px 15px;color:var(--text);font-size:14px;resize:none;outline:none;max-height:100px;font-family:inherit;line-height:1.4}
+  .composer textarea{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:10px 15px;color:var(--text);font-size:14px;resize:none;outline:none;max-height:100px;font-family:inherit;line-height:1.4;scrollbar-width:none;-ms-overflow-style:none}
+  .composer textarea::-webkit-scrollbar{width:0;height:0}
   .composer textarea:focus{border-color:var(--accent)}
-  .send{width:42px;height:42px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .send{width:42px;height:42px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;-webkit-user-select:none;user-select:none;touch-action:none}
+  .send.rec{background:#c0392b;animation:pulse 1s infinite}
+  .send.rec.locked{animation:none}
   .send:active{transform:scale(.94)}
   .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:10px;text-align:center;padding:20px}
   .empty svg{opacity:.25}
@@ -623,13 +626,16 @@
       <div id="replyPreview" style="display:none;align-items:center;gap:8px;padding:8px 12px;background:var(--accent-soft);border-top:1px solid var(--border);border-left:3px solid var(--accent)"></div>
       <div class="composer" id="composer" style="display:none">
         <button class="team-plus" id="chatPlusBtn" onclick="toggleChatPlusMenu()"><span class="material-symbols-outlined" style="font-size:22px">add_2</span></button>
-        <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…"></textarea>
+        <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje o /comando…" spellcheck="true" lang="es"></textarea>
+        <button class="send" id="chatVoiceBtn" title="Mantén presionado para grabar, desliza arriba para bloquear"
+          onmousedown="micPressStart(event)" ontouchstart="micPressStart(event)" onclick="micClickWhileLocked()">
+          <span class="material-symbols-outlined" style="font-size:20px">mic</span>
+        </button>
         <button class="send" id="sendBtn" onclick="sendCurrent()"><span class="material-symbols-outlined" style="font-size:20px">send</span></button>
       </div>
       <div id="chatPlusMenu" class="plus-menu">
         <button onclick="toggleChatEmojiPicker();closeChatPlusMenu()"><span class="material-symbols-outlined">add_reaction</span><span>Emojis</span></button>
         <button onclick="attachChatPhoto();closeChatPlusMenu()"><span class="material-symbols-outlined">photo_camera</span><span>Foto</span></button>
-        <button id="chatVoiceBtn" onclick="toggleChatVoice()"><span class="material-symbols-outlined">mic</span><span>Nota de voz</span></button>
       </div>
     </div>
     <div id="chatEmojiPicker" class="emoji-picker"></div>
