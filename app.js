@@ -350,7 +350,9 @@ async function openChat(phone){
   if(window.innerWidth<=720) history.pushState({screen:"chats",chat:phone},"");
   state.active=phone;
   cancelReply();
-  const c=state.chats.get(phone); c.unread=0;
+  // Ojo: NO se marca como leído solo por abrir el chat — queda "no leído"
+  // hasta que de verdad se le responda al cliente (ver markRepliedAndAdvanceStage)
+  const c=state.chats.get(phone);
   document.body.classList.add("chat-open");
   $("#emptyState").style.display="none";
   ["chatHead","msgs","qrBar","composer"].forEach(id=>$("#"+id).style.display=
@@ -363,8 +365,6 @@ async function openChat(phone){
   $("#headSub").textContent="+"+phone;
   renderChatList(); renderPanel();
   renderWindowBanner(phone);
-  const _convId=state.chats.get(phone)?.id||phone;
-  fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(_convId)}/read`,{method:"POST"}).catch(()=>{});
   await loadMessages(phone);
 }
 function closeChat(){document.body.classList.remove("chat-open","panel-open");state.active=null;$("#panel").classList.add("hidden");cancelReply();}
@@ -816,6 +816,25 @@ async function savePipeline(){
   closePipeModal(); renderPipeTabs(); renderCfgPipelines();
 }
 
+// Al responderle de verdad al cliente (texto/foto/video/audio, NO notas internas):
+// marca el chat como leído y, si está en "nueva", lo pasa a "interesada".
+async function markRepliedAndAdvanceStage(phone){
+  const c=state.chats.get(phone); if(!c) return;
+  const convId=c.id||phone;
+  c.unread=0;
+  const stageChanged = c.stage==="nueva";
+  if(stageChanged) c.stage="interesada";
+  renderChatList();
+  if(state.active===phone) renderPanel();
+  if(typeof _boardMode!=="undefined" && _boardMode) renderBoard();
+  const tasks=[ fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}/read`,{method:"POST"}).catch(()=>{}) ];
+  if(stageChanged){
+    tasks.push(fetch(`${C.WORKER_URL}/wa/conversations/${encodeURIComponent(convId)}`,{method:"PATCH",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({stage:"interesada"})}).catch(()=>{}));
+  }
+  await Promise.all(tasks);
+}
+
 // ---------- Enviar ----------
 async function sendCurrent(){
   const input=$("#chatInput"); let text=input.value.trim();
@@ -829,6 +848,7 @@ async function dispatch(text){
   const replyTo=_replyingTo?.wa_message_id||null;
   appendMessage({body:text,direction:"out",created_at:now,msg_type:"text",reply_to:replyTo});
   cancelReply();
+  await markRepliedAndAdvanceStage(phone);
   const c=state.chats.get(phone); c.last=text; c.lastAt=now; renderChatList();
   try{
     await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1046,12 +1066,15 @@ async function confirmSendChatPhoto(){
     const upResp=await fetch(`${C.WORKER_URL}/wa/upload`,{method:"POST",body:formData}).then(r=>r.json()).catch(()=>null);
     if(!upResp?.url){ alert("No se pudo subir el archivo"); return; }
     const now=new Date().toISOString();
-    appendMessage({body:caption,media_url:upResp.url,direction:"out",created_at:now,msg_type:msgType});
+    const replyTo=_replyingTo?.wa_message_id||null;
+    appendMessage({body:caption,media_url:upResp.url,direction:"out",created_at:now,msg_type:msgType,reply_to:replyTo});
+    cancelReply();
+    await markRepliedAndAdvanceStage(state.active);
     const c=state.chats.get(state.active);
     if(c){ c.last=isVideo?"🎬 Video":"📷 Foto"; c.lastAt=now; renderChatList(); }
     const convId=c?.id||state.active;
     await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({conversation_id:convId,phone:state.active,body:caption,media_url:upResp.url,type:msgType})}).catch(()=>{});
+      body:JSON.stringify({conversation_id:convId,phone:state.active,body:caption,media_url:upResp.url,type:msgType,reply_to:replyTo})}).catch(()=>{});
   } finally {
     if(btn){ btn.disabled=false; btn.textContent="Enviar"; }
   }
@@ -1082,11 +1105,14 @@ async function toggleChatVoice(){
       const up=await sbUpload("team-chat", blob, realExt);
       if(!up) return;
       const now=new Date().toISOString();
-      appendMessage({body:"",media_url:up.url,direction:"out",created_at:now,msg_type:"audio"});
+      const replyTo=_replyingTo?.wa_message_id||null;
+      appendMessage({body:"",media_url:up.url,direction:"out",created_at:now,msg_type:"audio",reply_to:replyTo});
+      cancelReply();
+      await markRepliedAndAdvanceStage(state.active);
       const c=state.chats.get(state.active); if(c){ c.last="🎤 Nota de voz"; c.lastAt=now; renderChatList(); }
       const convId=c?.id||state.active;
       await fetch(`${C.WORKER_URL}/wa/send`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"audio"})}).catch(()=>{});
+        body:JSON.stringify({conversation_id:convId,phone:state.active,body:"",media_url:up.url,type:"audio",reply_to:replyTo})}).catch(()=>{});
     };
     _chatRecorder.start();
     btn.classList.add("rec"); btn.textContent="⏹";
